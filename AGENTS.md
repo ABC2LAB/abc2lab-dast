@@ -8,8 +8,23 @@
 - 담당 배정은 [모듈 개발 가이드](docs/module-development.md#담당-배정)를 기준으로 한다. 이동찬(관리자·PM)은 `contracts`·`app`·`knowledge`, 최민준은 `gateway`·`judge`·`policy`, 이경준은 `webdiag`·`host`와 P2의 `reasoner`, 윤재상은 `evidence`·`report`·루트 `eval/`을 맡는다.
 - 기본 구현 범위는 담당 패키지의 `src/`, `tests/`, `pyproject.toml`과 배정된 평가 영역이다. `.github/CODEOWNERS`는 모든 변경에 팀원 전체의 리뷰를 요청하며 작성자는 제외된다. 개발 담당 배정이 리뷰 요청 대상을 제한하지 않는다.
 - 공유 `uv.lock`, 루트 설정, `contracts`, `app` 변경은 관련 모듈의 영향 범위를 기록하고 해당 의존성·계약 PR에 포함한다. 패키지 의존성 변경과 잠금 파일은 같은 PR로 올린다.
-- 작업 브랜치에서 PR을 만들고 필수 CI와 작성자 외 팀원 1명 이상의 승인을 거쳐 `main`에 병합한다. 더 좁은 디렉터리 지침이 생기면 그 적용 범위를 따른다.
+- 더 좁은 디렉터리 지침이 생기면 그 적용 범위를 따른다.
 - 작은 변경과 기존 패턴·유틸리티 재사용을 우선한다. 중복 추상화와 공통 `utils` 패키지를 임의로 추가하지 않는다.
+
+## 브랜치와 PR
+
+- 팀원별 상시 브랜치를 만들지 않는다. 기능·수정 등 작업 단위로 짧게 브랜치를 사용하고 PR 하나에 한 가지 변경 목적을 담는다.
+- 새 작업은 `git fetch origin`으로 갱신한 최신 `origin/main`에서 시작한다. 이미 병합한 작업 브랜치를 다음 작업에 재사용하지 않는다.
+- 팀원 개발 브랜치는 `feat/<module>-<short-name>` 또는 `fix/<module>-<short-name>`으로 짓는다. 예: `feat/knowledge-store-memory`, `fix/gateway-timeout`.
+- 문서·설정 작업은 `docs/<scope>-<short-name>`, `chore/<scope>-<short-name>`을 사용한다. Codex가 만드는 브랜치는 `codex/<short-name>`을 사용하며 같은 작업·PR 수명 규칙을 따른다.
+- 브랜치 이름과 작업명은 영어 소문자·숫자·하이픈으로 쓴다. 한 사람이 여러 모듈을 맡아도 작업 목적과 대표 모듈을 드러내고, 무관한 변경은 별도 PR로 분리한다.
+- `main`에 직접 push하지 않고 작업 브랜치를 원격에 올려 `main` 대상으로 PR을 만든다. 필수 CI 통과·미해결 대화 처리·작성자 외 팀원 1명 이상의 승인 후 병합한다.
+- 병합이 끝난 작업 브랜치는 정리한다. 다음 작업은 다시 최신 `origin/main`에서 새 브랜치로 시작한다.
+
+```bash
+git fetch origin
+git switch -c feat/knowledge-store-memory origin/main
+```
 
 ## 도구가 처리하는 형식
 
