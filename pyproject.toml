@@ -1,0 +1,259 @@
+[project]
+name = "abc2lab-dast"
+version = "0.1.0"
+description = "Development workspace for ABC2LAB DAST"
+requires-python = ">=3.13,<3.14"
+dependencies = ["abc2lab-app"]
+
+[project.optional-dependencies]
+postgres = ["abc2lab-app[postgres]"]
+mcp = ["abc2lab-app[mcp]"]
+reasoner = ["abc2lab-app[reasoner]"]
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.15,<3",
+    "mypy>=2.4,<3",
+    "pytest>=9.1,<10",
+    "pytest-asyncio>=1.4,<2",
+    "pytest-cov>=7.1,<8",
+    "ruff>=0.16,<0.17",
+]
+
+[tool.uv]
+package = false
+required-version = "==0.12.23"
+
+[tool.uv.workspace]
+members = ["packages/*", "app"]
+
+[tool.uv.sources]
+"abc2lab-contracts" = { workspace = true }
+"abc2lab-host" = { workspace = true }
+"abc2lab-knowledge" = { workspace = true }
+"abc2lab-evidence" = { workspace = true }
+"abc2lab-webdiag" = { workspace = true }
+"abc2lab-policy" = { workspace = true }
+"abc2lab-gateway" = { workspace = true }
+"abc2lab-judge" = { workspace = true }
+"abc2lab-reasoner" = { workspace = true }
+"abc2lab-report" = { workspace = true }
+"abc2lab-mcp-knowledge" = { workspace = true }
+"abc2lab-mcp-webdiag" = { workspace = true }
+"abc2lab-app" = { workspace = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "packages", "app"]
+addopts = ["--import-mode=importlib", "--strict-config", "--strict-markers", "-m", "not integration"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["integration: requires separately configured runtime services"]
+
+[tool.ruff]
+include = ["*.py", "*.pyi"]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+# Module tests are checked separately in their isolated CI jobs.
+files = ["packages/*/src", "app/src", "tests"]
+
+[tool.importlinter]
+root_packages = [
+    "abc2lab_contracts",
+    "abc2lab_host",
+    "abc2lab_knowledge",
+    "abc2lab_evidence",
+    "abc2lab_webdiag",
+    "abc2lab_policy",
+    "abc2lab_gateway",
+    "abc2lab_judge",
+    "abc2lab_reasoner",
+    "abc2lab_report",
+    "abc2lab_mcp_knowledge",
+    "abc2lab_mcp_webdiag",
+    "abc2lab_app",
+]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Service packages communicate through contracts"
+type = "independence"
+modules = [
+    "abc2lab_host",
+    "abc2lab_knowledge",
+    "abc2lab_evidence",
+    "abc2lab_webdiag",
+    "abc2lab_policy",
+    "abc2lab_gateway",
+    "abc2lab_judge",
+    "abc2lab_reasoner",
+    "abc2lab_report",
+    "abc2lab_mcp_knowledge",
+    "abc2lab_mcp_webdiag",
+]
+
+[[tool.importlinter.contracts]]
+name = "Contracts remain the dependency leaf"
+type = "forbidden"
+source_modules = ["abc2lab_contracts"]
+forbidden_modules = [
+    "abc2lab_host",
+    "abc2lab_knowledge",
+    "abc2lab_evidence",
+    "abc2lab_webdiag",
+    "abc2lab_policy",
+    "abc2lab_gateway",
+    "abc2lab_judge",
+    "abc2lab_reasoner",
+    "abc2lab_report",
+    "abc2lab_mcp_knowledge",
+    "abc2lab_mcp_webdiag",
+    "abc2lab_app",
+    "httpx",
+    "playwright",
+    "psycopg",
+    "mcp",
+]
+
+[[tool.importlinter.contracts]]
+name = "Target clients stay in gateway adapters"
+type = "forbidden"
+source_modules = [
+    "abc2lab_contracts",
+    "abc2lab_host",
+    "abc2lab_knowledge",
+    "abc2lab_evidence",
+    "abc2lab_webdiag",
+    "abc2lab_policy",
+    "abc2lab_gateway",
+    "abc2lab_judge",
+    "abc2lab_reasoner",
+    "abc2lab_report",
+    "abc2lab_mcp_knowledge",
+    "abc2lab_mcp_webdiag",
+    "abc2lab_app",
+]
+forbidden_modules = [
+    "httpx",
+    "playwright",
+]
+allow_indirect_imports = true
+ignore_imports = [
+    "abc2lab_gateway.adapters -> httpx",
+    "abc2lab_gateway.adapters -> playwright",
+    "abc2lab_gateway.adapters.** -> httpx",
+    "abc2lab_gateway.adapters.** -> playwright",
+]
+unmatched_ignore_imports_alerting = "none"
+
+[[tool.importlinter.contracts]]
+name = "Service cores do not perform external IO"
+type = "forbidden"
+source_modules = [
+    "abc2lab_host.core",
+    "abc2lab_knowledge.core",
+    "abc2lab_evidence.core",
+    "abc2lab_webdiag.core",
+    "abc2lab_policy.core",
+    "abc2lab_gateway.core",
+    "abc2lab_judge.core",
+    "abc2lab_reasoner.core",
+    "abc2lab_report.core",
+]
+forbidden_modules = ["httpx", "playwright", "psycopg", "psycopg_pool", "mcp", "mcp_types"]
+
+[[tool.importlinter.contracts]]
+name = "PostgreSQL clients stay in owning service adapters"
+type = "forbidden"
+source_modules = [
+    "abc2lab_contracts",
+    "abc2lab_host",
+    "abc2lab_knowledge",
+    "abc2lab_evidence",
+    "abc2lab_webdiag",
+    "abc2lab_policy",
+    "abc2lab_gateway",
+    "abc2lab_judge",
+    "abc2lab_reasoner",
+    "abc2lab_report",
+    "abc2lab_mcp_knowledge",
+    "abc2lab_mcp_webdiag",
+    "abc2lab_app",
+]
+forbidden_modules = [
+    "psycopg",
+    "psycopg_pool",
+]
+allow_indirect_imports = true
+ignore_imports = [
+    "abc2lab_host.adapters -> psycopg",
+    "abc2lab_host.adapters -> psycopg_pool",
+    "abc2lab_host.adapters.** -> psycopg",
+    "abc2lab_host.adapters.** -> psycopg_pool",
+    "abc2lab_knowledge.adapters -> psycopg",
+    "abc2lab_knowledge.adapters -> psycopg_pool",
+    "abc2lab_knowledge.adapters.** -> psycopg",
+    "abc2lab_knowledge.adapters.** -> psycopg_pool",
+    "abc2lab_evidence.adapters -> psycopg",
+    "abc2lab_evidence.adapters -> psycopg_pool",
+    "abc2lab_evidence.adapters.** -> psycopg",
+    "abc2lab_evidence.adapters.** -> psycopg_pool",
+    "abc2lab_policy.adapters -> psycopg",
+    "abc2lab_policy.adapters -> psycopg_pool",
+    "abc2lab_policy.adapters.** -> psycopg",
+    "abc2lab_policy.adapters.** -> psycopg_pool",
+    "abc2lab_gateway.adapters -> psycopg",
+    "abc2lab_gateway.adapters -> psycopg_pool",
+    "abc2lab_gateway.adapters.** -> psycopg",
+    "abc2lab_gateway.adapters.** -> psycopg_pool",
+    "abc2lab_judge.adapters -> psycopg",
+    "abc2lab_judge.adapters -> psycopg_pool",
+    "abc2lab_judge.adapters.** -> psycopg",
+    "abc2lab_judge.adapters.** -> psycopg_pool",
+    "abc2lab_report.adapters -> psycopg",
+    "abc2lab_report.adapters -> psycopg_pool",
+    "abc2lab_report.adapters.** -> psycopg",
+    "abc2lab_report.adapters.** -> psycopg_pool",
+]
+unmatched_ignore_imports_alerting = "none"
+
+[[tool.importlinter.contracts]]
+name = "MCP stays in protocol adapters"
+type = "forbidden"
+source_modules = [
+    "abc2lab_contracts",
+    "abc2lab_host",
+    "abc2lab_knowledge",
+    "abc2lab_evidence",
+    "abc2lab_webdiag",
+    "abc2lab_policy",
+    "abc2lab_gateway",
+    "abc2lab_judge",
+    "abc2lab_reasoner",
+    "abc2lab_report",
+    "abc2lab_mcp_knowledge",
+    "abc2lab_mcp_webdiag",
+    "abc2lab_app",
+]
+forbidden_modules = [
+    "mcp",
+    "mcp_types",
+]
+allow_indirect_imports = true
+ignore_imports = [
+    "abc2lab_mcp_knowledge -> mcp",
+    "abc2lab_mcp_knowledge -> mcp_types",
+    "abc2lab_mcp_knowledge.** -> mcp",
+    "abc2lab_mcp_knowledge.** -> mcp_types",
+    "abc2lab_mcp_webdiag -> mcp",
+    "abc2lab_mcp_webdiag -> mcp_types",
+    "abc2lab_mcp_webdiag.** -> mcp",
+    "abc2lab_mcp_webdiag.** -> mcp_types",
+]
+unmatched_ignore_imports_alerting = "none"

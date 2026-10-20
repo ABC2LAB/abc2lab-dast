@@ -1,0 +1,58 @@
+# 모듈별 개발 가이드
+
+팀원은 지정된 모듈을 패키지 단위로 개발한다. 아래 이름은 uv 패키지명, 디렉터리, 책임의 기준이다. 담당자 이름은 회의 후 별도 기록한다.
+
+| 모듈 | uv 패키지 | 책임 |
+|---|---|---|
+| contracts | `abc2lab-contracts` | 공유 타입과 공개 Port Protocol; 의존성 leaf |
+| host | `abc2lab-host` | Controller, Scheduler, Planner, Broker와 Task 상태 |
+| knowledge | `abc2lab-knowledge` | 후보·관찰 그래프, Projector, Knowledge 저장/조회 |
+| evidence | `abc2lab-evidence` | 실행영역 캡처·비교와 민감값 제거 Evidence 저장/조회 |
+| webdiag | `abc2lab-webdiag` | Discovery, Observe, Access Compare, Auth 흐름 |
+| policy | `abc2lab-policy` | 구체 실행 계획에 대한 Safety Policy 판정 |
+| gateway | `abc2lab-gateway` | 유일한 대상 HTTP/브라우저 실행 관문과 Vault |
+| judge | `abc2lab-judge` | 유형별 oracle과 독립 판정 |
+| reasoner | `abc2lab-reasoner` | Context, Model Adapter, 제안형 추론(선택) |
+| report | `abc2lab-report` | 결과와 감사 타임라인 보고 |
+| mcp-knowledge | `abc2lab-mcp-knowledge` | KnowledgePort의 얇은 MCP 어댑터 |
+| mcp-webdiag | `abc2lab-mcp-webdiag` | WebDiagPort의 얇은 MCP 어댑터 |
+| app | `abc2lab-app` | 조립 루트와 의존성 주입; 구체 구현 선택 |
+
+## 패키지별 작업
+
+```bash
+uv sync --locked --package abc2lab-knowledge --group dev
+uv run --locked --package abc2lab-knowledge --group dev pytest packages/knowledge/tests
+uv run --locked --package abc2lab-knowledge --group dev ruff check packages/knowledge
+uv run --locked --package abc2lab-knowledge --group dev mypy packages/knowledge/src
+```
+
+`knowledge`와 경로는 담당 패키지에 맞게 바꾼다. `app`은 `--package abc2lab-app`, 경로는 `app/tests`, `app/src`를 사용한다. 네트워크 없이 패키지 경계를 확인해야 하면 `uv run --isolated --locked --package <패키지> --group dev --offline pytest <경로>`를 사용한다. 개발 도구가 없는 격리 환경은 `--group dev`를 생략하지 않는다. `--offline`은 필요한 패키지가 이미 캐시에 있을 때만 사용하며, 최초 실행에서는 생략한다.
+
+DB 어댑터 담당자는 자기 패키지에만 `--extra postgres`, MCP 어댑터 담당자는 `--extra server`를 추가한다.
+
+```bash
+uv sync --locked --package abc2lab-knowledge --group dev --extra postgres
+uv run --isolated --locked --package abc2lab-mcp-knowledge --group dev --extra server pytest packages/mcp-knowledge/tests
+```
+
+CI의 모듈별 격리 검사는 선택된 패키지의 `--all-extras`를 설치해 해당 어댑터 SDK도 검사한다. 서버나 브라우저 프로세스를 기동하는 설정은 아니다. `app`은 조립 루트이므로 선택한 서비스 구현에 의존하지만, 서비스 모듈은 다른 서비스 구현 없이 `contracts`와 자기 외부 라이브러리만 사용한다.
+
+전체 검사는 루트에서 실행한다.
+
+```bash
+uv lock --check
+uv run --locked --all-packages ruff check .
+uv run --locked --all-packages lint-imports
+uv run --locked --all-packages pytest
+```
+
+## 계약과 경계
+
+초기 환경 구성 시점의 `contracts`에는 공개 타입/Protocol이 아직 구현되지 않았다. 의존 모듈 구현을 먼저 시작하면서 임의 schema나 `Any` placeholder를 만들지 말고, 필요한 최소 계약을 `contracts` PR로 합의한다. 구현 모듈의 독립 테스트는 그 공개 포트를 구현하는 로컬 fake를 사용한다.
+
+`gateway`만 대상에 통신하고, 각 서비스의 저장 어댑터만 자기 정본 DB에 접근한다. `mcp-*`는 포트를 감싸는 얇은 어댑터다. `app`이 조립하며, 서비스가 다른 서비스의 구체 구현을 직접 생성하지 않는다. 실제 PostgreSQL+AGE, 브라우저 바이너리, MCP 서버는 해당 어댑터의 통합 테스트를 시작하기 전에 준비한다.
+
+코어 테스트는 외부 네트워크·브라우저·DB 없이 실행한다. 기본 pytest는 `integration` marker가 붙은 테스트를 제외한다. 실제 환경을 준비한 뒤 `pytest -m integration`으로 실행한다. 통합 테스트는 별도 환경을 사용하며 비밀값·원문 응답·캡처 핸들·GT를 출력하지 않는다. 자세한 설계 의미는 [확정 모듈 설계](planning/module-design-confirmed.md), 공통 환경은 [개발 환경 안내](development.md)를 참조한다.
+
+`AGENTS.md`는 AI 작업 지침이고, 문서와 CI는 작업 범위·의존 방향을 안내하고 검사한다. GitHub에서 사용자별로 특정 디렉터리의 파일 수정 자체를 차단하는 설정은 아니다. 담당자 확정 후 CODEOWNERS와 필수 리뷰로 병합 책임을 연결한다.

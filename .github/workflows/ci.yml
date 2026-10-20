@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  environment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.23"
+          enable-cache: true
+      - name: Install pinned Python
+        run: uv python install
+      - name: Install workspace
+        run: uv sync --locked --all-packages
+      - name: Lint
+        run: uv run --locked --all-packages ruff check .
+      - name: Check formatting
+        run: uv run --locked --all-packages ruff format --check .
+      - name: Type check
+        run: uv run --locked --all-packages mypy
+      - name: Check module boundaries
+        run: uv run --locked --all-packages lint-imports
+      - name: Test environment
+        run: uv run --locked --all-packages pytest
+      - name: Build packages
+        run: uv build --all-packages
+      - name: Install optional dependencies
+        run: uv sync --locked --all-packages --all-extras
+      - name: Check optional SDK imports
+        run: uv run --locked --all-packages --all-extras python -c "import mcp, psycopg, psycopg_pool"
+
+  module:
+    name: module (${{ matrix.package }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: abc2lab-contracts
+            path: packages/contracts
+          - package: abc2lab-evidence
+            path: packages/evidence
+          - package: abc2lab-gateway
+            path: packages/gateway
+          - package: abc2lab-host
+            path: packages/host
+          - package: abc2lab-judge
+            path: packages/judge
+          - package: abc2lab-knowledge
+            path: packages/knowledge
+          - package: abc2lab-mcp-knowledge
+            path: packages/mcp-knowledge
+          - package: abc2lab-mcp-webdiag
+            path: packages/mcp-webdiag
+          - package: abc2lab-policy
+            path: packages/policy
+          - package: abc2lab-reasoner
+            path: packages/reasoner
+          - package: abc2lab-report
+            path: packages/report
+          - package: abc2lab-webdiag
+            path: packages/webdiag
+          - package: abc2lab-app
+            path: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.23"
+          enable-cache: true
+      - name: Install pinned Python
+        run: uv python install
+      - name: Test selected package in isolation
+        run: >-
+          uv run --isolated --locked --package "${{ matrix.package }}" --group dev --all-extras
+          pytest "${{ matrix.path }}/tests"
+      - name: Type check selected package in isolation
+        run: >-
+          uv run --isolated --locked --package "${{ matrix.package }}" --group dev --all-extras
+          mypy "${{ matrix.path }}/src" "${{ matrix.path }}/tests"
