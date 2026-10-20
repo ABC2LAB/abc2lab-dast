@@ -21,35 +21,23 @@
 ## 패키지별 작업
 
 ```bash
-uv sync --locked --package abc2lab-knowledge --group dev
-uv run --locked --package abc2lab-knowledge --group dev pytest packages/knowledge/tests
-uv run --locked --package abc2lab-knowledge --group dev ruff check packages/knowledge
-uv run --locked --package abc2lab-knowledge --group dev mypy packages/knowledge/src
+uv run --no-project --python 3.13.15 scripts/dev.py setup knowledge
+uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
 ```
 
-`knowledge`와 경로는 담당 패키지에 맞게 바꾼다. `app`은 `--package abc2lab-app`, 경로는 `app/tests`, `app/src`를 사용한다. 네트워크 없이 패키지 경계를 확인해야 하면 `uv run --isolated --locked --package <패키지> --group dev --offline pytest <경로>`를 사용한다. 개발 도구가 없는 격리 환경은 `--group dev`를 생략하지 않는다. `--offline`은 필요한 패키지가 이미 캐시에 있을 때만 사용하며, 최초 실행에서는 생략한다.
+`knowledge`는 예시이며 담당 모듈 디렉터리 이름으로 바꾼다. `setup`은 선택한 모듈의 모든 extra와 개발 도구를 설치하고 기본 테스트를 실행한다. `check`는 격리된 환경에서 Ruff, mypy와 pytest를 실행한다. 팀원이 uv 옵션을 조합하거나 전체 워크스페이스를 직접 설정할 필요는 없다.
 
-DB 어댑터 담당자는 자기 패키지에만 `--extra postgres`, MCP 어댑터 담당자는 `--extra server`를 추가한다.
-
-```bash
-uv sync --locked --package abc2lab-knowledge --group dev --extra postgres
-uv run --isolated --locked --package abc2lab-mcp-knowledge --group dev --extra server pytest packages/mcp-knowledge/tests
-```
-
-CI의 모듈별 격리 검사는 선택된 패키지의 `--all-extras`를 설치해 해당 어댑터 SDK도 검사한다. 서버나 브라우저 프로세스를 기동하는 설정은 아니다. `app`은 조립 루트이므로 선택한 서비스 구현에 의존하지만, 서비스 모듈은 다른 서비스 구현 없이 `contracts`와 자기 외부 라이브러리만 사용한다.
+CI의 모듈별 격리 검사는 선택된 패키지의 모든 extra를 설치해 해당 어댑터 SDK도 검사한다. 서버나 브라우저 프로세스를 기동하는 설정은 아니다. `app`은 조립 루트이므로 선택한 서비스 구현에 의존하지만, 서비스 모듈은 다른 서비스 구현 없이 `contracts`와 자기 외부 라이브러리만 사용한다.
 
 전체 검사는 루트에서 실행한다.
 
 ```bash
-uv lock --check
-uv run --locked --all-packages ruff check .
-uv run --locked --all-packages lint-imports
-uv run --locked --all-packages pytest
+uv run --no-project --python 3.13.15 scripts/dev.py check all
 ```
 
 ## 계약과 경계
 
-초기 환경 구성 시점의 `contracts`에는 공개 타입/Protocol이 아직 구현되지 않았다. 의존 모듈 구현을 먼저 시작하면서 임의 schema나 `Any` placeholder를 만들지 말고, 필요한 최소 계약을 `contracts` PR로 합의한다. 구현 모듈의 독립 테스트는 그 공개 포트를 구현하는 로컬 fake를 사용한다.
+초기 환경 구성 시점의 `contracts`에는 공개 타입/Protocol이 아직 구현되지 않았다. 의존 모듈 구현을 먼저 시작하면서 임의 schema나 `Any` placeholder를 만들지 말고, 필요한 최소 계약을 `contracts` PR로 제안한다. 구현 모듈의 독립 테스트는 그 공개 포트를 구현하는 로컬 fake를 사용한다.
 
 `gateway`만 대상에 통신하고, 각 서비스의 저장 어댑터만 자기 정본 DB에 접근한다. `mcp-*`는 포트를 감싸는 얇은 어댑터다. `app`이 조립하며, 서비스가 다른 서비스의 구체 구현을 직접 생성하지 않는다. 실제 PostgreSQL+AGE, 브라우저 바이너리, MCP 서버는 해당 어댑터의 통합 테스트를 시작하기 전에 준비한다.
 

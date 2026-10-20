@@ -9,14 +9,18 @@
 
 ## 최초 설치
 
-저장소 루트에서 실행한다.
+Git과 uv 0.12.23이 PATH에 있어야 한다. 저장소 루트에서 담당 모듈 이름을 인자로 실행하면 해당 모듈만 준비된다.
 
 ```bash
-uv python install
-uv sync --locked --all-packages
+uv run --no-project --python 3.13.15 scripts/dev.py setup knowledge
+uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
 ```
 
-루트 개발 그룹에 pytest, pytest-asyncio, pytest-cov, Ruff, mypy, Import Linter를 둔다. 가상환경과 캐시는 커밋하지 않는다. 패키지는 editable로 설치되므로 소스 수정 뒤 재설치할 필요가 없다.
+`setup <모듈>`은 잠금된 해당 패키지와 의존성, 루트 개발 그룹, 해당 패키지의 모든 extra, pre-commit 훅과 기본 테스트를 실행한다. `check <모듈>`은 격리 환경에서 Ruff lint/format 검사, 모듈 `src`·`tests`의 mypy, pytest를 실행한다. PM이나 CI와 동일한 전체 검사가 필요할 때만 `setup all`과 `check all`을 사용한다. 가상환경과 캐시는 커밋하지 않는다.
+
+최초 클론, 담당 모듈 변경, `pyproject.toml`·`uv.lock` 변경을 받은 뒤에는 해당 모듈의 `setup`을 다시 실행한다. VS Code에서는 권장 Python·Ruff·EditorConfig 확장을 설치하면 저장 시 포맷과 import 정리가 적용되며, Ruff는 `.venv`에 설치된 잠금 버전을 사용한다.
+
+커밋 훅은 저장소의 Ruff를 사용해 staged Python 파일을 검사·수정한다. 수정이 생기면 파일을 다시 `git add`한 뒤 커밋한다. 훅은 로컬 보조 장치이며 CI가 최종 검증한다.
 
 ## 의존성 배치
 
@@ -34,20 +38,9 @@ uv sync --locked --all-packages
 
 PostgreSQL 드라이버는 Psycopg 3의 `binary,pool` extras를 사용한다. 개발 환경 설치 편의를 위한 선택이며 운영의 libpq 공급 방식은 배포 시 검증한다. 각 서비스는 자기 저장 어댑터에서 자기 역할/스키마로 접속한다. AGE는 PostgreSQL 확장이므로 별도 Python 그래프 DB SDK를 추가하지 않는다. AGE 접속/질의는 knowledge 어댑터가 소유한다. 서버 역할과 스키마 권한은 드라이버 설치로 설정되지 않는다.
 
-## 선택 기능 설치
+## 선택 기능과 통합 단계
 
-```bash
-# PostgreSQL 어댑터 개발용 드라이버
-uv sync --locked --all-packages --extra postgres
-
-# Phase 2 MCP 어댑터 개발용 SDK
-uv sync --locked --all-packages --extra mcp
-
-# 모든 선언된 선택 의존성까지 설치
-uv sync --locked --all-packages --all-extras
-```
-
-선택 의존성이 필요한 명령에는 동일한 `--extra` 또는 `--all-extras`를 전달한다. 예: `uv run --locked --all-packages --extra postgres python -c "import psycopg"`. 기본 명령을 다시 실행하면 선택 의존성이 제거될 수 있다.
+담당 모듈의 `setup`이 그 모듈에 선언된 모든 extra를 설치하므로 팀원이 extra를 따로 고를 필요는 없다. PostgreSQL+AGE 서버와 브라우저 바이너리는 Python 의존성과 별도로, 해당 어댑터의 통합 테스트 단계에서 준비한다.
 
 PostgreSQL+AGE 서버/이미지 digest, ZAP/Nuclei 실행 파일과 검토 템플릿, 모델 공급자 SDK/가중치, UI 및 target-app 프레임워크는 이 의존성 설정에서 임의로 정하지 않는다. 설계의 해당 통합 단계에서 검증하고 고정한다. 설계 문서에 기록된 PG16/AGE1.6.0 PoC를 최종 배포 조합으로 취급하지 않는다.
 
@@ -64,19 +57,17 @@ Linux에서 OS 라이브러리가 없으면 Playwright 공식 시스템 요구�
 
 ## 공통 검사
 
+`check all`이 아래 전체 검사를 순서대로 실행한다. 팀원은 담당 모듈의 `check`만 실행해도 된다.
+
 ```bash
-uv lock --check
-uv run --locked --all-packages ruff check .
-uv run --locked --all-packages ruff format --check .
-uv run --locked --all-packages mypy
-uv run --locked --all-packages lint-imports
-uv run --locked --all-packages pytest
-uv build --all-packages
+uv run --no-project --python 3.13.15 scripts/dev.py check all
 ```
+
+전체 검사에는 pre-commit 모든 파일 검사, 루트 mypy·Import Linter·pytest, 모든 패키지 빌드와 선택 SDK import 확인이 포함된다. pre-commit이 파일을 고치면 변경을 다시 추가하고 전체 검사를 재실행한다.
 
 기본 pytest는 `integration` marker 테스트를 제외한다. 실제 서비스를 준비한 통합 검증에서는 `pytest -m integration`을 사용한다.
 
-단일 모듈은 `uv run --locked --package abc2lab-knowledge pytest packages/knowledge/tests`처럼 실행한다. 전체 워크스페이스 환경의 성공만으로 패키지 독립 설치를 증명할 수 없으므로, 패키지 배포/어댑터 구현 시 격리된 환경에서 해당 wheel과 선언된 의존성만 설치해 확인한다.
+필요한 경우에도 모듈 명령은 `scripts/dev.py`를 사용한다. 전체 워크스페이스 환경의 성공만으로 패키지 독립 설치를 증명할 수 없으므로, 패키지 배포/어댑터 구현 시 `check <모듈>`의 격리 검사를 통과시킨다.
 
 uv 워크스페이스는 하나의 가상환경을 공유한다. 선언되지 않은 import를 uv 자체가 차단하지 않으므로 Import Linter로 서비스 독립성, contracts 최하단, HTTP/브라우저의 gateway 한정, 코어 I/O 금지와 MCP 어댑터 경계를 검사한다. 이 정적 검사는 실제 프로세스/네트워크/DB 권한 격리를 대신하지 않는다.
 
@@ -102,3 +93,6 @@ uv add --dev pytest
 - [Psycopg 설치](https://www.psycopg.org/psycopg3/docs/basic/install.html)
 - [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
 - [Import Linter](https://import-linter.readthedocs.io/en/stable/)
+- [pre-commit 로컬 훅](https://pre-commit.com/#repository-local-hooks)
+- [Ruff 훅 연동](https://docs.astral.sh/ruff/integrations/)
+- [Ruff 에디터 설정](https://docs.astral.sh/ruff/editors/settings/)

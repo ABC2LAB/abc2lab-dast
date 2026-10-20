@@ -1,0 +1,15 @@
+minimum_pre_commit_version: "4.7.0"
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: Ruff lint and fixes (uv.lock)
+        entry: uv run --locked --no-sync ruff check --fix
+        language: unsupported
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: Ruff format (uv.lock)
+        entry: uv run --locked --no-sync ruff format
+        language: unsupported
+        types_or: [python, pyi]
