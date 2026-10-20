@@ -86,7 +86,7 @@ uv run --no-project --python 3.13.15 scripts/dev.py check all
 
 ## 계약과 경계
 
-S1 병렬 개발의 API 제안·입출력/실패 의미·로컬 fake 사례·담당별 첫 PR은 [S1 API 초안](planning/s1-api-draft.md)을 팀 리뷰 자료로 사용한다. 아직 구현되거나 합의된 API가 아니며, 제공자와 소비자가 검토한 경계부터 작은 계약 PR로 확정한다.
+S1 병렬 개발은 [API 흐름·담당·로컬 fake 사례](planning/s1-api-draft.md)와 [API 상세 규격 v0.2](planning/s1-api-spec.md)를 팀 리뷰 자료로 사용한다. 상세 규격에 초기 호출별 필수 필드·반환 상태·세션/캡처 수명·감사 확인 포트를 선택해 두었다. 제공자와 소비자는 자기 입력이 충분한지, 출력을 독립적으로 만들 수 있는지, 실패를 fake로 재현할 수 있는지 더블 체크한다. 아직 구현되거나 팀 합의된 API는 아니며 실제 소비 경계부터 작은 계약 PR로 확정한다.
 
 초기 환경 구성 시점의 `contracts`에는 공개 타입/Protocol이 아직 구현되지 않았다. 의존 모듈 구현을 먼저 시작하면서 임의 schema나 `Any` placeholder를 만들지 말고, 필요한 최소 계약을 `contracts` PR로 제안한다. 구현 모듈의 독립 테스트는 그 공개 포트를 구현하는 로컬 fake를 사용한다.
 

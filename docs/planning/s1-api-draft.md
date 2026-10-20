@@ -1,6 +1,6 @@
-# S1 API 초안 v0.1 — 상대 구현 없이 개발·테스트하기
+# S1 API 설계 개요 v0.2 — 상대 구현 없이 개발·테스트하기
 
-상태: **PM 제안 / 팀 리뷰 전**. 이 문서의 함수명·필드는 제안이다. 구현된 API·준비된 fake·팀 합의를 의미하지 않는다. 이번 변경은 문서만 추가하며 `contracts` 구현을 복원하지 않는다.
+상태: **초기 설계안 / 팀 더블 체크 전**. 이 문서는 흐름·책임·개발 사례를 설명한다. **호출별 필수 필드·상태·수명·D1~D5의 선택안은 [S1 API 상세 규격 v0.2](s1-api-spec.md)를 기준으로 검토한다.** 구현된 API·준비된 fake·팀 합의를 의미하지 않으며 `contracts` 구현을 복원하지 않는다.
 
 목표: **상대 모듈의 완성을 기다리지 않고도 내 모듈을 개발·테스트할 수 있게 한다.** 제공자와 소비자는 아래의 작은 경계와 사례를 함께 검토한다. 모듈 내부 모델·저장 구조·클래스 구성은 각 담당자가 소유한다.
 
@@ -33,7 +33,7 @@
 | 세션 생명주기·주체 확인 | WebDiag. 인증 비밀·전송 결합은 Gateway/Vault | 비밀 없는 세션·주체 확인 요약만 공개 |
 | 준비된 실제 요청 | Gateway | 실행 영역 내부의 `PreparedRequestHandle`만 |
 | 요청 전송 허용 결정 | Policy | 해당 요청 바인딩에 대한 결정·사유 |
-| 등록 기대 접근 정책 | **제안:** 관리자의 신뢰된 등록 입력을 `app`이 검증해 불변 snapshot으로 주입 | WebDiag의 적용 범위 확인과 Judge의 기대 권한 판단. Knowledge에는 출처 참조를 투영 |
+| 등록 기대 접근 정책 | 관리자의 신뢰된 등록 입력을 `app`이 검증해 불변 snapshot으로 주입 | WebDiag의 적용 범위 확인과 Judge의 기대 권한 판단. Knowledge에는 출처 참조를 투영 |
 | 원문 응답·캡처 핸들·run HMAC 키 | Gateway와 실행 영역 로컬 Evidence | 실행 영역 밖·영속 저장·로그로 전달하지 않음 |
 | 민감값 제거 근거·비교 결과 | 공개 Evidence 서비스 | 저장 완료된 요약·참조만 공개 |
 | 판정·오라클/정규화 규칙 | Judge | 판정·규칙의 선언적 버전/내용. `app`이 규칙을 로컬 Evidence에 주입 |
@@ -54,7 +54,7 @@
 - 결과에 존재하지 않는 참조는 `None`이다. 가짜 참조·빈 문자열을 채우지 않는다. 완료되지 않은 저장의 참조를 사용 가능한 근거로 발행하지 않는다.
 - 시간은 명시적인 timezone-aware UTC 감사 시각과 producer 순번을 사용한다. timeout·경과 시간에는 monotonic clock을 쓴다. 벽시계만으로 생산자 간 인과 순서를 정하지 않는다.
 
-감사 페이지에서도 정책 사건의 `policy_outcome=allow/block`과 Gateway 전송 사건의 `send_status=sent/not_sent/unknown`을 구분한다. [기존 모듈 설계 §8](module-design-confirmed.md#8-근거감사-체인)의 `AuditEvent`에 적힌 `sent/blocked/unknown`은 최종 필드 확정 전의 의미 예시다. 이 초안은 `blocked`를 전송 enum에 추가하지 않고 정책 차단 사건으로 표현하도록 제안한다. 기존 `blocked` 표기만 보고 실제 미전송을 추정하지 않으며, Gateway의 해당 시도 기록이 확인돼야 `not_sent`를 연결한다. 필드 분리는 D5에서 함께 검토한다.
+감사 페이지에서도 정책 사건의 `policy_outcome=allow/block`과 Gateway 전송 사건의 `send_status=sent/not_sent/unknown`을 구분한다. [기존 모듈 설계 §8](module-design-confirmed.md#8-근거감사-체인)의 `AuditEvent`에 적힌 `sent/blocked/unknown`은 최종 필드 확정 전의 의미 예시다. 이번 설계에서는 `blocked`를 전송 enum에 추가하지 않고 정책 차단 사건으로 표현한다. 기존 `blocked` 표기만 보고 실제 미전송을 추정하지 않으며, Gateway의 해당 시도 기록이 확인돼야 `not_sent`를 연결한다.
 
 ## 5. API 경계 목록
 
@@ -64,7 +64,7 @@
 
 | API 제안 | 최소 입력 | 결과·실패 의미 | 제공자 / 소비자 |
 |---|---|---|---|
-| `start_run(request: StartRunRequest) -> RunHandle` | 대상/환경·등록 범위·계정 별칭·검사 프로필·유한 예산·등록 기대 정책 연결 | 실행 참조 또는 시작 거부. 시작만으로 대상 요청이 전송되지 않음 | Host / 진입점 |
+| `start_run(request: StartRunRequest) -> StartRunResult` | 대상/환경·검증된 등록 설정 참조. 범위·계정·프로필·예산·기대 정책은 app이 주입 | 실행 참조 또는 시작 거부. 시작만으로 대상 요청이 전송되지 않음 | Host / 진입점 |
 | `get_status(run: RunKey) -> RunStatus` | 실행 키 | 대기·실행·종료 작업과 실패·중지·미확인 범위, 전송 3상태를 구분한 집계 | Host / 진입점 |
 | `stop(run: RunKey) -> StopReceipt` | 실행 키 | 중지 접수와 실제 종료를 구분. 이미 진행 중인 전송의 불명을 지우지 않음 | Host / 진입점 |
 | `collect(request: DiscoveryRequest) -> CandidateBatch` | 실행 키·허가된 seed·계정/관찰 프로필·유한 탐색 상한 | 후보 참조·출처·revision·관찰 필요 조건·`complete/partial/failed` | WebDiag / Host |
@@ -84,14 +84,14 @@ Host의 `submit/lease/complete/cancel`과 Planner/Broker 구성은 이경준 담
 
 `SessionHandle`은 WebDiag가 소유하는 불투명 식별자이며 실행 키·계정·generation·유한 유효기간에 결합한다. Credential Vault의 전송 비밀은 Gateway만 해석한다. HTTP 200·쿠키 발행만으로 `IdentityResult`를 verified로 만들지 않는다. generation이 바뀌거나 만료·취소되면 이전 확인을 재사용하지 않는다.
 
-로그인·whoami 요청도 Policy/Gateway를 통과한다. 세션 lease·반납·복구·종료의 세부 lifecycle은 §10의 검토 항목이며, 첫 fake는 만료·generation 변경·종료를 주입할 수 있어야 한다. lifecycle을 합의하기 전 실제 공유 세션 동시 사용은 완료로 표시하지 않는다.
+로그인·whoami 요청도 Policy/Gateway를 통과한다. WebDiag가 상태·generation·주체 확인을 소유하고 Gateway가 계정별 전송 context·비밀을 소유한다. lease·정상 복구 1회·종료·유한 TTL의 초기 선택은 [상세 규격 §4](s1-api-spec.md#4-인증세션-통제)에 명시한다. 첫 fake는 만료·generation 변경·종료를 주입한다.
 
 ### 5.3 WebDiag → Gateway → Policy: 실행 영역 전용
 
 | API 제안 | 입력 | 결과·책임 |
 |---|---|---|
 | `prepare(request: ExecutionRequest) -> PrepareResult` | 실행 키·요청 ID·구체 목적지/method·등록 동작·전송 입력·세션 바인딩·목적·실행 프로필·교차 실행 확인 기록(교차 시 필수) | Gateway가 실제 요청을 고정하고 `PreparedRequestHandle`과 비밀 없는 `PolicyInput`을 생성. 준비 실패는 전송 0건 |
-| `evaluate(request: PolicyInput) -> PolicyDecision` | 아래 정책 view와 신뢰된 안전 설정 snapshot | Policy가 `allow/block`, `decision_ref`, `binding_id`, 사유를 반환. 불명·만료·누락은 block |
+| `evaluate(request: PolicyInput) -> PolicyDecisionResult` | 아래 정책 view와 신뢰된 안전 설정 snapshot | 저장된 PolicyDecision 또는 실패. 정상 결정은 `allow/block`, 불명·만료·누락은 block |
 | `execute(request: ExecuteRequest) -> AttemptResult` | 실행 키·준비 핸들·정책 결정 | Gateway가 바인딩/현재 조건 재검사 후 시도·전송 상태·캡처 상태·사유를 반환 |
 
 **이전 초안의 숨은 등록소 문제를 피하는 제안:**
@@ -103,22 +103,24 @@ Host의 `submit/lease/complete/cancel`과 Planner/Broker 구성은 이경준 담
 5. Policy는 받은 binding ID에만 결정을 연결한다. Gateway는 실제 준비 요청·view가 변경되지 않았는지 확인하고 결정의 출처·유효성도 검사한다. binding ID 문자열 일치만으로 권한이나 요청 무결성을 증명했다고 보지 않는다. 위조 view·다른 준비 요청에 대한 allow를 거부한다.
 6. Gateway는 실제 연결 목적지·Host/SNI·origin·인증·profile·예산을 다시 확인한다. 파생 요청·redirect·재시도·브라우저 하위 요청도 요청별로 통제한다.
 
-`prepare`와 binding 표현은 **신규 API 제안**이다. canonicalization·전체 입력 결합·핸들 소비 시점은 제공자/소비자 검토 후 결정한다. 검증 전에는 fake로만 시험한다. `RequestSpecRef`만 던지고 서로 미정 저장 구조를 맞추는 방식은 사용하지 않는다.
+`prepare`와 binding 표현은 **신규 API 설계안**이다. 이번 기준은 전체 입력을 불변 snapshot으로 고정하고 15초·단일 execute로 소비한다. [상세 규격 §5](s1-api-spec.md#5-gateway와-policy의-실행-경계)에 canonicalization과 재검사를 명시한다. `RequestSpecRef`만 던지고 서로 미정 저장 구조를 맞추는 방식은 사용하지 않는다.
 
 **Policy/Gateway fake의 최소 필드 제안:**
 
 | `PolicyInput` 필드 | 필수 의미 |
 |---|---|
 | `run_key`, `request_ref`, `binding_id` | 실행·논리 요청·Gateway가 소유한 불변 준비 snapshot 식별 |
-| `origin`, `method`, `operation_ref`, `purpose` | canonical scheme/host/port, 대문자 method, 등록 동작, `observe/authenticate/access_compare` |
+| `origin`, `method`, `operation_ref`, `purpose` | canonical scheme/host/port, 대문자 method, 등록 동작, `observe/authenticate/identify/access_compare` |
 | `policy_attributes` | 적용 경로/입력 제약에 필요한 비밀 없는 구조화된 값과 검증 출처. 별도 타입으로 정의하고 임의 dict로 대체하지 않음 |
 | `account_ref`, `session_generation`, `subject_ref`, `identity_status` | 익명 관찰에는 `None` 허용. 교차 요청은 유효한 계정·실제 subject 확인 필요 |
-| `scope_snapshot`, `profile_snapshot`, `budget_snapshot` | app에서 검증·주입한 적용 설정의 값·출처·revision·유효 범위. Policy의 자체 규칙과 대조 |
+| `scope`, `profile`, `budget` | app에서 검증·주입한 적용 설정의 값·출처·revision·유효 범위. Policy의 자체 규칙과 대조 |
+| `operation_revision`, `policy_attributes.resource_binding_ref/revision` | 등록 동작·구체 객체의 불변 바인딩을 식별. Gateway는 실제 파라미터 값도 대조 |
+| `owner_identity`, `expected_policy` | 교차 시 소유자 주체 확인과 등록 기대 정책 snapshot. Gateway가 신뢰된 현재 상태/등록 입력에 대조 |
 | `cross_execution_confirmation` | 교차 시 필수인 유효한 확인 snapshot. 다른 목적에는 `None` |
 
-Gateway는 준비 요청과 위 view를 같은 불변 `BoundRequestSnapshot`으로 소유한다. `PolicyDecision`의 최소 값은 `decision_ref`, `binding_id`, **`evaluated_view_fingerprint`**, `outcome`, `reason_codes`, `policy_audit_receipt`다. Policy는 실제 평가한 view의 모든 필수 필드로 fingerprint를 계산하며, 입력에 적힌 fingerprint를 그대로 신뢰해 복사하지 않는다. Gateway는 저장한 view로 계산한 값과 결정의 값을 대조하고 실제 준비 요청도 snapshot과 일치하는지 검사한다. fake에서도 view 한 필드만 바꾼 경우를 거부해야 한다.
+Gateway는 준비 요청과 위 view를 같은 불변 `BoundRequestSnapshot`으로 소유한다. `PolicyDecision`의 최소 값은 `decision_ref`, `binding_id`, **`evaluated_view_fingerprint`**, `outcome`, `reason_codes`, `audit_receipt`다. Policy는 실제 평가한 view의 모든 필수 필드로 fingerprint를 계산하며, 입력에 적힌 fingerprint를 그대로 신뢰해 복사하지 않는다. Gateway는 저장한 view로 계산한 값과 결정의 값을 대조하고 실제 준비 요청도 snapshot과 일치하는지 검사한다. fake에서도 view 한 필드만 바꾼 경우를 거부해야 한다.
 
-fingerprint의 canonical bytes/알고리즘·issuer 검증은 D1에서 확정하며, fingerprint는 인증·권한 부여를 대신하지 않는다. fake의 가상 fingerprint를 실제 무결성 증거로 쓰지 않는다. 준비 핸들 거부는 `prepared_handle_invalid`, `prepared_handle_expired`, `prepared_handle_foreign_scope`, `prepared_handle_consumed`를 구분하고 모두 `not_sent`로 반환한다. 가상 transport 호출 기록은 0건이어야 한다.
+fingerprint는 [상세 규격 §5](s1-api-spec.md#5-gateway와-policy의-실행-경계)의 canonical JSON/SHA-256을 사용한다. 인증·권한 부여를 대신하지 않으며 Policy의 실제 저장 기록과 바인딩도 확인한다. 준비 핸들 거부는 `prepared_handle_invalid`, `prepared_handle_expired`, `prepared_handle_foreign_scope`, `prepared_handle_consumed`를 구분하고 모두 `not_sent`로 반환한다. 가상 transport 호출 기록은 0건이어야 한다.
 
 `AttemptResult` 최소 값: 실행 키·`request_ref`·`attempt_ref`·`decision_ref`·`binding_id`·`send_status`·캡처 상태·실행 전용 `capture_ref | None`·사유·감사 연결. 전송 거부는 `not_sent`, 미확정 전송은 `unknown`으로 보존한다. 전송 후 캡처 실패는 `sent/unavailable`이다. `capture_ref`가 있어도 공개 Evidence 저장 완료는 별개다.
 
@@ -133,7 +135,7 @@ fingerprint의 canonical bytes/알고리즘·issuer 검증은 D1에서 확정하
 
 이 상태는 봉인·저장 작업의 `complete/partial/failed`와 구분한다. WebDiag는 모든 결과(실패·부분 포함)에 `attempt_summaries`를 전달한다. 각 공개 `AttemptSummary`는 실행 키·`request_ref`·`attempt_ref`·원래 `send_status`·사유·감사 참조만 담으며 캡처/준비 핸들은 제외한다. Host는 이를 작업 결과에 보존하고 Report는 3상태별로 집계한다. 기록이 빠진 범위는 감사 미확인으로 남기고 임의로 `not_sent`를 생성하지 않는다.
 
-실제 전송 전에 정책 결정은 Policy의 저장 어댑터에, 요청 intent는 Gateway의 저장 어댑터에 내구 기록한다. Policy 기록은 Gateway가 검증 가능한 receipt를 제공한다. 두 기록의 완료를 확인하지 못하면 Gateway가 전송을 차단한다. 저장소는 공유 DB schema를 직접 읽지 않고 각 소유 포트/주입 어댑터로 확인한다. 메모리 fake는 이 완료/실패를 흉내 낼 뿐 실제 내구성을 증명하지 않는다.
+실제 전송 전에 정책 결정은 Policy의 저장 어댑터에, 요청 intent는 Gateway의 저장 어댑터에 내구 기록한다. [상세 규격 §10](s1-api-spec.md#10-감사-커밋과-조회)의 `verify_committed`로 실제 producer 기록과 receipt/binding의 일치를 확인한다. 두 기록의 완료를 확인하지 못하면 Gateway가 전송을 차단한다. 공유 DB schema를 직접 읽지 않는다. 메모리 fake는 이 완료/실패를 흉내 낼 뿐 실제 내구성을 증명하지 않는다.
 
 ### 5.4 Gateway/WebDiag → 실행 로컬 Evidence → 공개 Evidence
 
@@ -147,7 +149,7 @@ fingerprint의 canonical bytes/알고리즘·issuer 검증은 D1에서 확정하
 
 상위 3개는 실행 영역 전용, 하위 2개는 공개 Evidence 서비스 경계다. `capture`는 **Gateway가 실행 영역의 로컬 Evidence에 호출하는 private 포트**다. 원문 버퍼의 소유권/정리 책임을 로컬 Evidence로 넘기며 다른 공개 호출자나 Host가 중계하지 않는다. 이 private 포트의 단위 fake는 실행 영역 테스트 안에서만 가상 버퍼를 받는다. 공개 Evidence fake는 민감값 제거 자료만 받는다.
 
-캡처 핸들 lifecycle은 `active -> released/expired`로 제안한다. active인 동안 유한 메모리/TTL 안에서만 seal/compare를 허용하고, 완료·실패·중지 시 버퍼와 핸들을 해제한다. released/expired는 다시 읽거나 비교할 수 없다. 공개 저장이 partial이면 완료된 불변 근거는 보존하지만 원문을 공개 저장소에서 복구하거나 대상에 자동 재요청하지 않는다. 구체 TTL·메모리 값·동시 사용/정리의 원자성은 D3에서 검토한다. 원문 버퍼·캡처 핸들·HMAC 키를 하위 API나 로그에 넣지 않는다.
+캡처 핸들은 `active -> released/expired`다. 60초 TTL·단일 1 MiB·run당 active 8개를 초기 상한으로 두고 완료·실패·중지 시 버퍼와 핸들을 해제한다. released/expired는 다시 읽거나 비교할 수 없다. 공개 저장이 partial이면 완료된 불변 근거는 보존하지만 원문을 공개 저장소에서 복구하거나 대상에 자동 재요청하지 않는다. [상세 규격 §7](s1-api-spec.md#7-evidence-실행-전용과-공개-저장)에 정리 포트를 명시한다. 원문 버퍼·캡처 핸들·HMAC 키를 하위 API나 로그에 넣지 않는다.
 
 `CompareOutcome`은 `complete/partial/failed`, 성공 저장 receipt 목록, 사유를 보존한다. **`StoredComparison`은 기준·교차 두 근거와 비교 결과가 모두 저장 완료된 경우에만 존재**한다. 한쪽 저장 실패 시 이미 저장된 불변 근거는 보존하되 확정 가능한 비교 결과로 발행하지 않는다.
 
@@ -167,8 +169,8 @@ S1은 `store_memory`로 테스트한다. 다른 서비스의 작업/정책/근�
 
 | API 제안 | 최소 입력 | 결과·실패 의미 |
 |---|---|---|
-| `judge(request: JudgeRequest) -> Verdict` | 실행 키·사례 참조·등록 기대 접근 정책 snapshot 또는 부재·A/B 주체 확인·저장 완료 비교/근거·선택 보강 | `CONFIRMED/SUSPECTED/UNDECIDABLE`, 충족/미충족 조건·근거·정책/오라클 버전·사유·판정 revision |
-| `build_report(request: ReportInput) -> DiagnosisReport` | 실행 키·후보/관찰/판정 요약·저장 완료 근거 참조·작업 범위·생산자별 감사 페이지와 기대 기록 | 결과·제한·미실행/실패/전송 불명·감사 완전성. 누락을 안전·완료로 채우지 않음 |
+| `judge(request: JudgeRequest) -> JudgeResult` | 실행 키·사례 참조·등록 기대 접근 정책 snapshot 또는 부재·A/B 주체 확인·저장 완료 비교 참조 | `Verdict` 또는 판정 자체의 처리 실패. Verdict는 `CONFIRMED/SUSPECTED/UNDECIDABLE`·조건·근거·버전·사유·revision |
+| `build_report(request: ReportInput) -> ReportResult` | 실행 키·관찰/판정/작업 요약·생산자별 기대 기록. 감사 페이지는 주입된 읽기 포트로 조회 | DiagnosisReport 또는 생성 실패. 제한·전송 불명·감사 완전성을 보존 |
 | `read_audit(request: AuditReadRequest) -> AuditPage` | 실행 키·호출자 권한·producer/cursor·유한 반환 상한 | 각 생산자의 허용 이벤트·순번·연결 참조·다음 cursor·완전성/실패. 각 소유 서비스가 제공 |
 
 Host가 작업을 조정하고 `app`이 Judge/Report가 소비할 읽기 포트를 주입한다. Report가 타 서비스 DB를 읽지 않는다. 감사는 기대 request/event ID와 실제 연결을 비교한다. A·B가 필요한데 A·A 두 건이 있는 경우를 완료로 처리하지 않는다. 생산자별 저장 내구성과 조회 snapshot을 확인하지 못하면 감사 완전성은 unknown이다.
@@ -288,17 +290,17 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 
 초기 통합은 `app/tests/`에서 모든 상대를 fake로 조립해 위 상태/근거 연결을 확인한다. 이후 한 모듈씩 실제 구현으로 교체해 같은 사례를 반복한다. 실제 네트워크·저장 통합은 `integration` marker와 별도 준비/실행 방법을 갖춘다. 기본 pytest는 integration을 제외한다.
 
-## 10. 팀 리뷰에서 확정할 제안
+## 10. 선택한 초기 설계와 팀 리뷰
 
-| 항목 | 초안 제안 | 합의자 | 미확정 동안 가능한 일 |
+| 항목 | 이번에 선택한 기준안 | 검토자 | 독립 개발·통합에서 확인할 것 |
 |---|---|---|---|
-| D1 요청 준비·바인딩 | Gateway 소유 준비 핸들 + 값으로 전달하는 PolicyInput. 전체 요청/view 결합·issuer·TTL/소비를 검증 | 최민준·이경준, PM 영향 확인 | 가상 binding/핸들의 정상·불일치·위조·만료 사례. 실제 전송 연결은 보류 |
-| D2 기대 정책 등록/공급 | PM의 신뢰된 등록 입력을 app이 검증해 snapshot 주입. 안전 정책과 별도 모델 | 이동찬·최민준·이경준 | 정책 snapshot fixture와 부재/만료 사례. 문서 자체는 대상 진단 허가가 아님 |
-| D3 세션·캡처 lifecycle | 생성 주체·RunKey/계정/generation·유한 TTL·만료/취소·정리 계약 | 이경준·최민준·윤재상 | 단위 fake에서 상태/만료 주입. 유한값·공유 lifecycle 확인 전 실제 동시 실행 보류 |
-| D4 전송 전 감사 | Policy는 결정, Gateway는 intent를 자기 저장 포트에 기록. Gateway가 두 receipt를 확인 | 최민준·윤재상, PM 조립 | journal fake 성공/실패 시험. 실제 전송은 내구성 검증 후 |
-| D5 최소 타입·동기 호출 | 위 경계별 타입/포트와 동기 호출, 결과/사유 명칭을 작은 PR로 합의 | 제공자·소비자, 이동찬 조정 | 내부 로직/fixture 설계 병행. 임의 공용 스키마 사본을 생성하지 않음 |
+| D1 요청 준비·바인딩 | Gateway 소유 불변 요청/view·15초·단일 소비, Policy에 값 전달·fingerprint 대조 | 최민준·이경준 | 가상 binding/핸들의 변조·위조·만료·중복 소비를 무전송으로 검증 |
+| D2 기대 정책 등록/공급 | 신뢰된 등록 입력을 app이 검증, 구체 A/B·객체·동작의 불변 snapshot 주입 | 이동찬·최민준·이경준 | 정책 부재/만료·예외 불명을 보존. 관찰/GT에서 정책 생성 금지 |
+| D3 세션·캡처 lifecycle | WebDiag 상태/generation, Gateway 통신 context, Evidence 캡처 단독 소유. TTL/복구/정리 필드 명시 | 이경준·최민준·윤재상 | 주체 불일치·구세대·복구 충돌·실패 정리를 fake clock으로 검증 |
+| D4 전송 전 감사 | producer별 journal + verify_committed. Policy 결정/Gateway intent 둘 다 실제 commit 확인 | 최민준·윤재상·이동찬 | 위조 receipt/조회 실패는 무전송. 실제 내구성은 통합에서 별도 검증 |
+| D5 최소 타입·동기 호출 | 상세 규격의 필수 필드·None 의미·enum·사유 코드, 경계별 작은 계약 PR | 전원 | 실제 소비하는 타입만 공유. status/send_status/verdict 혼합 금지 |
 
-PM은 위 항목의 결정·담당·적용 revision을 기록한다. 합의 전에는 초안을 구현 완료로 표시하지 않는다. 실제 교차 요청 전에는 [기존 D-0 단일 관문](module-design-confirmed.md#13-열린-결정-착수-전중-팀이-잠글-것)과 대상 허가·기대 정책·주체·안전 정책·Gateway 재검사를 충족해야 한다. 이 요구는 fake 개발의 대기 조건이 아니다.
+이번 기준안은 팀원이 입력/출력과 실패 사례를 더블 체크할 출발점이다. PM은 리뷰에 따른 수정·담당·적용 revision을 기록한다. 실제 교차 요청 전에는 [기존 D-0 단일 관문](module-design-confirmed.md#13-열린-결정-착수-전중-팀이-잠글-것)과 대상 허가·기대 정책·주체·안전 정책·Gateway 재검사를 충족해야 한다. 이 요구는 fake 개발의 대기 조건이 아니다.
 
 ## 11. 병렬 착수·검증 순서
 
