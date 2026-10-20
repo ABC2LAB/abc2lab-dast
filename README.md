@@ -28,7 +28,7 @@ uv run --no-project --python 3.13.15 scripts/dev.py setup all
 uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
 ```
 
-`knowledge`는 예시입니다. 모듈별 경로와 명령은 [모듈 개발 가이드](docs/module-development.md)를 사용합니다. 작업 범위, 의존성 변경, PR 작성 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)를 읽고 시작하세요. AI 도구를 사용할 때는 저장소 루트의 [AGENTS.md](AGENTS.md)를 적용합니다.
+`knowledge`는 예시입니다. 모듈별 경로와 명령은 [모듈 개발 가이드](docs/module-development.md)를 사용합니다. 작업 범위, 브랜치·PR, 공통 코딩 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)를 읽고 시작하세요. 개인 AI 하네스인 루트 `AGENTS.md`는 각자 로컬에서 관리하며 Git 추적에서 제외합니다.
 
 팀 공지 예시:
 
