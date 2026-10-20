@@ -86,6 +86,8 @@ uv run --no-project --python 3.13.15 scripts/dev.py check all
 
 ## 계약과 경계
 
+S1 병렬 개발의 API 제안·입출력/실패 의미·로컬 fake 사례·담당별 첫 PR은 [S1 API 초안](planning/s1-api-draft.md)을 팀 리뷰 자료로 사용한다. 아직 구현되거나 합의된 API가 아니며, 제공자와 소비자가 검토한 경계부터 작은 계약 PR로 확정한다.
+
 초기 환경 구성 시점의 `contracts`에는 공개 타입/Protocol이 아직 구현되지 않았다. 의존 모듈 구현을 먼저 시작하면서 임의 schema나 `Any` placeholder를 만들지 말고, 필요한 최소 계약을 `contracts` PR로 제안한다. 구현 모듈의 독립 테스트는 그 공개 포트를 구현하는 로컬 fake를 사용한다.
 
 `gateway`만 대상에 통신하고, 각 서비스의 저장 어댑터만 자기 정본 DB에 접근한다. `mcp-*`는 포트를 감싸는 얇은 어댑터다. `app`이 조립하며, 서비스가 다른 서비스의 구체 구현을 직접 생성하지 않는다. 실제 PostgreSQL+AGE, 브라우저 바이너리, MCP 서버는 해당 어댑터의 통합 테스트를 시작하기 전에 준비한다.
