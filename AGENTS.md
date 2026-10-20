@@ -4,8 +4,9 @@
 
 ## 작업 범위와 환경
 
-- Python 3.13.15와 uv 0.12.23을 사용한다. 설치·검사는 [개발 환경 안내](docs/development.md), 담당 모듈 작업은 [모듈 개발 가이드](docs/module-development.md)를 따른다. 담당자는 `uv run --no-project --python 3.13.15 scripts/dev.py setup <모듈>`과 `check <모듈>`만 실행하면 된다.
-- 기본 구현 범위는 담당 모듈의 `src/`, `tests/`, `pyproject.toml`이다. 모듈 담당자는 회의 후 정한다. `.github/CODEOWNERS`는 모든 변경에 팀원 전체의 리뷰를 요청하며 작성자는 제외된다.
+- Python 3.13.15와 uv 0.12.23을 사용한다. 설치·검사는 [개발 환경 안내](docs/development.md), 담당 모듈 작업은 [모듈 개발 가이드](docs/module-development.md)를 따른다. 여러 패키지를 맡으므로 최초 설치는 `uv run --no-project --python 3.13.15 scripts/dev.py setup all`, 검사는 같은 명령의 `check <모듈>`을 사용한다.
+- 담당 배정은 [모듈 개발 가이드](docs/module-development.md#담당-배정)를 기준으로 한다. 이동찬(관리자·PM)은 `contracts`·`app`·`knowledge`, 최민준은 `gateway`·`judge`·`policy`, 이경준은 `webdiag`·`host`와 P2의 `reasoner`, 윤재상은 `evidence`·`report`·루트 `eval/`을 맡는다.
+- 기본 구현 범위는 담당 패키지의 `src/`, `tests/`, `pyproject.toml`과 배정된 평가 영역이다. `.github/CODEOWNERS`는 모든 변경에 팀원 전체의 리뷰를 요청하며 작성자는 제외된다. 개발 담당 배정이 리뷰 요청 대상을 제한하지 않는다.
 - 공유 `uv.lock`, 루트 설정, `contracts`, `app` 변경은 관련 모듈의 영향 범위를 기록하고 해당 의존성·계약 PR에 포함한다. 패키지 의존성 변경과 잠금 파일은 같은 PR로 올린다.
 - 작업 브랜치에서 PR을 만들고 필수 CI와 작성자 외 팀원 1명 이상의 승인을 거쳐 `main`에 병합한다. 더 좁은 디렉터리 지침이 생기면 그 적용 범위를 따른다.
 - 작은 변경과 기존 패턴·유틸리티 재사용을 우선한다. 중복 추상화와 공통 `utils` 패키지를 임의로 추가하지 않는다.
@@ -38,7 +39,7 @@
 - `contracts`는 표준 라이브러리만 사용하는 의존성 최하단이다. 공유 데이터는 의미가 명확한 `dataclass`·enum·Protocol 등으로 정의한다. 스키마를 피하려고 임의 dict나 빈 `Any` API를 사용하지 않는다. 본래 매핑인 자료에 dict를 사용하는 것은 허용한다.
 - Pydantic이 필요한 외부 입력·MCP 와이어 검증은 해당 어댑터에서 처리한다. Pydantic 모델이나 별도 JSON 파일을 전체 도메인의 정본으로 지정하지 않는다.
 - 공개 타입·포트가 아직 비어 있으면 최소 의미 계약부터 제안한다. 필요한 로컬 fake는 그 공개 포트를 구현한다. scaffold를 기능 구현이나 준비된 test double로 표시하지 않는다.
-- 공개 스키마가 바뀌면 PR 제목에 `스키마 변경`을 표시하고 영향받는 모듈·호환성·검증 결과를 적어 해당 담당자의 리뷰를 받는다. 담당자 확정 전에는 실제 변경을 소비하는 개발자와 리뷰 범위를 정한다.
+- 공개 스키마가 바뀌면 PR 제목에 `스키마 변경`을 표시하고 영향받는 모듈·호환성·검증 결과를 적는다. 계약 담당 이동찬과 영향받는 모듈 담당자 중 작성자를 제외한 관련자를 리뷰에 포함한다.
 - 외부 JSON을 정의할 때는 프로젝트 소유 키에 `snake_case`, 날짜에 ISO 8601, 시각에 타임존이 있는 ISO 8601을 사용한다. 기존 외부 프로토콜의 필드명은 유지한다. 필수·생략·`null`·부분 결과의 의미와 스키마 버전은 기능별 계약에서 명시한다. 파일 교환이 필요하면 기본 파일명은 `module_subject_YYYYMMDD.json`으로 한다.
 - 대상 HTTP/브라우저 통신은 `gateway` 어댑터만 수행한다. 각 서비스는 자기 저장 어댑터에서 자기 DB 역할·스키마만 사용하며 AGE 질의는 `knowledge`가 소유한다.
 - 코어 단위 테스트는 네트워크·브라우저·DB 없이 실행한다. 실제 실행 환경이 필요한 테스트에는 `integration` marker와 준비 방법을 명시한다. 기본 pytest는 이 marker를 제외하며 통합 테스트는 별도 환경에서 실행한다.

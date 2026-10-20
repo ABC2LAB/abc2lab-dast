@@ -9,16 +9,18 @@
 
 ## 최초 설치
 
-Git과 uv 0.12.23이 PATH에 있어야 한다. 저장소 루트에서 담당 모듈 이름을 인자로 실행하면 해당 모듈만 준비된다.
+Git과 uv 0.12.23이 PATH에 있어야 한다. 여러 패키지를 맡는 현재 배정에서는 저장소 루트에서 공통 환경을 한 번 설치한 뒤 담당 모듈만 검사한다.
 
 ```bash
-uv run --no-project --python 3.13.15 scripts/dev.py setup knowledge
+uv run --no-project --python 3.13.15 scripts/dev.py setup all
 uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
 ```
 
-`setup <모듈>`은 잠금된 해당 패키지와 의존성, 루트 개발 그룹, 해당 패키지의 모든 extra, pre-commit 훅과 기본 테스트를 실행한다. `check <모듈>`은 격리 환경에서 Ruff lint/format 검사, 모듈 `src`·`tests`의 mypy, pytest를 실행한다. PM이나 CI와 동일한 전체 검사가 필요할 때만 `setup all`과 `check all`을 사용한다. 가상환경과 캐시는 커밋하지 않는다.
+`setup all`은 잠금된 전체 패키지와 모든 extra, 공통 개발 도구, pre-commit 훅과 기본 테스트를 준비한다. `check <모듈>`은 격리 환경에서 Ruff lint/format 검사, 모듈 `src`·`tests`의 mypy, pytest를 실행한다. PM이나 CI와 동일한 전체 검사가 필요할 때는 `check all`을 사용한다. 가상환경과 캐시는 커밋하지 않는다.
 
-최초 클론, 담당 모듈 변경, `pyproject.toml`·`uv.lock` 변경을 받은 뒤에는 해당 모듈의 `setup`을 다시 실행한다. VS Code에서는 권장 Python·Ruff·EditorConfig 확장을 설치하면 저장 시 포맷과 import 정리가 적용되며, Ruff는 `.venv`에 설치된 잠금 버전을 사용한다.
+최소 환경이 필요한 경우에는 `setup <모듈>`도 지원한다. 다만 uv 워크스페이스는 `.venv`를 공유하므로 모듈별 `setup`을 연속 실행하면 앞서 설치한 다른 패키지가 제거될 수 있다. 여러 패키지를 맡은 팀원은 `setup all` 한 번으로 설치한다. 격리된 `check <모듈>`은 이 공유 환경을 바꾸지 않는다.
+
+최초 클론이나 `pyproject.toml`·`uv.lock` 변경을 받은 뒤에는 `setup all`을 실행한다. VS Code에서는 권장 Python·Ruff·EditorConfig 확장을 설치하면 저장 시 포맷과 import 정리가 적용되며, Ruff는 `.venv`에 설치된 잠금 버전을 사용한다.
 
 커밋 훅은 저장소의 Ruff를 사용해 staged Python 파일을 검사·수정한다. 수정이 생기면 파일을 다시 `git add`한 뒤 커밋한다. 훅은 로컬 보조 장치이며 CI가 최종 검증한다.
 
@@ -40,7 +42,7 @@ PostgreSQL 드라이버는 Psycopg 3의 `binary,pool` extras를 사용한다. �
 
 ## 선택 기능과 통합 단계
 
-담당 모듈의 `setup`이 그 모듈에 선언된 모든 extra를 설치하므로 팀원이 extra를 따로 고를 필요는 없다. PostgreSQL+AGE 서버와 브라우저 바이너리는 Python 의존성과 별도로, 해당 어댑터의 통합 테스트 단계에서 준비한다.
+`setup all`이 모든 패키지에 선언된 extra를 설치하므로 팀원이 extra를 따로 고를 필요는 없다. PostgreSQL+AGE 서버와 브라우저 바이너리는 Python 의존성과 별도로, 해당 어댑터의 통합 테스트 단계에서 준비한다.
 
 PostgreSQL+AGE 서버/이미지 digest, ZAP/Nuclei 실행 파일과 검토 템플릿, 모델 공급자 SDK/가중치, UI 및 target-app 프레임워크는 이 의존성 설정에서 임의로 정하지 않는다. 설계의 해당 통합 단계에서 검증하고 고정한다. 설계 문서에 기록된 PG16/AGE1.6.0 PoC를 최종 배포 조합으로 취급하지 않는다.
 
@@ -82,7 +84,7 @@ uv add --dev pytest
 
 변경한 `pyproject.toml`과 `uv.lock`을 같은 PR로 올린다. 의도적인 업그레이드에만 `uv lock --upgrade-package <이름>`을 사용한다. 팀원별 `pip install`로 환경을 따로 수정하지 않는다.
 
-모듈별 작업 절차는 [모듈 개발 가이드](module-development.md)를 따른다. 모듈 담당자는 회의 후 정한다. 리뷰 요청 대상은 `.github/CODEOWNERS`의 팀원 전체이며, 작성자 외 1명 승인과 필수 CI 통과를 병합 기준으로 한다.
+모듈별 작업 절차와 담당자는 [모듈 개발 가이드](module-development.md)를 따른다. 관리자·PM은 이동찬이다. 리뷰 요청 대상은 `.github/CODEOWNERS`의 팀원 전체이며, 작성자 외 1명 승인과 필수 CI 통과를 병합 기준으로 한다.
 
 ## 공식 근거
 
