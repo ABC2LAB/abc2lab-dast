@@ -43,4 +43,4 @@ uv run --no-project --python 3.13.15 scripts/dev.py check all
 
 코어 테스트는 외부 네트워크·브라우저·DB 없이 실행한다. 기본 pytest는 `integration` marker가 붙은 테스트를 제외한다. 실제 환경을 준비한 뒤 `pytest -m integration`으로 실행한다. 통합 테스트는 별도 환경을 사용하며 비밀값·원문 응답·캡처 핸들·GT를 출력하지 않는다. 자세한 설계 의미는 [확정 모듈 설계](planning/module-design-confirmed.md), 공통 환경은 [개발 환경 안내](development.md)를 참조한다.
 
-`AGENTS.md`는 AI 작업 지침이고, 문서와 CI는 작업 범위·의존 방향을 안내하고 검사한다. GitHub에서 사용자별로 특정 디렉터리의 파일 수정 자체를 차단하는 설정은 아니다. 담당자 확정 후 CODEOWNERS와 필수 리뷰로 병합 책임을 연결한다.
+`AGENTS.md`는 AI 작업 지침이고, 문서와 CI는 작업 범위·의존 방향을 안내하고 검사한다. GitHub에서 사용자별로 특정 디렉터리의 파일 수정 자체를 차단하는 설정은 아니다. 모듈 담당 배정과 별개로 `.github/CODEOWNERS`가 모든 변경의 리뷰를 팀원 전체에 요청한다. 작성자를 제외한 팀원 1명의 승인과 필수 CI 통과가 병합 기준이다.

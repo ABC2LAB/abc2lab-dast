@@ -4,7 +4,7 @@
 
 이 저장소는 uv 멀티패키지 워크스페이스입니다. 팀원은 회의에서 지정된 모듈을 맡고, 기본적으로 해당 모듈의 `src/`, `tests/`, `pyproject.toml`만 수정합니다. `contracts`의 공개 포트와 `app` 조립은 여러 모듈에 영향을 주므로 공동 리뷰 대상으로 다룹니다.
 
-모듈 경계와 책임은 [모듈 개발 가이드](docs/module-development.md), 설계 근거는 [확정 모듈 설계](docs/planning/module-design-confirmed.md)를 따릅니다. 담당자 이름과 CODEOWNERS는 담당자 회의 뒤 추가합니다.
+모듈 경계와 책임은 [모듈 개발 가이드](docs/module-development.md), 설계 근거는 [확정 모듈 설계](docs/planning/module-design-confirmed.md)를 따릅니다. 모듈 담당자는 회의에서 정하며, 리뷰 요청은 모듈 배정과 별개로 [.github/CODEOWNERS](.github/CODEOWNERS)에 등록한 팀원 전체에게 보냅니다.
 
 이름·구조·예외·로그 등 코딩 기준은 사람과 AI 모두 [AGENTS.md](AGENTS.md)를 참조합니다.
 
@@ -35,6 +35,8 @@ uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
 - 의존성 변경은 해당 패키지의 `pyproject.toml`과 루트 `uv.lock`을 같은 PR에 포함합니다. `contracts`, `app`, 루트 설정 변경은 영향받는 모듈을 PR에 기록합니다.
 
 ## PR
+
+일반 PR을 열거나 draft를 리뷰 준비 상태로 바꾸면 작성자를 제외한 팀원 모두에게 리뷰가 자동 요청됩니다. 필수 CI 통과와 미해결 대화 처리 후 팀원 1명이 승인하면 병합할 수 있습니다. 모든 리뷰어의 승인을 기다릴 필요는 없습니다. 팀원이 바뀌면 `.github/CODEOWNERS`의 목록도 갱신합니다.
 
 작은 단위로 PR을 만들고 템플릿의 범위·검증·계약 변경 여부를 채웁니다. CI가 전체 워크스페이스와 모듈별 격리 검사를 실행합니다. 리뷰에서 합의되지 않은 모듈 경계 변경, 빈 `Any` placeholder API, 구현되지 않은 scaffold를 기능 완료로 표시하지 않습니다.
 
