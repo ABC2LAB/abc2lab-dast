@@ -27,7 +27,7 @@ uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
 
 ## 변경 규칙
 
-- 브랜치 이름은 `feat/<module>-<short-name>` 또는 `fix/<module>-<short-name>`처럼 모듈을 포함합니다.
+- 팀원별 상시 브랜치 대신 작업마다 최신 `origin/main`에서 브랜치를 만듭니다. 이름은 `feat/<module>-<short-name>` 또는 `fix/<module>-<short-name>`이며, 문서·설정과 Codex 브랜치를 포함한 전체 규칙은 [AGENTS.md의 브랜치와 PR](AGENTS.md#브랜치와-pr)을 따릅니다.
 - 공개 계약이 필요하면 먼저 `contracts` 변경을 별도 PR로 제안하고 의존 모듈 담당자의 리뷰를 받습니다.
 - 다른 모듈의 내부 구현, 스키마, 유틸리티를 import하지 않습니다. 공개 포트만 사용하고 테스트에서는 모듈 로컬 fake를 둡니다.
 - `gateway`만 대상 HTTP/브라우저 통신을 소유합니다. 코어와 기본 단위 테스트는 실제 네트워크·DB를 사용하지 않습니다.
