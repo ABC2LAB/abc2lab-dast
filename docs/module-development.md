@@ -86,7 +86,7 @@ uv run --no-project --python 3.13.15 scripts/dev.py check all
 
 ## 계약과 경계
 
-초기 환경 구성 시점의 `contracts`에는 공개 타입/Protocol이 아직 구현되지 않았다. 의존 모듈 구현을 먼저 시작하면서 임의 schema나 `Any` placeholder를 만들지 말고, 필요한 최소 계약을 `contracts` PR로 제안한다. 구현 모듈의 독립 테스트는 그 공개 포트를 구현하는 로컬 fake를 사용한다.
+`contracts`는 [실행 관문 계약 1차](../packages/contracts/README.md)로 요청 바인딩·정책 결정·`PolicyPort`와 실행 전용 `GatewayPort`를 제공한다. 세션 생명주기·Evidence·Judge·Knowledge·WebDiag 등의 전체 계약은 아직 구현되지 않았다. 추가 계약이 필요한 모듈은 임의 schema나 `Any` placeholder를 만들지 말고 최소 의미 계약을 `contracts` PR로 제안한다. 구현 모듈의 독립 테스트는 공개 포트를 구현하는 로컬 fake를 사용한다.
 
 `gateway`만 대상에 통신하고, 각 서비스의 저장 어댑터만 자기 정본 DB에 접근한다. `mcp-*`는 포트를 감싸는 얇은 어댑터다. `app`이 조립하며, 서비스가 다른 서비스의 구체 구현을 직접 생성하지 않는다. 실제 PostgreSQL+AGE, 브라우저 바이너리, MCP 서버는 해당 어댑터의 통합 테스트를 시작하기 전에 준비한다.
 

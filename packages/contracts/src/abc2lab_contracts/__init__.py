@@ -1,1 +1,51 @@
-"""ABC2LAB contracts package; implementation pending."""
+"""Shared Policy control contracts; execution-only contracts require explicit imports."""
+
+from abc2lab_contracts.control import (
+    PolicyDecision,
+    PolicyOutcome,
+    PolicyPort,
+    RequestBinding,
+    RequestBindingError,
+    RequestPlan,
+    RequestPurpose,
+    RunContext,
+)
+from abc2lab_contracts.references import (
+    AccountRef,
+    AuthorizationRef,
+    BudgetRef,
+    ExecutionProfileRef,
+    PolicyDecisionRef,
+    ReasonCode,
+    RequestAttemptRef,
+    RequestRef,
+    RequestSpecRef,
+    RunRef,
+    SessionBinding,
+    SessionRef,
+    TargetScopeRef,
+)
+
+__all__ = [
+    "AccountRef",
+    "AuthorizationRef",
+    "BudgetRef",
+    "ExecutionProfileRef",
+    "PolicyDecision",
+    "PolicyDecisionRef",
+    "PolicyOutcome",
+    "PolicyPort",
+    "ReasonCode",
+    "RequestAttemptRef",
+    "RequestBinding",
+    "RequestBindingError",
+    "RequestPlan",
+    "RequestPurpose",
+    "RequestRef",
+    "RequestSpecRef",
+    "RunContext",
+    "RunRef",
+    "SessionBinding",
+    "SessionRef",
+    "TargetScopeRef",
+]
