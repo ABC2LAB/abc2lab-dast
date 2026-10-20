@@ -14,6 +14,7 @@ reasoner = ["abc2lab-app[reasoner]"]
 dev = [
     "import-linter>=2.15,<3",
     "mypy>=2.4,<3",
+    "pre-commit>=4.7,<5",
     "pytest>=9.1,<10",
     "pytest-asyncio>=1.4,<2",
     "pytest-cov>=7.1,<8",
@@ -61,7 +62,7 @@ select = ["E", "F", "I", "UP", "B"]
 python_version = "3.13"
 strict = true
 # Module tests are checked separately in their isolated CI jobs.
-files = ["packages/*/src", "app/src", "tests"]
+files = ["packages/*/src", "app/src", "scripts", "tests"]
 
 [tool.importlinter]
 root_packages = [

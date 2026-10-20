@@ -6,13 +6,16 @@ ABC2LAB DAST의 uv 멀티패키지 개발 워크스페이스입니다. 현재는
 
 Python 3.13.15와 uv 0.12.23을 사용합니다.
 
+담당 모듈만 설치하고 검사하려면 모듈 디렉터리 이름을 인자로 전달합니다. 이 명령이 잠금된 모듈 의존성, 공통 개발 도구, 선택 extra, 커밋 훅과 기본 테스트를 한 번에 준비합니다.
+
 ```bash
-uv python install
-uv sync --locked --all-packages
-uv run --locked --all-packages pytest
+uv run --no-project --python 3.13.15 scripts/dev.py setup knowledge
+uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
 ```
 
-설치, 선택 의존성, 브라우저 설치와 공통 검사는 [개발 환경 안내](docs/development.md)를 따릅니다.
+PM이 전체 환경을 확인할 때만 `setup all` 또는 `check all`을 사용합니다. 팀원은 담당 모듈 명령만 실행하면 됩니다.
+
+전체 환경과 통합 단계 의존성은 [개발 환경 안내](docs/development.md)를 따릅니다.
 
 ## 팀원 온보딩
 
@@ -21,16 +24,15 @@ uv run --locked --all-packages pytest
 ```bash
 git clone https://github.com/ABC2LAB/abc2lab-dast.git
 cd abc2lab-dast
-uv python install
-uv sync --locked --package abc2lab-knowledge --group dev
-uv run --locked --package abc2lab-knowledge --group dev pytest packages/knowledge/tests
+uv run --no-project --python 3.13.15 scripts/dev.py setup knowledge
+uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
 ```
 
 `knowledge`는 예시입니다. 모듈별 경로와 명령은 [모듈 개발 가이드](docs/module-development.md)를 사용합니다. 작업 범위, 의존성 변경, PR 작성 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)를 읽고 시작하세요. AI 도구를 사용할 때는 저장소 루트의 [AGENTS.md](AGENTS.md)를 적용합니다.
 
 팀 공지 예시:
 
-> ABC2LAB DAST 저장소에서 담당 모듈을 독립적으로 개발합니다. 먼저 `uv python install`과 `uv sync --locked --package <패키지명> --group dev`를 실행하고, 변경은 `packages/<모듈>/src`와 `packages/<모듈>/tests` 중심으로 올려 주세요. 전체 구조·계약 변경이나 다른 모듈 수정이 필요하면 먼저 해당 담당자와 협의하고 별도 PR로 분리합니다. 시작 전 [모듈 개발 가이드](docs/module-development.md)와 [기여 안내](CONTRIBUTING.md)를 확인해 주세요.
+> ABC2LAB DAST 저장소에서 담당 모듈을 독립적으로 개발합니다. Git과 uv 0.12.23이 PATH에 있는지 확인한 뒤 `uv run --no-project --python 3.13.15 scripts/dev.py setup <모듈>`을 한 번 실행하고, 작업 중에는 `... scripts/dev.py check <모듈>`을 사용하세요. 변경은 담당 모듈의 `src`·`tests`·`pyproject.toml` 중심으로 올립니다. 전체 구조·계약 변경이나 다른 모듈 수정이 필요하면 별도 PR로 분리합니다. 시작 전 [모듈 개발 가이드](docs/module-development.md)와 [기여 안내](CONTRIBUTING.md)를 확인해 주세요.
 
 ## 설계 기준
 
