@@ -1,6 +1,6 @@
 # abc2lab-dast
 
-ABC2LAB DAST의 uv 멀티패키지 개발 워크스페이스입니다. 개발 환경·패키지 골격과 [Policy → Gateway 공용 계약 1차](packages/contracts/README.md)를 구현했습니다. 실제 진단 기능은 아직 구현되지 않았습니다.
+ABC2LAB DAST의 uv 멀티패키지 개발 워크스페이스입니다. 현재는 환경과 패키지 골격을 구성한 단계이며 진단 기능은 아직 구현되지 않았습니다.
 
 ## 개발 시작
 
