@@ -1,0 +1,33 @@
+[project]
+name = "abc2lab-app"
+version = "0.1.0"
+description = "ABC2LAB composition root"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "abc2lab-contracts",
+    "abc2lab-host",
+    "abc2lab-knowledge",
+    "abc2lab-evidence",
+    "abc2lab-webdiag",
+    "abc2lab-policy",
+    "abc2lab-gateway",
+    "abc2lab-judge",
+    "abc2lab-report",
+]
+
+[project.optional-dependencies]
+postgres = [
+    "abc2lab-host[postgres]",
+    "abc2lab-knowledge[postgres]",
+    "abc2lab-evidence[postgres]",
+    "abc2lab-policy[postgres]",
+    "abc2lab-gateway[postgres]",
+    "abc2lab-judge[postgres]",
+    "abc2lab-report[postgres]",
+]
+mcp = ["abc2lab-mcp-knowledge[server]", "abc2lab-mcp-webdiag[server]"]
+reasoner = ["abc2lab-reasoner"]
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13"]
+build-backend = "uv_build"
