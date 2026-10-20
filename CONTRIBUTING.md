@@ -2,9 +2,9 @@
 
 ## 작업 단위
 
-이 저장소는 uv 멀티패키지 워크스페이스입니다. 팀원은 회의에서 지정된 모듈을 맡고, 기본적으로 해당 모듈의 `src/`, `tests/`, `pyproject.toml`만 수정합니다. `contracts`의 공개 포트와 `app` 조립은 여러 모듈에 영향을 주므로 공동 리뷰 대상으로 다룹니다.
+이 저장소는 uv 멀티패키지 워크스페이스입니다. 팀원은 [담당 배정표](docs/module-development.md#담당-배정)에 따라 해당 패키지의 `src/`, `tests/`, `pyproject.toml`과 배정된 평가 영역을 수정합니다. `contracts`의 공개 포트와 `app` 조립은 여러 모듈에 영향을 주므로 공동 리뷰 대상으로 다룹니다.
 
-모듈 경계와 책임은 [모듈 개발 가이드](docs/module-development.md), 설계 근거는 [확정 모듈 설계](docs/planning/module-design-confirmed.md)를 따릅니다. 모듈 담당자는 회의에서 정하며, 리뷰 요청은 모듈 배정과 별개로 [.github/CODEOWNERS](.github/CODEOWNERS)에 등록한 팀원 전체에게 보냅니다.
+모듈 경계와 책임은 [모듈 개발 가이드](docs/module-development.md), 설계 근거는 [확정 모듈 설계](docs/planning/module-design-confirmed.md)를 따릅니다. 관리자·PM은 이동찬이며, 리뷰 요청은 모듈 배정과 별개로 [.github/CODEOWNERS](.github/CODEOWNERS)에 등록한 팀원 전체에게 보냅니다.
 
 이름·구조·예외·로그 등 코딩 기준은 사람과 AI 모두 [AGENTS.md](AGENTS.md)를 참조합니다.
 
@@ -14,10 +14,10 @@
 git clone https://github.com/ABC2LAB/abc2lab-dast.git
 cd abc2lab-dast
 git switch -c feat/knowledge-projector
-uv run --no-project --python 3.13.15 scripts/dev.py setup knowledge
+uv run --no-project --python 3.13.15 scripts/dev.py setup all
 ```
 
-`setup`은 선택한 모듈의 잠금 의존성·개발 도구·extra, pre-commit 훅과 기본 테스트를 준비합니다. 작업 중에는 담당 모듈만 격리 검사합니다.
+`setup all`은 여러 담당 패키지를 같은 `.venv`에 설치하고 개발 도구·extra, pre-commit 훅과 기본 테스트를 준비합니다. 작업 중에는 담당 패키지마다 격리 검사를 실행합니다.
 
 ```bash
 uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
