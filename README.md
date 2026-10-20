@@ -40,6 +40,6 @@ uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
 - [도구 카탈로그](docs/planning/mcp-tool-catalog.md)
 - [모듈 설계](docs/planning/module-design-confirmed.md)
 - [S1 API 흐름·담당·개발 사례](docs/planning/s1-api-draft.md)
-- [S1 API 상세 규격 v0.2](docs/planning/s1-api-spec.md) — 필수 필드·상태·수명·감사, 팀 더블 체크 전 설계안
+- [S1 API 상세 규격 v0.3](docs/planning/s1-api-spec.md) — 비동기 I/O·유한 작업 큐·필수 필드·상태·수명·감사, 팀 더블 체크 전 설계안
 
 `packages/`는 공개 계약과 서비스 패키지, `app/`은 조립 루트, `eval/`은 평가 전용 작업 영역입니다. 담당 배정은 [모듈 개발 가이드](docs/module-development.md#담당-배정)에 기록합니다.

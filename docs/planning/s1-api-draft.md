@@ -1,6 +1,6 @@
-# S1 API 설계 개요 v0.2 — 상대 구현 없이 개발·테스트하기
+# S1 API 설계 개요 v0.3 — 상대 구현 없이 개발·테스트하기
 
-상태: **초기 설계안 / 팀 더블 체크 전**. 이 문서는 흐름·책임·개발 사례를 설명한다. **호출별 필수 필드·상태·수명·D1~D5의 선택안은 [S1 API 상세 규격 v0.2](s1-api-spec.md)를 기준으로 검토한다.** 구현된 API·준비된 fake·팀 합의를 의미하지 않으며 `contracts` 구현을 복원하지 않는다.
+상태: **초기 설계안 / 팀 더블 체크 전**. 이 문서는 흐름·책임·개발 사례를 설명한다. **호출별 필수 필드·상태·수명·D1~D5의 선택안은 [S1 API 상세 규격 v0.3](s1-api-spec.md)를 기준으로 검토한다.** I/O 포트의 async 호출, Host 유한 작업 큐·worker 1개, 취소/timeout과 동시성 계약을 포함한다. 구현된 API·준비된 fake·팀 합의를 의미하지 않으며 `contracts` 구현을 복원하지 않는다.
 
 목표: **상대 모듈의 완성을 기다리지 않고도 내 모듈을 개발·테스트할 수 있게 한다.** 제공자와 소비자는 아래의 작은 경계와 사례를 함께 검토한다. 모듈 내부 모델·저장 구조·클래스 구성은 각 담당자가 소유한다.
 
@@ -16,7 +16,7 @@
 
 | 합의 대상 | 이번 초안의 제안 | 모듈별 구현에 맡기는 부분 |
 |---|---|---|
-| 호출 | 아래의 제공 기능·입력·결과·실패 의미. S1 포트는 동기 호출로 제안 | 내부 동시성·클래스·저장 어댑터. async 전환은 소비자와 별도 계약 변경 |
+| 호출 | I/O 서비스 포트 async, 순수 계산·메모리 인계 sync. Host 유한 큐·S1 worker 1개, await 순서·취소·유한 동시성은 [상세 규격 §2.2](s1-api-spec.md#22-비동기-호출과-작업-실행) | 내부 클래스·저장 어댑터·계산 최적화. 공유 포트의 await 여부는 제공자/소비자가 일치시킴 |
 | 데이터 | 각 경계를 통과하는 최소 값과 식별자의 의미 | DB row·브라우저 상태·ORM/Pydantic 모델·내부 캐시 |
 | 공유 코드 | 팀 합의 뒤 실제 교환하는 최소 타입·Protocol만 경계별로 작은 PR | 모든 타입의 선행 공용화·거대한 RunContext 작성 |
 | 대역 | 소비 모듈의 `tests/fakes/`에 로컬 fake. 같은 사례를 제공자도 검증 | 다른 서비스 구현 import·다른 담당자 DB·실제 서버 기동 |
@@ -58,29 +58,29 @@
 
 ## 5. API 경계 목록
 
-시그니처의 모든 입력·결과는 아래 절에서 의미를 정의한 타입이다. 표는 구현 코드가 아니다. 실행 생성 후에는 `RunKey`를 각 요청에 포함하며 생략된 global state에서 얻지 않는다. `start_run`은 조직·대상·환경을 입력받고 Host가 새 run ID를 생성한다.
+시그니처의 모든 입력·결과는 아래 절에서 의미를 정의한 타입이다. 표는 구현 코드가 아니다. async def 포트는 await해 결과를 얻으며, capture/read_session_binding/release_captures는 메모리 전용 def 포트다. 실행 생성 후에는 `RunKey`를 각 요청에 포함하며 생략된 global state에서 얻지 않는다. `start_run`은 Host의 검증·수락·큐 수용 뒤 queued run을 반환하고 전체 진단은 worker가 실행한다.
 
 ### 5.1 Host → WebDiag / 사용자 → Host
 
 | API 제안 | 최소 입력 | 결과·실패 의미 | 제공자 / 소비자 |
 |---|---|---|---|
-| `start_run(request: StartRunRequest) -> StartRunResult` | 대상/환경·검증된 등록 설정 참조. 범위·계정·프로필·예산·기대 정책은 app이 주입 | 실행 참조 또는 시작 거부. 시작만으로 대상 요청이 전송되지 않음 | Host / 진입점 |
-| `get_status(run: RunKey) -> RunStatus` | 실행 키 | 대기·실행·종료 작업과 실패·중지·미확인 범위, 전송 3상태를 구분한 집계 | Host / 진입점 |
-| `stop(run: RunKey) -> StopReceipt` | 실행 키 | 중지 접수와 실제 종료를 구분. 이미 진행 중인 전송의 불명을 지우지 않음 | Host / 진입점 |
-| `collect(request: DiscoveryRequest) -> CandidateBatch` | 실행 키·허가된 seed·계정/관찰 프로필·유한 탐색 상한 | 후보 참조·출처·revision·관찰 필요 조건·`complete/partial/failed` | WebDiag / Host |
-| `http_observe(request: ObserveRequest) -> ObserveResult` | 실행 키·자기 자원 요청/후보 참조·계정·관찰 프로필 | 아래 `Observation` 또는 차단·실패·부분 결과. 교차 자원 관찰로 전환하지 않음 | WebDiag / Host |
-| `access_compare(request: AccessCompareRequest) -> AccessCompareResult` | 실행 키·자원/후보 참조·소유자/평가 계정·적용 기대 정책 snapshot·교차 실행 확인 기록 | 저장 완료 비교·근거 참조와 미충족 조건. 실제 교차 요청은 이 기능 내부에서만 조정 | WebDiag / Host |
+| `async def start_run(request: StartRunRequest) -> StartRunResult` | 대상/환경·검증된 등록 설정 참조·submission_ref 멱등 키. 범위·계정·프로필·예산·기대 정책은 app이 주입 | 수락한 실행 참조 또는 시작 거부. 같은 키로 수락 여부 재확인, 중복 생성/배정 없음 | Host / 진입점 |
+| `async def get_status(run: RunKey) -> RunStatus` | 실행 키 | 대기·실행·종료 작업과 실패·중지·미확인 범위, 전송 3상태를 구분한 집계 | Host / 진입점 |
+| `async def stop(run: RunKey) -> StopReceipt` | 실행 키 | 중지 접수와 실제 종료를 구분. 이미 진행 중인 전송의 불명을 지우지 않음 | Host / 진입점 |
+| `async def collect(request: DiscoveryRequest) -> CandidateBatch` | 실행 키·허가된 seed·계정/관찰 프로필·유한 탐색 상한 | 후보 참조·출처·revision·관찰 필요 조건·`complete/partial/failed` | WebDiag / Host |
+| `async def http_observe(request: ObserveRequest) -> ObserveResult` | 실행 키·자기 자원 요청/후보 참조·계정·관찰 프로필 | 아래 `Observation` 또는 차단·실패·부분 결과. 교차 자원 관찰로 전환하지 않음 | WebDiag / Host |
+| `async def access_compare(request: AccessCompareRequest) -> AccessCompareResult` | 실행 키·자원/후보 참조·소유자/평가 계정·적용 기대 정책 snapshot·교차 실행 확인 기록 | 저장 완료 비교·근거 참조와 미충족 조건. 실제 교차 요청은 이 기능 내부에서만 조정 | WebDiag / Host |
 
 S1은 HTTP 한 경로를 우선 제안한다. 브라우저 관찰은 같은 반환 의미를 따르는 후속 입력 어댑터다. `collect`의 결과는 실제 WebDiag가 Knowledge 후보 등록 경계를 호출해 받은 후보 참조다. 후보 발견만으로 관찰·검사 완료로 표시하지 않는다.
 
-Host의 `submit/lease/complete/cancel`과 Planner/Broker 구성은 이경준 담당 내부 포트로 먼저 시험한다. 외부 소비자가 필요해질 때만 공유한다. 첫 Planner는 A의 기준 관찰과 `access_compare` 작업을 구성하며 B 자기 객체·4응답 고정 세트를 요구하지 않는다.
+Host의 `submit/lease/complete/cancel`과 Planner/Broker 구성은 이경준 담당 내부 포트로 먼저 시험한다. 유한 ready 큐·worker 1개를 사용하고 get_status/stop은 검사 worker를 기다리지 않는 제어 경로로 둔다. 외부 소비자가 필요해질 때만 공유한다. 첫 Planner는 A의 기준 관찰과 `access_compare` 작업을 구성하며 B 자기 객체·4응답 고정 세트를 요구하지 않는다.
 
 ### 5.2 WebDiag 인증 경계
 
 | API 제안 | 최소 입력 | 결과·실패 의미 |
 |---|---|---|
-| `acquire_session(request: SessionRequest) -> SessionResult` | 실행 키·계정 별칭·서버 등록 인증 프로필 | `SessionHandle` 또는 명시적 인증 실패. 비밀번호·쿠키를 입력/결과의 공개 값으로 쓰지 않음 |
-| `whoami(request: IdentityRequest) -> IdentityResult` | 실행 키·세션 핸들·등록된 주체 확인 프로필 | 검증된 subject 별칭·계정·generation·근거 참조·유효 시각, 또는 `unknown/expired/mismatch` |
+| `async def acquire_session(request: SessionRequest) -> SessionResult` | 실행 키·계정 별칭·서버 등록 인증 프로필 | `SessionHandle` 또는 명시적 인증 실패. 비밀번호·쿠키를 입력/결과의 공개 값으로 쓰지 않음 |
+| `async def whoami(request: IdentityRequest) -> IdentityResult` | 실행 키·세션 핸들·등록된 주체 확인 프로필 | 검증된 subject 별칭·계정·generation·근거 참조·유효 시각, 또는 `unknown/expired/mismatch` |
 
 `SessionHandle`은 WebDiag가 소유하는 불투명 식별자이며 실행 키·계정·generation·유한 유효기간에 결합한다. Credential Vault의 전송 비밀은 Gateway만 해석한다. HTTP 200·쿠키 발행만으로 `IdentityResult`를 verified로 만들지 않는다. generation이 바뀌거나 만료·취소되면 이전 확인을 재사용하지 않는다.
 
@@ -90,9 +90,9 @@ Host의 `submit/lease/complete/cancel`과 Planner/Broker 구성은 이경준 담
 
 | API 제안 | 입력 | 결과·책임 |
 |---|---|---|
-| `prepare(request: ExecutionRequest) -> PrepareResult` | 실행 키·요청 ID·구체 목적지/method·등록 동작·전송 입력·세션 바인딩·목적·실행 프로필·교차 실행 확인 기록(교차 시 필수) | Gateway가 실제 요청을 고정하고 `PreparedRequestHandle`과 비밀 없는 `PolicyInput`을 생성. 준비 실패는 전송 0건 |
-| `evaluate(request: PolicyInput) -> PolicyDecisionResult` | 아래 정책 view와 신뢰된 안전 설정 snapshot | 저장된 PolicyDecision 또는 실패. 정상 결정은 `allow/block`, 불명·만료·누락은 block |
-| `execute(request: ExecuteRequest) -> AttemptResult` | 실행 키·준비 핸들·정책 결정 | Gateway가 바인딩/현재 조건 재검사 후 시도·전송 상태·캡처 상태·사유를 반환 |
+| `async def prepare(request: ExecutionRequest) -> PrepareResult` | 실행 키·요청 ID·구체 목적지/method·등록 동작·전송 입력·세션 바인딩·목적·실행 프로필·교차 실행 확인 기록(교차 시 필수) | Gateway가 실제 요청을 고정하고 `PreparedRequestHandle`과 비밀 없는 `PolicyInput`을 생성. 준비 실패는 전송 0건 |
+| `async def evaluate(request: PolicyInput) -> PolicyDecisionResult` | 아래 정책 view와 신뢰된 안전 설정 snapshot | 저장된 PolicyDecision 또는 실패. 정상 결정은 `allow/block`, 불명·만료·누락은 block |
+| `async def execute(request: ExecuteRequest) -> AttemptResult` | 실행 키·준비 핸들·정책 결정 | Gateway가 바인딩/현재 조건 재검사 후 시도·전송 상태·캡처 상태·사유를 반환 |
 
 **이전 초안의 숨은 등록소 문제를 피하는 제안:**
 
@@ -141,11 +141,11 @@ fingerprint는 [상세 규격 §5](s1-api-spec.md#5-gateway와-policy의-실행-
 
 | API 제안 | 최소 입력 | 결과·실패 의미 |
 |---|---|---|
-| `capture(request: CaptureRequest) -> CaptureResult` | 실행 영역 응답 버퍼와 실행·요청·계정/generation·관찰 시각 | 실행 전용 캡처 핸들 또는 캡처 실패. 전송 상태는 변경하지 않음 |
-| `seal(request: SealRequest) -> SealResult` | 유효한 캡처 핸들·민감값 제거 규칙 | 공개 Evidence 저장 완료 receipt·참조 또는 미완료/실패 |
-| `compare_and_seal(request: CompareRequest) -> CompareOutcome` | 기준/교차 캡처 핸들·의도한 두 계정/동일 객체 맥락·정규화/오라클 규칙 버전 | 두 근거와 비교 결과의 저장 완료를 확인한 `StoredComparison`, 또는 부분/실패 |
-| `store_evidence(request: RedactedBundle) -> StoreOutcome` | 민감값 제거 자료·출처·실행/자료 권한·불변 operation ID | 저장 완료 receipt 또는 부분/실패. 같은 ID/내용 재호출은 멱등, 같은 ID/다른 내용은 충돌 |
-| `evidence_read_summary(request: EvidenceReadRequest) -> EvidenceReadResult` | 근거 참조·실행 키·호출자/자료 권한 | 허용 요약 또는 not_found/access_denied/미완료/실패 |
+| `def capture(request: CaptureRequest) -> CaptureResult` | 실행 영역 응답 버퍼와 실행·요청·계정/generation·관찰 시각 | 실행 전용 캡처 핸들 또는 캡처 실패. 전송 상태는 변경하지 않음 |
+| `async def seal(request: SealRequest) -> SealResult` | 유효한 캡처 핸들·민감값 제거 규칙 | 공개 Evidence 저장 완료 receipt·참조 또는 미완료/실패 |
+| `async def compare_and_seal(request: CompareRequest) -> CompareOutcome` | 기준/교차 캡처 핸들·의도한 두 계정/동일 객체 맥락·정규화/오라클 규칙 버전 | 두 근거와 비교 결과의 저장 완료를 확인한 `StoredComparison`, 또는 부분/실패 |
+| `async def store_evidence(request: RedactedBundle) -> StoreOutcome` | 민감값 제거 자료·출처·실행/자료 권한·submission_ref 멱등 키 | 저장 완료 receipt 또는 부분/실패. 같은 키/내용 재호출은 멱등, 같은 키/다른 내용은 충돌 |
+| `async def evidence_read_summary(request: EvidenceReadRequest) -> EvidenceReadResult` | 근거 참조·실행 키·호출자/자료 권한 | 허용 요약 또는 not_found/access_denied/미완료/실패 |
 
 상위 3개는 실행 영역 전용, 하위 2개는 공개 Evidence 서비스 경계다. `capture`는 **Gateway가 실행 영역의 로컬 Evidence에 호출하는 private 포트**다. 원문 버퍼의 소유권/정리 책임을 로컬 Evidence로 넘기며 다른 공개 호출자나 Host가 중계하지 않는다. 이 private 포트의 단위 fake는 실행 영역 테스트 안에서만 가상 버퍼를 받는다. 공개 Evidence fake는 민감값 제거 자료만 받는다.
 
@@ -157,9 +157,9 @@ fingerprint는 [상세 규격 §5](s1-api-spec.md#5-gateway와-policy의-실행-
 
 | API 제안 | 최소 입력 | 결과·실패 의미 |
 |---|---|---|
-| `register_candidates(request: CandidateSubmission) -> CandidateAck` | 실행 키·동작/경로 후보·추출 출처/버전·근거·미해결 조건 | Knowledge가 정규화·중복·출처를 검증한 후보 ID/revision. 단서는 관찰 사실과 구분 |
-| `project(request: ProjectionSubmission) -> ProjectionAck` | 실행 키·불변 원본 이벤트 ID·생산자·원본 revision·저장 완료 근거 참조 | 적용 revision/이미 적용됨 또는 거부·지연·실패. 같은 ID/다른 내용은 충돌 |
-| `get_case_view(request: CaseReadRequest) -> CaseReadResult` | 실행 키·사례/자원 참조·조회자 권한·snapshot·유한 반환 상한 | 후보·관찰·정책/근거/판정 참조·revision·누락/최신성·`complete/partial/failed` |
+| `async def register_candidates(request: CandidateSubmission) -> CandidateAck` | 실행 키·동작/경로 후보·추출 출처/버전·근거·미해결 조건 | Knowledge가 정규화·중복·출처를 검증한 후보 ID/revision. 단서는 관찰 사실과 구분 |
+| `async def project(request: ProjectionSubmission) -> ProjectionAck` | 실행 키·불변 원본 이벤트 ID·생산자·원본 revision·저장 완료 근거 참조 | 적용 revision/이미 적용됨 또는 거부·지연·실패. 같은 ID/다른 내용은 충돌 |
+| `async def get_case_view(request: CaseReadRequest) -> CaseReadResult` | 실행 키·사례/자원 참조·조회자 권한·snapshot·유한 반환 상한 | 후보·관찰·정책/근거/판정 참조·revision·누락/최신성·`complete/partial/failed` |
 
 후보 정본과 정규화는 Knowledge가 소유한다. WebDiag는 생성한 단서를 제출한다. `ProjectionSubmission`은 원본 서비스가 자기 정본 변경과 함께 저장한 변경 참조에서 오며, 신뢰되지 않은 임의 이벤트를 사실로 반영하지 않는다. 검증된 Projector만 그래프를 갱신한다. `A가 X를 조회했다`에서 `A가 X를 소유한다`를 자동 생성하지 않는다.
 
@@ -169,9 +169,9 @@ S1은 `store_memory`로 테스트한다. 다른 서비스의 작업/정책/근�
 
 | API 제안 | 최소 입력 | 결과·실패 의미 |
 |---|---|---|
-| `judge(request: JudgeRequest) -> JudgeResult` | 실행 키·사례 참조·등록 기대 접근 정책 snapshot 또는 부재·A/B 주체 확인·저장 완료 비교 참조 | `Verdict` 또는 판정 자체의 처리 실패. Verdict는 `CONFIRMED/SUSPECTED/UNDECIDABLE`·조건·근거·버전·사유·revision |
-| `build_report(request: ReportInput) -> ReportResult` | 실행 키·관찰/판정/작업 요약·생산자별 기대 기록. 감사 페이지는 주입된 읽기 포트로 조회 | DiagnosisReport 또는 생성 실패. 제한·전송 불명·감사 완전성을 보존 |
-| `read_audit(request: AuditReadRequest) -> AuditPage` | 실행 키·호출자 권한·producer/cursor·유한 반환 상한 | 각 생산자의 허용 이벤트·순번·연결 참조·다음 cursor·완전성/실패. 각 소유 서비스가 제공 |
+| `async def judge(request: JudgeRequest) -> JudgeResult` | 실행 키·사례 참조·등록 기대 접근 정책 snapshot 또는 부재·A/B 주체 확인·저장 완료 비교 참조 | `Verdict` 또는 판정 자체의 처리 실패. Verdict는 `CONFIRMED/SUSPECTED/UNDECIDABLE`·조건·근거·버전·사유·revision |
+| `async def build_report(request: ReportInput) -> ReportResult` | 실행 키·관찰/판정/작업 요약·생산자별 기대 기록. 감사 페이지는 주입된 읽기 포트로 조회 | DiagnosisReport 또는 생성 실패. 제한·전송 불명·감사 완전성을 보존 |
+| `async def read_audit(request: AuditReadRequest) -> AuditPage` | 실행 키·호출자 권한·producer/cursor·유한 반환 상한 | 각 생산자의 허용 이벤트·순번·연결 참조·다음 cursor·완전성/실패. 각 소유 서비스가 제공 |
 
 Host가 작업을 조정하고 `app`이 Judge/Report가 소비할 읽기 포트를 주입한다. Report가 타 서비스 DB를 읽지 않는다. 감사는 기대 request/event ID와 실제 연결을 비교한다. A·B가 필요한데 A·A 두 건이 있는 경우를 완료로 처리하지 않는다. 생산자별 저장 내구성과 조회 snapshot을 확인하지 못하면 감사 완전성은 unknown이다.
 
@@ -298,14 +298,14 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 | D2 기대 정책 등록/공급 | 신뢰된 등록 입력을 app이 검증, 구체 A/B·객체·동작의 불변 snapshot 주입 | 이동찬·최민준·이경준 | 정책 부재/만료·예외 불명을 보존. 관찰/GT에서 정책 생성 금지 |
 | D3 세션·캡처 lifecycle | WebDiag 상태/generation, Gateway 통신 context, Evidence 캡처 단독 소유. TTL/복구/정리 필드 명시 | 이경준·최민준·윤재상 | 주체 불일치·구세대·복구 충돌·실패 정리를 fake clock으로 검증 |
 | D4 전송 전 감사 | producer별 journal + verify_committed. Policy 결정/Gateway intent 둘 다 실제 commit 확인 | 최민준·윤재상·이동찬 | 위조 receipt/조회 실패는 무전송. 실제 내구성은 통합에서 별도 검증 |
-| D5 최소 타입·동기 호출 | 상세 규격의 필수 필드·None 의미·enum·사유 코드, 경계별 작은 계약 PR | 전원 | 실제 소비하는 타입만 공유. status/send_status/verdict 혼합 금지 |
+| D5 최소 타입·비동기 실행 | I/O 포트 async·계산/메모리 인계 sync, 유한 큐·S1 worker 1개·취소/timeout·동시성 상한. 필수 필드·None·enum·사유 코드와 경계별 작은 계약 PR | 전원 | async fake와 Event로 경합 검증, 취소 후 전송 상태 보존. status/send_status/verdict 혼합 금지 |
 
 이번 기준안은 팀원이 입력/출력과 실패 사례를 더블 체크할 출발점이다. PM은 리뷰에 따른 수정·담당·적용 revision을 기록한다. 실제 교차 요청 전에는 [기존 D-0 단일 관문](module-design-confirmed.md#13-열린-결정-착수-전중-팀이-잠글-것)과 대상 허가·기대 정책·주체·안전 정책·Gateway 재검사를 충족해야 한다. 이 요구는 fake 개발의 대기 조건이 아니다.
 
 ## 11. 병렬 착수·검증 순서
 
 1. **경계 리뷰:** 각 담당자가 §5에서 제공/소비 API와 §9 case ID를 표시하고 D1–D5 제안을 검토한다. PM이 변경 기록을 남긴다. 확정 문서에 따라 최소 공유 타입을 경계별 PR로 추가한다.
-2. **독립 구현:** §8의 첫 PR을 병렬 진행한다. 각자 자기 fake로 정상·실패 사례를 검증하고 `uv run --no-project --python 3.13.15 scripts/dev.py check <module>`을 실행한다. 구현 간 내부 import를 추가하지 않는다.
+2. **독립 구현:** §8의 첫 PR을 병렬 진행한다. I/O fake도 async def로 구현하고 순수 로직은 동기로 시험한다. 기존 S1-01~20과 상세 규격의 비동기 사례 S1-21~28을 Event·fake clock으로 검증한다. `uv run --no-project --python 3.13.15 scripts/dev.py check <module>`을 실행하며 구현 간 내부 import를 추가하지 않는다.
 3. **초기 조립:** 이동찬이 `app/tests/`에서 실제 외부 통신 없는 fake 시나리오를 조립한다. fake Gateway의 허용 시도 기록 1건은 실제 HTTP 전송 1건을 뜻하지 않는다. 실제 모듈 교체 때 제공자·소비자의 동일 case ID 결과를 비교한다. 전체 검사는 `check all`을 사용한다.
 4. **실제 통합:** 필요한 실행 허가·역할 분리·내구 감사·인증/예산·비밀 보호·실제 전송 통제를 검증한 경로만 테스트 앱에 연결한다. 실제 통합 통과를 fake 테스트와 구분한다.
 
