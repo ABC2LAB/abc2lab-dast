@@ -6,6 +6,8 @@
 
 모듈 경계와 책임은 [모듈 개발 가이드](docs/module-development.md), 설계 근거는 [확정 모듈 설계](docs/planning/module-design-confirmed.md)를 따릅니다. 담당자 이름과 CODEOWNERS는 담당자 회의 뒤 추가합니다.
 
+이름·구조·예외·로그 등 코딩 기준은 사람과 AI 모두 [AGENTS.md](AGENTS.md)를 참조합니다. `⚑` 회의 안건은 현재 설정과 구분합니다.
+
 ## 시작
 
 ```bash
