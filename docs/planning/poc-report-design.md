@@ -1,6 +1,6 @@
 # S1 PoC 포함 진단 보고서 설계 v0.1
 
-상태: **팀 검토용 설계안**. [S1 API v0.5](s1-api-spec.md)의 보고 기능을 구체화한다. 실제 진단·PoC 실행·보고 생성기가 구현됐다는 뜻이 아니다. 출력 형태는 [가상 보고서 예시](../examples/s1-poc-report.example.md)에서 확인한다.
+상태: **팀 검토용 설계안**. [S1 API 상세 규격](s1-api-spec.md)의 보고 기능을 구체화한다. 실제 진단·PoC 실행·보고 생성기가 구현됐다는 뜻이 아니다. 출력 형태는 [가상 보고서 예시](../examples/s1-poc-report.example.md)에서 확인한다. 현재 소유자·검토자는 [담당 배정표](../module-development.md#담당-배정)를 따른다.
 
 목표는 발견 결과마다 **어떤 조건에서, 어떤 요청으로, 무엇을 확인했는지**를 근거에 연결해 사람이 재현할 수 있는 보고서를 만드는 것이다. 최초 범위는 등록된 A/B 두 계정과 기존 A 소유 객체의 GET 비교다. SQLi/XSS payload 생성과 자동 재실행은 이번 확장에 포함하지 않는다.
 
@@ -62,10 +62,10 @@ RegisteredRequestRecipe는 대상·입력 값을 새로 선택하는 실행 API�
 
 | 기존 경계 | 추가할 내용 | 소유자/검토자 |
 |---|---|---|
-| Gateway → 실행 로컬 Evidence의 동기 capture | CaptureRequest에 `executed_request: ExecutedRequestView` 추가. 기존 캡처 맥락과 run/request/attempt/계정/generation이 같아야 함 | 최민준·윤재상·이동찬 |
-| 로컬 Evidence → 공개 Evidence 저장 | EvidenceSummary에 `request_recipe: RegisteredRequestRecipe?`, `recipe_reason_codes: tuple[ReasonCode]` 추가. 저장 내용/receipt에 함께 결합 | 윤재상·최민준·이동찬 |
-| Host → Report | 기존 comparisons/verdicts와 주입된 Evidence/감사 읽기 포트에서 자료를 모음. ReportInput에 원문이나 임의 PoC 명령을 추가하지 않음 | 이경준·윤재상·이동찬 |
-| Report 반환 | DiagnosisReport에 `pocs: tuple[PocReport]` 추가. 포함된 각 Verdict에 case_ref/verdict_ref가 일치하는 PoC 상태를 하나씩 남김 | 윤재상·이동찬 |
+| Gateway → 실행 로컬 Evidence의 동기 capture | CaptureRequest에 `executed_request: ExecutedRequestView` 추가. 기존 캡처 맥락과 run/request/attempt/계정/generation이 같아야 함 | Gateway 최민준·Evidence 이경준·contracts 이동찬 |
+| 로컬 Evidence → 공개 Evidence 저장 | EvidenceSummary에 `request_recipe: RegisteredRequestRecipe?`, `recipe_reason_codes: tuple[ReasonCode]` 추가. 저장 내용/receipt에 함께 결합 | Evidence 이경준·소비자 Judge/Report 최민준·contracts 이동찬 |
+| Host → Report | 기존 comparisons/verdicts와 주입된 Evidence/감사 읽기 포트에서 자료를 모음. ReportInput에 원문이나 임의 PoC 명령을 추가하지 않음 | Host 이경준·Report 최민준·contracts 이동찬 |
+| Report 반환 | DiagnosisReport에 `pocs: tuple[PocReport]` 추가. 포함된 각 Verdict에 case_ref/verdict_ref가 일치하는 PoC 상태를 하나씩 남김 | Report 최민준·소비자 app/contracts 이동찬 |
 | app 조립 | 등록 레시피/표시 규칙을 로컬 Evidence와 Report에 주입. fake와 실제 구현을 같은 필드로 교체 | 이동찬 |
 
 새 서비스나 공개 실행 API는 추가하지 않는다. 기존 27개 포트의 async/def 구분도 유지한다. Knowledge는 기존 Observation/Evidence 참조로 연결하고, PoC 생성 여부를 새 소유/권한 사실로 투영하지 않는다.
@@ -105,4 +105,4 @@ PoC 미완료가 기존 Judge의 CONFIRMED를 바꾸지는 않는다. Report는 
 | S1-35 | 보고 생성/저장 중 취소 또는 저장 실패 | 저장 완료가 확인되지 않은 report ref 발행 없음, CancelledError 전파, 원 실행 근거/이미 commit된 보고 보존, 재렌더링에 대상 재전송 없음 |
 | S1-36 | 같은 artifact/ref에서 recipe 또는 판정 내용 변조 | 불변 내용/receipt 검증 실패, 기존 record 덮어쓰기·가짜 절차 보충 없음 |
 
-계약/조립은 이동찬, 실행 요청과 비교 연결은 최민준·이경준, 근거와 보고 출력은 윤재상이 관련 경계를 검토한다. 첫 구현은 두 계정의 가상 fixture로 보고를 생성하는 Report 단위 경로이며, 이후 실제 Evidence/Judge 결과로 교체해 같은 사례를 검증한다.
+계약/조립은 이동찬, 실행 요청과 비교 연결은 최민준·이경준, 근거 저장은 Evidence 담당 이경준, 판정과 보고 출력은 Judge/Report 담당 최민준이 관련 경계를 검토한다. 평가 GT는 이동찬의 루트 `eval/`에서 관리하며 제품의 근거·판정·보고 경로에 입력하지 않는다. 첫 구현은 두 계정의 가상 fixture로 보고를 생성하는 Report 단위 경로이며, 이후 실제 Evidence/Judge 결과로 교체해 같은 사례를 검증한다.

@@ -1,6 +1,6 @@
 # S1 착수 상태와 계약 PR 순서
 
-확인 기준: 2026-10-21, [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)의 C1 병합과 [API 상세 규격 v0.6](s1-api-spec.md) 반영 시점. C2 contracts는 로컬 구현·검증을 완료했으며 아직 PR 병합이나 S1 실행 완료를 선언하지 않는다. C1 codec 외의 실제 전송 허가도 선언하지 않는다. 각 팀원의 개인 status.md/plan.md/CLAUDE.md는 이 저장소에 없으므로 여기서 수정하지 않는다.
+확인 기준: 2026-10-21, C1 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)와 C2 [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)의 병합 및 [API 상세 규격 v0.6](s1-api-spec.md) 반영 시점. 공유 계약을 사용하는 독립 개발의 선행조건은 충족됐다. 실제 서비스·영속 journal·S1 실행이나 대상 전송 허가의 완료를 뜻하지 않는다. 현재 담당 배정은 [모듈 개발 가이드](../module-development.md#담당-배정)를 따른다. 각 팀원의 개인 status.md/plan.md/CLAUDE.md는 이 저장소에 없으므로 여기서 수정하지 않는다.
 
 ## 0. 현재 선행조건
 
@@ -9,18 +9,19 @@
 | [PR #8](https://github.com/ABC2LAB/abc2lab-dast/pull/8) | CLOSED, 병합되지 않음 | 기존 실행 관문 타입은 제공되지 않는다. #8 병합을 대기하거나 해당 브랜치를 복원하지 않는다 |
 | [PR #9](https://github.com/ABC2LAB/abc2lab-dast/pull/9) | MERGED, 문서 변경 | v0.3 설계가 main에 들어갔으며 타입·Protocol·fake 구현은 없음 |
 | [PR #10](https://github.com/ABC2LAB/abc2lab-dast/pull/10) | MERGED, PoC·팀 리뷰 설계 보완 | v0.5 문서·미실행 예시·정적 벡터가 main에 반영됨. 자동 생성기·공유 codec 구현 완료가 아님 |
-| contracts 패키지 | C1 병합 완료, C2 타입·Protocol 로컬 검증 완료 | 공통 값·등록·세션·감사·실행 타입, typed fingerprint wrapper, 8개 C2 포트와 무전송 검증 테스트가 로컬에 추가됨. 전체 검증·리뷰·PR 병합 전에는 공유 선행조건으로 표시하지 않음 |
-| [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15) | MERGED, C1 코드·테스트·계약 문서 | `primitive-v1` bytes/SHA-256 검증, 불변 snapshot 및 미등록 운영 record 거부 구현. C2는 현재 후속 로컬 작업 |
+| contracts 패키지 | C1·C2 구현·검증·병합 완료 | 공통 값·등록·세션·감사·실행 타입, typed fingerprint wrapper, 8개 C2 포트와 무전송 소비자 예제 사용 가능 |
+| [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15) | MERGED, C1 코드·테스트·계약 문서 | `primitive-v1` bytes/SHA-256 검증, 불변 snapshot 및 미등록 운영 record 거부 구현 |
+| [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20) | MERGED, C2 실행·세션·감사 계약 | 5개 운영 kind의 typed adapter, 저장 전 내용 타입, 8개 포트·무전송 예제 구현. 실제 서비스와 감사 내구성 구현은 후속 |
 | [PR #14](https://github.com/ABC2LAB/abc2lab-dast/pull/14)·[PR #16](https://github.com/ABC2LAB/abc2lab-dast/pull/16) | MERGED, C3·C4 최소 계약 초안과 리뷰 반영 | capture·Judge 소유 경계의 문서 제안. C2나 C3·C4 구현·벡터·fake가 제공된 것은 아님 |
 
-Policy/Gateway 공개 포트와 그 fake의 공유 선행조건은 **C2 실행 경계 계약 PR의 병합**이다. 현재 브랜치의 C2 로컬 구현은 아직 병합되지 않았으므로 다른 모듈은 PR 병합 전 이를 공유 정본으로 가정하지 않는다. 폐기된 PR #8을 선행조건으로 삼지 않는다. 조건/정규화/예산 등 모듈 내부 순수 로직은 먼저 구현·시험할 수 있다. 공개 계약 대신 임의 Any·dict·서비스별 타입 사본을 만들지 않는다.
+Policy/Gateway 공개 포트와 그 fake의 공유 선행조건인 **C2 실행 경계 계약 PR #20의 병합이 완료됐다.** 각 담당자는 최신 main의 contracts를 사용해 상대 서비스 구현을 기다리지 않고 자기 모듈과 로컬 fake를 개발·시험한다. 폐기된 PR #8을 선행조건으로 삼지 않는다. 공개 계약 대신 임의 Any·dict·서비스별 타입 사본을 만들지 않으며, 추가로 필요한 C3·C4 경계는 작은 계약 PR로 정의한다.
 
 ## 1. 작은 계약 PR로 다시 시작
 
 | 단계 | 이동찬의 제안 범위 | 병합 후 가능한 작업 | 관련 리뷰 |
 |---|---|---|---|
 | C1 fingerprint codec (**MERGED, PR #15**) | [정규 바이트·검증 경로](fingerprint-contract.md#21-정규-바이트와-운영-계약-검증의-분리), stdlib-only canonical codec·demo 저수준 벡터·빈 운영 registry의 거부 검사 구현 완료 | 공통 canonical codec 사용 가능. 운영 record fingerprint 발행은 C2 typed adapter 검증 범위로 이동 | mminjun·31-no3won·sleepingman1222 |
-| C2 실행 경계 | 공통 Ref/RunKey/SourceVersion/상태, PolicyInput/Decision 및 필요한 등록·세션 snapshot, prepare/evaluate/execute·세션 읽기·commit 검증/감사 조회의 최소 Protocol. PolicyDecisionContent/IdentityContent precommit lifecycle, typed wrapper·adapter·운영 벡터와 무전송 예제 포함 | Policy/Gateway가 등록된 타입별 fingerprint와 contracts를 사용하는 병렬 개발·검증 | mminjun·31-no3won·sleepingman1222 |
+| C2 실행 경계 (**MERGED, PR #20**) | 공통 Ref/RunKey/SourceVersion/상태, PolicyInput/Decision 및 필요한 등록·세션 snapshot, prepare/evaluate/execute·세션 읽기·commit 검증/감사 조회의 최소 Protocol. PolicyDecisionContent/IdentityContent precommit lifecycle, typed wrapper·adapter·운영 벡터와 무전송 예제 포함 | Policy/Gateway가 등록된 타입별 fingerprint와 contracts를 사용하는 병렬 개발·검증 | mminjun·31-no3won·sleepingman1222 |
 | C3 로컬 Evidence | capture/seal/compare·캡처 수명·민감값 제거 근거·ComparisonProjected와 저장 receipt, PoC 요청 레시피 | Gateway의 캡처 인계, WebDiag 비교, Evidence 독립 테스트 연결 | 31-no3won·mminjun |
 | C4 발견·투영·보고 | Host/WebDiag의 hints/Candidate 전달과 이벤트·조회, Judge/Report 경계. 실제 소비 경계마다 별도 PR로 분할 | Host/Knowledge와 Judge/Report fake 연결, app에서 한 경계씩 교체 | 31-no3won·mminjun·sleepingman1222 |
 
@@ -28,11 +29,11 @@ C2를 위해 C3/C4의 전체 도메인을 먼저 정의하지 않는다. 아직 
 
 ### 1.1 C2 구현 범위와 검증 경계
 
-현재 C2 브랜치에는 `primitives.py`, `registration.py`, `audit.py`, `session.py`, `execution.py`, `ports.py`와 contracts-owned fingerprint adapter가 있다. 공개 범위는 Gateway `prepare/execute/open_session_context/close_session_context`, Policy `evaluate`, `SessionBindingReader.read_session_binding`, 감사 `verify_committed/read_audit`의 8개 포트다. `tests/test_no_io_pipeline.py`의 fake는 prepare → evaluate → execute 흐름과 block/commit-unknown/send-unknown 보존을 네트워크·브라우저·DB 없이 검증한다. 이 fake는 실제 Gateway/Policy 구현, journal 내구성, 인가 증명 또는 취약점 진단을 대체하지 않는다.
+현재 main에는 `primitives.py`, `registration.py`, `audit.py`, `session.py`, `execution.py`, `ports.py`와 contracts-owned fingerprint adapter가 있다. 공개 범위는 Gateway `prepare/execute/open_session_context/close_session_context`, Policy `evaluate`, `SessionBindingReader.read_session_binding`, 감사 `verify_committed/read_audit`의 8개 포트다. `tests/test_no_io_pipeline.py`의 fake는 prepare → evaluate → execute 흐름과 block/commit-unknown/send-unknown 보존을 네트워크·브라우저·DB 없이 검증한다. 이 fake는 실제 Gateway/Policy 구현, journal 내구성, 인가 증명 또는 취약점 진단을 대체하지 않는다.
 
 PolicyDecisionContent와 IdentityContent는 각각 저장 전 fingerprint를 계산한 뒤 producer commit과 receipt를 거쳐 최종 결과로 조립한다. 최종 결과의 receipt는 consumer가 실제 producer 기록과 재계산·`verify_committed`로 확인한다. 이 결정은 기존 PolicyInput wire version과 C1 golden bytes를 바꾸지 않는다.
 
-RunRegistration은 **app 소유의 내부 등록 집계 타입**으로 `app/src/abc2lab_app/registration.py`에 둘 예정이다. 각 서비스에는 필요한 불변 snapshot·설정만 주입하며 서비스가 app 타입을 import하지 않는다. C1의 `packages/contracts/src/abc2lab_contracts/fingerprint.py`는 이미 구현됐다. C2의 snapshot·요청·반환·Protocol과 업무별 fingerprint adapter는 `packages/contracts/src/abc2lab_contracts/`에 로컬 구현됐고, PR 병합 후 공유 정본이 된다.
+RunRegistration은 **app 소유의 내부 등록 집계 타입**으로 `app/src/abc2lab_app/registration.py`에 둘 예정이다. 각 서비스에는 필요한 불변 snapshot·설정만 주입하며 서비스가 app 타입을 import하지 않는다. C1의 `packages/contracts/src/abc2lab_contracts/fingerprint.py`는 이미 구현됐다. C2의 snapshot·요청·반환·Protocol과 업무별 fingerprint adapter는 `packages/contracts/src/abc2lab_contracts/`의 병합된 공유 계약을 사용한다.
 
 ## 2. 병렬 개발의 고정 책임
 
@@ -53,7 +54,7 @@ C1 코드는 PR #15로 이미 병합됐다. 이번 확인에서는 [codec 구현
 | 정규 바이트 | `primitive-v1` 정확한 UTF-8 bytes·테스트 내 SHA-256, 중첩 키 정렬·tuple 순서·null/생략 구분·UTC 정규화 | 업무 record별 typed wrapper·payload adapter와 운영 벡터 5개는 C2 |
 | 불변 snapshot | 원본 dict·mapping proxy와 참조 분리, 중복 키·순환 입력·가변 값 거부 | 호출자가 snapshot 생성 중 일관된 입력을 제공해야 함 |
 | 입력 거부 | float·NaN·Infinity·list·set·bytes·Decimal·naive datetime·비문자 key·미등록 dataclass/enum·lone surrogate 거부 | 업무별 필드 allowlist·지원 schema/type 검사와 시각 허용 범위는 C2 |
-| 운영 경계 | C1의 빈 고정 registry가 demo·미등록 운영 record를 거부 | C2 typed wrapper·Protocol·운영 fingerprint·무전송 예제는 로컬 검증을 완료했고 PR 병합·S1-01~42 행동 검증은 미완료 |
+| 운영 경계 | C1의 빈 고정 registry가 demo·미등록 운영 record를 거부 | C2 typed wrapper·Protocol·운영 fingerprint·무전송 예제는 PR #20으로 병합. S1-01~42의 실제 서비스 행동 검증은 후속 |
 
 재검증 명령은 다음과 같다. 실제 대상·브라우저·DB 없이 Ruff lint/format, mypy와 contracts 테스트를 격리 실행한다.
 
@@ -82,4 +83,4 @@ uv run --no-project --python 3.13.15 scripts/dev.py check contracts
 
 독립 코드 검토와 아키텍처 검토의 지적을 반영해 감사 수위·cursor/snapshot·실패한 세션의 confirmed 표시를 검증했다. 재검토에서 남은 코드·명세 지적과 아키텍처 차단 사항은 없었다. 이는 팀원의 GitHub 승인 리뷰를 대신하지 않는다.
 
-아직 C2 PR은 병합 전이며, 다른 모듈의 공유 착수 선행조건은 PR 병합이다. 실제 Policy/Gateway/WebDiag·영속 journal·세션/예산 통제·HTTP/DB·C3/C4 및 S1 전체 행동 수용 사례는 후속 검증 범위다. 이번 변경은 의존성·`uv.lock`·기존 고정 벡터 파일을 변경하지 않았다.
+C2는 [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)으로 병합됐다. 각 담당자는 이 계약으로 독립 개발하며 실제 Policy/Gateway/WebDiag·영속 journal·세션/예산 통제·HTTP/DB·C3/C4 및 S1 전체 행동 수용 사례는 후속 검증 범위다. C2 구현은 의존성·`uv.lock`·기존 고정 벡터 파일을 변경하지 않았다.

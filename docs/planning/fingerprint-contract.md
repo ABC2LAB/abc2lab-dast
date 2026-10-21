@@ -1,6 +1,6 @@
 # 결정적 fingerprint 계약 v1
 
-상태: **C1 codec 병합 완료, C2 구현·로컬 검증 완료 / PR 병합 전** ([PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)). C2의 typed wrapper·adapter와 실행 경계 계약 검증 결과·공유 착수 조건은 [착수 상태](s1-development-status.md#4-c2-구현과-검증)를 따른다.
+상태: **C1·C2 구현·병합 완료** ([PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15), [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)). C2의 typed wrapper·adapter와 실행 경계 계약 검증 결과·공유 착수 조건은 [착수 상태](s1-development-status.md#4-c2-구현과-검증)를 따른다.
 
 ## 1. 소유권과 경계
 
@@ -32,7 +32,7 @@ envelope의 codec_version/record_kind/schema_version은 필수 문자열이다. 
 
 운영 registry는 계약 코드에 고정된 immutable tuple 같은 상수다. 상수 조회는 가변 런타임 상태를 만들지 않으므로 무상태 순수 함수 원칙과 양립한다. 런타임 등록 API, 환경 변수, 주입 가능한 registry, 테스트용 override/허용 flag, 미등록 값의 기본 adapter fallback은 제공하지 않는다. 테스트도 운영 registry를 바꾸지 않는다.
 
-C1의 병합 시점 운영 registry는 빈 tuple이었고, 미등록 record는 `_registered_record_fingerprint()`에서 거부됐다. C2 로컬 구현은 정확한 5개 운영 record kind와 7개 exact Python class(content/final 포함)을 typed adapter·고정 벡터와 함께 등록한다. 아래 표에 이름이 있다는 이유로 구현 전 record를 허용하지 않으며, 이후 record도 각 계약 PR에서 같은 절차를 따른다.
+C1의 병합 시점 운영 registry는 빈 tuple이었고, 미등록 record는 `_registered_record_fingerprint()`에서 거부됐다. 병합된 C2는 정확한 5개 운영 record kind와 7개 exact Python class(content/final 포함)을 typed adapter·고정 벡터와 함께 등록한다. 아래 표에 이름이 있다는 이유로 구현 전 record를 허용하지 않으며, 이후 record도 각 계약 PR에서 같은 절차를 따른다.
 
 C2에서는 빈 registry에 항목을 추가하는 것만으로 완료 처리하지 않는다. 현재 내부 골격은 정확한 record 타입과 codec 버전을 확인하고 adapter를 호출하므로, 업무 schema version·필드 집합·PolicyInput 안팎 버전 일치는 typed wrapper/adapter가 명시적으로 검사해야 한다. 누락/추가 필드·subclass·다른 record 재라벨을 거부하는 테스트와 운영 벡터 5개가 함께 통과한 뒤 등록한다. 저수준 bytes를 직접 SHA-256해서 만든 문자열만으로 운영 등록 경로를 통과했다고 판단하지 않는다. 소비자는 typed record에서 다시 계산하고 원본 producer의 receipt도 검증한다.
 
