@@ -133,7 +133,7 @@ uv run --no-project --python 3.13.15 scripts/dev.py check contracts
 
 EvidenceSummary는 감사 영수증 필드를 갖지 않으므로 별도 EvidenceSummaryContent 없이 그 record의 전체 업무 내용을 fingerprint할 수 있다. ComparisonPayload도 이미 영수증 없는 비교 내용이며 별도 ComparisonContent를 만들지 않는다. 저장 receipt는 StoredComparison에, 원본 COMPARISON 감사 receipt는 ComparisonProjected에 결합하고 각 내용을 별도로 검증한다. record 자체 revision이 없는 artifact는 감사 바인딩 revision 1을 사용한다.
 
-후속 구현에서는 evidence.v1/comparison.v1 typed wrapper·정확한 adapter·고정 벡터를 함께 추가한다. **현재 이 두 운영 kind의 구현·registry 등록이 완료된 것은 아니다.** 공유 타입·레시피 자료형·실패/멱등 수명주기의 구체 범위는 [Evidence C3 계약 보완안](evidence-c3-contract.md)을 따른다.
+C3 공유 계약 동결 패치에서는 evidence.v1/comparison.v1 typed wrapper·정확한 adapter·고정 벡터를 함께 추가한다. **서비스의 실제 저장·감사 구현 완료를 뜻하지 않는다.** 공유 타입·레시피 자료형·실패/멱등 수명주기의 구체 범위는 [Evidence C3 동결안](evidence-c3-freeze.md)을 따른다.
 
 ## 4. 고정 벡터와 후속 테스트
 

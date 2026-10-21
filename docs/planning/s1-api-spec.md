@@ -229,7 +229,7 @@ S1 Host는 같은 사례의 A 기준 요청과 B가 A 객체에 수행하는 교
 | WebDiag | collect, http_observe, access_compare, acquire_session, whoami (5) | read_session_binding (1) |
 | Gateway | prepare, execute, open_session_context, close_session_context (4) | — |
 | Policy | evaluate (1) | — |
-| Evidence | seal, compare_and_seal, store_evidence, evidence_read_summary (4) | capture, release_captures (2) |
+| Evidence | seal, compare_and_seal, recover_submission, store_evidence, evidence_read_summary (5) | capture, release_captures (2) |
 | Knowledge | register_candidates, project, get_case_view (3) | — |
 | Judge / Report | judge, build_report (2) | — |
 | 생산자 감사 Protocol | verify_committed, read_audit (2) | — |
@@ -338,11 +338,14 @@ Gateway가 다시 검증한다. Policy 기록이 실제 해당 binding/view의 a
 
 ## 7. Evidence: 실행 전용과 공개 저장
 
+**C3 계약 동결 추가(2026-10-21):** 기존 S1 포트 집계(27개/비동기 24개)는 C3 복구 확장 이전의 기준이다. `recover_submission` 비동기 포트 1개를 추가한 동결 범위는 총 28개/비동기 25개다. 상세 복구·멱등·저장 책임은 [C3 동결안](evidence-c3-freeze.md)을 우선 적용한다. 기존 캡처의 동기/일회용 규칙은 변경하지 않는다.
+
 | 영역 | 시그니처 | 입력/출력 record |
 |---|---|---|
 | 전용: Gateway → 로컬 Evidence | `def capture(CaptureRequest) -> CaptureResult` | 입력 `run_key, attempt_ref, request_ref, operation_ref, resource_ref: Ref?, account_ref: Ref?, session_generation: int?, identity_ref: Ref?, observed_at, executed_request: ExecutedRequestView, raw_response: RawResponse`; 출력 `run_key, status, capture_ref: Ref?, reason_codes` |
 | 전용: WebDiag → 로컬 Evidence | `async def seal(SealRequest) -> SealResult` | 입력 `run_key, submission_ref: Ref, capture_ref, rules: ComparisonRules`; 출력 `run_key, status, evidence: EvidenceSummary?, receipts: tuple[StoreReceipt], reason_codes` |
 | 전용: WebDiag → 로컬 Evidence | `async def compare_and_seal(CompareRequest) -> CompareOutcome` | 입력 `run_key, case_ref, submission_ref, resource_ref, operation_ref, owner_capture_ref, cross_capture_ref, owner_identity: IdentityResult, evaluated_identity: IdentityResult, rules`; 출력 `run_key, status, stored_comparison: StoredComparison?, projection_event: ComparisonProjected?, receipts, reason_codes`. projection_event는 Evidence 원본 감사 commit을 확인한 경우에만 존재 |
+| 전용: WebDiag → 로컬 Evidence | `async def recover_submission(RecoverSubmissionRequest) -> SealResult | CompareOutcome` | 입력 `run_key, submission_ref, kind: EvidenceSubmissionKind(seal/compare)`; 캡처 불포함. 기존 내구 제출·저장·감사 재검증만 수행, 새 대상 전송 금지. C3 동결안 기준 |
 | 공개: 로컬 Evidence → Evidence 저장 서비스 | `async def store_evidence(RedactedBundle) -> StoreOutcome` | 출력 `run_key, status, receipts, reason_codes` |
 | 공개: 읽기 호출자 → Evidence | `async def evidence_read_summary(EvidenceReadRequest) -> EvidenceReadResult` | 입력 `run_key, context: ReadContext, evidence_refs: tuple[Ref], comparison_refs: tuple[Ref]`; 출력 `run_key, status, evidence: tuple[EvidenceSummary], comparisons: tuple[StoredComparison], reason_codes` |
 

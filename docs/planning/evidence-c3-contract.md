@@ -1,6 +1,6 @@
 # Evidence C3 계약 보완안
 
-상태: **설계 보완 / Evidence 자체 source_event는 이동찬 확인, 제공자·소비자 리뷰 대기 (2026-10-21)**. 이경준의 Evidence 소유 경계 제안을 검토해 [S1 상세 규격 §7·§10](s1-api-spec.md)과 [fingerprint 계약](fingerprint-contract.md)에 맞춘다. 이 문서는 후속 `contracts` 구현의 설계이며, 타입·포트·운영 fingerprint 구현 완료를 뜻하지 않는다. 현재 C3-A 캡처 계약은 [별도 구현 범위](c3-c4-contract-draft.md#21-c3-a-캡처-계약-구현--pr-리뷰-대기)를 따른다.
+상태: **공유 계약 동결(2026-10-21, 이동찬 확인) / Evidence 제공자·소비자 코드 리뷰 필요**. 세부 확정안은 [C3 동결안](evidence-c3-freeze.md)을 따른다. 이경준의 Evidence 소유 경계 제안을 검토해 [S1 상세 규격 §7·§10](s1-api-spec.md)과 [fingerprint 계약](fingerprint-contract.md)에 맞춘다. 이는 실제 Evidence 저장·감사 서비스 구현 완료를 뜻하지 않는다.
 
 ## 1. 이번에 고정한 의미
 
@@ -41,7 +41,7 @@ Gateway transport
 |---|---|
 | 공개 근거·비교 자료 | `EvidenceSummary`, `ComparisonSignals`, `ComparisonPayload`, `StoredComparison` |
 | 저장·조회 | `ArtifactKind(evidence/comparison)`, `StoreReceipt`, `RedactedBundle`, `StoreOutcome`, `EvidenceReadRequest`, `EvidenceReadResult` |
-| 로컬 봉인·비교 | `SealRequest`, `SealResult`, `CompareRequest`, `CompareOutcome`와 async `seal`·`compare_and_seal` |
+| 로컬 봉인·비교·복구 | `SealRequest`, `SealResult`, `CompareRequest`, `CompareOutcome`, `RecoverSubmissionRequest`, `EvidenceSubmissionKind`와 async `seal`·`compare_and_seal`·`recover_submission` |
 | 공개 저장·읽기 포트 | async `store_evidence`·`evidence_read_summary` |
 | 원본 비교 이벤트 | `ComparisonProjected`와 실제 Evidence producer의 감사 영수증 바인딩 |
 | 레시피 자료형 | `RecipeParameter`, `RegisteredRequestRecipe` |
