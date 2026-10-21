@@ -1,6 +1,6 @@
-# S1 API 설계 개요 v0.3 — 상대 구현 없이 개발·테스트하기
+# S1 API 설계 개요 v0.4 — 상대 구현 없이 개발·테스트하기
 
-상태: **초기 설계안 / 팀 더블 체크 전**. 이 문서는 흐름·책임·개발 사례를 설명한다. **호출별 필수 필드·상태·수명·D1~D5의 선택안은 [S1 API 상세 규격 v0.3](s1-api-spec.md)를 기준으로 검토한다.** I/O 포트의 async 호출, Host 유한 작업 큐·worker 1개, 취소/timeout과 동시성 계약을 포함한다. 구현된 API·준비된 fake·팀 합의를 의미하지 않으며 `contracts` 구현을 복원하지 않는다.
+상태: **초기 설계안 / 팀 더블 체크 전**. 이 문서는 흐름·책임·개발 사례를 설명한다. **호출별 필수 필드·상태·수명·D1~D5의 선택안은 [S1 API 상세 규격 v0.4](s1-api-spec.md)를 기준으로 검토한다.** I/O 비동기 실행과 [PoC 포함 보고서](poc-report-design.md)의 요청 레시피·근거 연결·재실행 구분을 포함한다. 구현된 API·준비된 fake·팀 합의를 의미하지 않으며 `contracts` 구현을 복원하지 않는다.
 
 목표: **상대 모듈의 완성을 기다리지 않고도 내 모듈을 개발·테스트할 수 있게 한다.** 제공자와 소비자는 아래의 작은 경계와 사례를 함께 검토한다. 모듈 내부 모델·저장 구조·클래스 구성은 각 담당자가 소유한다.
 
@@ -170,7 +170,7 @@ S1은 `store_memory`로 테스트한다. 다른 서비스의 작업/정책/근�
 | API 제안 | 최소 입력 | 결과·실패 의미 |
 |---|---|---|
 | `async def judge(request: JudgeRequest) -> JudgeResult` | 실행 키·사례 참조·등록 기대 접근 정책 snapshot 또는 부재·A/B 주체 확인·저장 완료 비교 참조 | `Verdict` 또는 판정 자체의 처리 실패. Verdict는 `CONFIRMED/SUSPECTED/UNDECIDABLE`·조건·근거·버전·사유·revision |
-| `async def build_report(request: ReportInput) -> ReportResult` | 실행 키·관찰/판정/작업 요약·생산자별 기대 기록. 감사 페이지는 주입된 읽기 포트로 조회 | DiagnosisReport 또는 생성 실패. 제한·전송 불명·감사 완전성을 보존 |
+| `async def build_report(request: ReportInput) -> ReportResult` | 실행 키·관찰/판정/작업 요약·생산자별 기대 기록. 근거/요청 레시피·감사는 주입된 읽기 포트로 조회 | DiagnosisReport와 PoC 상태/절차 또는 생성 실패. Report는 재전송 없이 제한·전송 불명·감사 완전성을 보존 |
 | `async def read_audit(request: AuditReadRequest) -> AuditPage` | 실행 키·호출자 권한·producer/cursor·유한 반환 상한 | 각 생산자의 허용 이벤트·순번·연결 참조·다음 cursor·완전성/실패. 각 소유 서비스가 제공 |
 
 Host가 작업을 조정하고 `app`이 Judge/Report가 소비할 읽기 포트를 주입한다. Report가 타 서비스 DB를 읽지 않는다. 감사는 기대 request/event ID와 실제 연결을 비교한다. A·B가 필요한데 A·A 두 건이 있는 경우를 완료로 처리하지 않는다. 생산자별 저장 내구성과 조회 snapshot을 확인하지 못하면 감사 완전성은 unknown이다.
@@ -289,6 +289,8 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 모듈 첫 PR의 완료 조건: 문서의 적용 case ID 명시, 소비하는 로컬 fake/fixture, 해당 `check <module>` 통과, 다른 서비스 구현 import 없음. fake는 구조적 Protocol 검사와 행동 사례를 모두 확인한다. 구조적 타입 적합성만으로 인가·내구성·실제 네트워크 통제를 증명하지 않는다.
 
 초기 통합은 `app/tests/`에서 모든 상대를 fake로 조립해 위 상태/근거 연결을 확인한다. 이후 한 모듈씩 실제 구현으로 교체해 같은 사례를 반복한다. 실제 네트워크·저장 통합은 `integration` marker와 별도 준비/실행 방법을 갖춘다. 기본 pytest는 integration을 제외한다.
+
+상세 규격의 추가 사례 S1-14~28과 [PoC 사례 S1-29~36](poc-report-design.md#6-예시와-구현-검증)도 해당 구현 PR에서 검증한다. PoC는 원 실행의 레시피·근거를 설명하며 S1 별도 재실행 상태는 not_run이다. [가상 예시 보고서](../examples/s1-poc-report.example.md)를 실제 발견/검증 결과로 사용하지 않는다.
 
 ## 10. 선택한 초기 설계와 팀 리뷰
 
