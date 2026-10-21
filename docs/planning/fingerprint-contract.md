@@ -43,6 +43,8 @@ C1에는 운영 record 등록 항목이 없다. 공통 canonical codec과 등록
 - `str`, `bool`, `None`, signed 64-bit 범위의 `int`를 허용한다. `bool`은 `int`보다 먼저 판정한다.
 - tuple은 순서를 보존한 JSON array로 변환한다. tuple의 원소도 같은 폐쇄 규칙을 따른다.
 - 도메인 계약에 명시된 immutable/snapshotted mapping만 허용한다. key는 문자열이어야 하며 재귀 값은 폐쇄 규칙을 따른다. 임의 mapping을 모든 도메인 타입의 빈칸으로 사용하지 않는다.
+- C1의 `freeze_object()`는 정확한 `dict` 또는 `MappingProxyType`을 입력받아 중첩 매핑·tuple을 재귀적으로 복사하고, 외부 매핑에 대한 참조를 보관하지 않는 불변 `CanonicalObject`로 고정한다. 직접 생성하는 `CanonicalObject`의 `entries`도 tuple·문자열 키·중복 키 없음·폐쇄형 값 규칙을 검증한다. 저수준 `canonical_json_bytes()`는 원본 dict·mapping proxy를 직접 인코딩하지 않고 이미 고정된 `CanonicalValue`만 받는다.
+- 스냅샷 생성 도중 생산자는 변경되지 않는 일관된 입력을 제공해야 한다. 스냅샷 생성 후의 원본 수정은 결과를 바꾸지 않지만, frozen 객체에 대한 의도적인 런타임 우회 조작까지 막는 보안 경계는 아니다. C2의 업무별 typed adapter가 필드 allowlist·민감값 제거·업무 버전을 검증한 뒤 필요한 스냅샷을 구성한다.
 - `SourceVersion`은 특별한 순서 규칙을 갖지 않는 일반 nested object다. `issuer`, `source_ref`, `revision` 세 필드를 모두 직렬화하고, 다른 object와 동일하게 code point 기준 key 정렬을 적용한다.
 - timezone-aware `datetime`은 UTC로 변환해 항상 `YYYY-MM-DDTHH:MM:SS.ffffffZ`로 쓴다. naive datetime은 거부한다.
 
