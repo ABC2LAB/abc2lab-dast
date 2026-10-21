@@ -1,17 +1,17 @@
 # C3·C4 최소 계약 초안 (gateway/judge 소유 범위)
 
-상태: **제안 / 이동찬 리뷰 반영 (2026-10-21)**. 작성 최민준(gateway·judge·policy). 이동찬이 [C1·C2](s1-development-status.md#1-작은-계약-pr로-다시-시작)를 구현하는 동안 병렬로 C3·C4의 **최소 타입·Protocol**을 제안한다. 구현·벡터·fake는 포함하지 않는다. 이 초안은 [S1 API 상세 규격 v0.5](s1-api-spec.md)와 [PoC 보고서 계약](poc-report-design.md)의 필드를 구현 가능한 Protocol 경계로 좁힌 것이며, 상위 두 문서가 충돌 시 우선한다.
+상태: **제안 / 이동찬 리뷰 반영 (2026-10-21)**. 작성 최민준. [C1·C2](s1-development-status.md#1-작은-계약-pr로-다시-시작)와 병렬로 제안한 C3·C4의 **최소 타입·Protocol** 초안이다. 구현·벡터·fake는 포함하지 않는다. 이 초안은 [S1 API 상세 규격](s1-api-spec.md)과 [PoC 보고서 계약](poc-report-design.md)의 필드를 구현 가능한 Protocol 경계로 좁힌 것이며, 상위 두 문서가 충돌 시 우선한다. 현재 담당은 [배정표](../module-development.md#담당-배정)를 따른다.
 
 ## 1. 범위와 선행 의존
 
-이 초안이 다루는 것은 내가 **직접 호출·구현**하는 경계뿐이다. 경계 반대편은 해당 담당자가 제안한다.
+이 초안은 Gateway의 capture 소비 경계와 Judge의 제공 경계를 다룬다. Evidence 제공·Knowledge·Host·Report 경계는 아래 담당자가 별도 계약 PR로 제안한다. 최민준이 Report도 맡지만, Report 계약은 이 초안의 Judge 계약과 별도 작업으로 유지한다.
 
-| 계약 | 이 초안의 범위(최민준) | 다른 담당 소유(별도 제안) |
+| 계약 | 이 초안의 범위(최민준) | 후속 별도 계약과 현재 담당 |
 |---|---|---|
-| C3 로컬 Evidence | Gateway→로컬 Evidence `capture` 포트, `ExecutedRequestView`, 실행 전용 `RawResponse` | `seal`/`compare_and_seal`/`store_evidence`/`evidence_read_summary`, `EvidenceSummary.request_recipe`, 레시피 생성 — 윤재상 |
-| C4 발견·투영·보고 | Judge `judge` 포트, `JudgeRequest`/`JudgeResult`/`Verdict`/`VerdictProjected` | `register_candidates`/`project`/`get_case_view`·Host 조립·`build_report` — 이동찬·이경준·윤재상 |
+| C3 로컬 Evidence | Gateway→로컬 Evidence `capture` 포트, `ExecutedRequestView`, 실행 전용 `RawResponse` | Evidence의 `seal`/`compare_and_seal`/`store_evidence`/`evidence_read_summary`, `EvidenceSummary.request_recipe`, 레시피 생성 — 이경준 |
+| C4 발견·투영·보고 | Judge `judge` 포트, `JudgeRequest`/`JudgeResult`/`Verdict`/`VerdictProjected` | Knowledge의 `register_candidates`/`project`/`get_case_view` — 이동찬; Host 조립 — 이경준; Report의 `build_report` — 최민준 |
 
-**선행:** C1 codec과 C2 타입(`Ref`, `Revision`, `RunKey`, `UtcTime`, `Purpose`, `ResultStatus`, `ReasonCode`, `CheckState`, `SourceVersion`, `AuditLink`, `IdentityResult`, `ExpectedAccessPolicySnapshot`, `ComparisonRules`, `RequestParameter`)가 선행이다. 아래 record는 그 타입을 재사용하며 **임의 dict·`Any`·서비스별 사본을 만들지 않는다**. C2 병합 시 타입 이름·경로를 거기에 맞춘다. fingerprint payload는 [공유 codec](fingerprint-contract.md#3-record별-payload)의 record별 adapter를 따르고, 새 record(`Verdict` 등)는 해당 계약 PR에서 typed wrapper·벡터를 추가한다. C1 codec은 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)로 main 병합 완료, C2는 선행 계약 진행 중이다.
+**선행:** C1 codec과 C2 타입(`Ref`, `Revision`, `RunKey`, `UtcTime`, `Purpose`, `ResultStatus`, `ReasonCode`, `CheckState`, `SourceVersion`, `AuditLink`, `IdentityResult`, `ExpectedAccessPolicySnapshot`, `ComparisonRules`, `RequestParameter`)가 선행이다. 아래 record는 그 타입을 재사용하며 **임의 dict·`Any`·서비스별 사본을 만들지 않는다**. 타입 이름·경로는 병합된 C2 계약을 따른다. fingerprint payload는 [공유 codec](fingerprint-contract.md#3-record별-payload)의 record별 adapter를 따르고, 새 record(`Verdict` 등)는 해당 계약 PR에서 typed wrapper·벡터를 추가한다. C1은 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15), C2는 [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)으로 main에 병합됐다. C3·C4 자체의 구현 완료를 뜻하지 않는다.
 
 ## 2. C3 — Gateway → 로컬 Evidence `capture` 경계
 
@@ -38,7 +38,7 @@ class LocalCapturePort(Protocol):
 - 지원 객체 GET의 경로·파라미터·자원 바인딩이 등록과 불일치 → `capture_binding_mismatch`
 - 응답이 한도(1 MiB) 초과·파싱 실패 → `response_limit_exceeded`/`capture_unavailable` (전송은 `sent/unavailable`로 보존)
 
-**소유권·수명(§7, 이동찬 리뷰 B):** `active -> released/expired`. 60초 TTL, 캡처당 1 MiB, run당 active 8개(§11 한도 재사용). `release_captures` 반복 호출은 멱등. 원문 버퍼·캡처 핸들·HMAC 키를 하위 API·로그·결과에 넣지 않는다. 동기 capture는 바인딩·한도 검증과 소유권 인계만 하고, 민감값 제거·데이터 분석은 비동기 seal(윤재상)의 책임이다.
+**소유권·수명(§7, 이동찬 리뷰 B):** `active -> released/expired`. 60초 TTL, 캡처당 1 MiB, run당 active 8개(§11 한도 재사용). `release_captures` 반복 호출은 멱등. 원문 버퍼·캡처 핸들·HMAC 키를 하위 API·로그·결과에 넣지 않는다. 동기 capture는 바인딩·한도 검증과 소유권 인계만 하고, 민감값 제거·데이터 분석은 비동기 seal(Evidence·이경준)의 책임이다.
 
 `bytes`/`str`는 불변이라 '즉시 해제'는 메모리 내용의 물리적 소거가 아니라 **참조·핸들 수명 관리**를 뜻한다. 다음으로 정의한다.
 
@@ -104,7 +104,7 @@ class JudgePort(Protocol):
 | 질문 | 결정 |
 |---|---|
 | 1. `RawResponse`를 `contracts`에 두는가 | **조건부 허용.** 실행 전용 private 타입·Protocol로 `contracts`에 정의하되, 공개 직렬화·로그·MCP·fingerprint 입력으로 노출하지 않는 경계를 명시(§2). 핵심은 타입 정의 자체가 아니라 실제 값 접근·전달 경로의 제한이다(`module-design-confirmed.md §3`) |
-| 2. C3를 capture만으로 여는가 | **분리.** Gateway→Evidence `capture` 계약 PR과 윤재상의 seal/compare 구현 PR을 분리하고, 연결은 후속 통합 테스트에서 검증 |
+| 2. C3를 capture만으로 여는가 | **분리.** Gateway→Evidence `capture` 계약 PR과 Evidence의 seal/compare 구현 PR을 분리하고, 연결은 후속 통합 테스트에서 검증. 현재 Evidence 담당은 이경준이며 [재배정 기록](../module-development.md#담당-재배정-2026-10-21)을 따른다 |
 | 3. `Verdict` registry 등록 시점 | C2 머지 후 **C4 Judge 경계 PR**에서 typed wrapper·adapter·golden vector를 함께 등록 |
 | 4. 타입 경로·이름 | C2가 먼저 확정한 공통 타입을 재사용. C3/C4에서 중복 타입을 만들지 않음 |
 

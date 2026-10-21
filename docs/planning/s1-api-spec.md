@@ -528,10 +528,10 @@ v0.5의 후속 검증 요구사항은 다음과 같다. 실제 테스트가 이�
 
 ## 12. 계약 PR과 팀 검토
 
-1. **폐기된 PR #8 대신 단계별 실행 경계 계약 PR:** [착수 상태](s1-development-status.md)에 따라 C1(codec+`primitive-v1` 저수준 검증)은 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)로 병합됐다. 다음 C2(최소 실행 타입/포트·운영 fingerprint adapter)는 이동찬이 제안하고 소비자가 검토한다. PolicyInput/PolicyDecision/등록·세션 snapshot과 그 전이적 타입만 정의한다. Policy/Gateway의 공개 fake는 C2 병합을 선행조건으로 삼고 순수 내부 로직은 먼저 개발할 수 있다. 원문 Evidence/PoC·Graph/Report 계약은 별도 후속 PR이며 contracts 전체 완성을 기다리지 않는다.
+1. **폐기된 PR #8 대신 단계별 실행 경계 계약 PR:** [착수 상태](s1-development-status.md)에 따라 C1(codec+`primitive-v1` 저수준 검증)은 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15), C2(최소 실행 타입/포트·운영 fingerprint adapter)는 [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)으로 병합됐다. Policy/Gateway는 공유 계약을 사용하는 무전송 fake 개발에 착수할 수 있다. 원문 Evidence/PoC·Graph/Report 계약은 별도 후속 PR이며 contracts 전체 완성을 기다리지 않는다.
 2. **모듈별 독립 개발:** 이동찬은 contracts/app/Knowledge와 eval, 최민준은 Policy/Gateway/Judge/Report, 이경준은 WebDiag/Host/Evidence와 P2 reasoner를 담당한다. 각자의 fake는 자체 tests/fakes에 두고 동일한 필드/상태와 case ID를 사용하며 다른 모듈 구현을 복제하지 않는다.
 3. **항목별 교체:** app의 네트워크 없는 경로에서 먼저 한 사례의 run/request/attempt/policy/evidence/verdict를 연결한 다음 실제 모듈로 하나씩 교체한다. 실제 영속화/HTTP 검증은 integration 환경에서 수행한다.
 
 팀 double check에서는 먼저 세 가지만 확인하면 된다. **내 입력이 충분한가? 내 출력은 독립적으로 만들 수 있는가? 나열한 실패를 fake로 재현할 수 있는가?** 필드/상태 수정은 이 문서와 해당 소계약 PR에 기록하고 영향을 받는 소비자도 함께 검토한다. 실제 대상 통신은 여전히 [교차 실행 단일 관문 D-0](module-design-confirmed.md#13-열린-결정-착수-전중-팀이-잠글-것)의 제약을 받는다.
 
-현재 S1 API·서비스 fake·영속 journal과 해당 실행 수용 사례는 **검토 가능한 설계 사양** 단계다. C1 저수준 codec은 PR #15에서 구현됐고 C2 contracts는 로컬 브랜치에서 구현·검증을 완료했고 PR 병합 전이다. [C1 공개 API](fingerprint-contract.md#22-c1-공개-api와-사용), [C2 lifecycle](fingerprint-contract.md#31-c2-precommit-내용과-최종-결과의-lifecycle), [재검증 범위](s1-development-status.md#3-c1-구현-확인과-재검증)를 참조한다. 이 부분의 테스트 통과가 나머지 실행 경계나 보안 검증 완료를 의미하지 않는다.
+전체 S1 서비스 API·서비스 fake·영속 journal과 해당 실행 수용 사례는 **검토 가능한 설계 사양** 단계다. C1 저수준 codec과 C2 contracts·무전송 소비자 예제는 각각 PR #15·#20으로 구현·검증·병합됐다. [C1 공개 API](fingerprint-contract.md#22-c1-공개-api와-사용), [C2 lifecycle](fingerprint-contract.md#31-c2-precommit-내용과-최종-결과의-lifecycle), [재검증 범위](s1-development-status.md#4-c2-구현과-검증)를 참조한다. 계약 테스트 통과가 실제 서비스·감사 내구성·인가 검증의 완료를 의미하지 않는다.

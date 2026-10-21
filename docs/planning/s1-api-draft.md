@@ -1,6 +1,6 @@
 # S1 API 설계 개요 v0.5 — 상대 구현 없이 개발·테스트하기
 
-상태: **초기 설계안 / 팀 리뷰 반영 중**. 이 문서는 흐름·책임·개발 사례를 설명한다. **호출별 필수 필드·상태·수명·D1~D7의 선택안은 [S1 API 상세 규격 v0.5](s1-api-spec.md)를 기준으로 검토한다.** I/O 비동기 실행, [PoC 포함 보고서](poc-report-design.md), [공유 fingerprint](fingerprint-contract.md)와 [수정된 계약 PR 선행조건](s1-development-status.md)을 포함한다. 구현된 API·준비된 fake·최종 팀 합의를 의미하지 않으며 폐기된 contracts 구현을 복원하지 않는다.
+상태: **초기 설계안 / 팀 리뷰 반영 중**. 이 문서는 흐름·책임·개발 사례를 설명한다. **호출별 필수 필드·상태·수명·D1~D7의 선택안은 [S1 API 상세 규격](s1-api-spec.md)를 기준으로 검토한다.** I/O 비동기 실행, [PoC 포함 보고서](poc-report-design.md), [공유 fingerprint](fingerprint-contract.md)와 [계약 PR 선행조건](s1-development-status.md)을 포함한다. C1·C2 공유 계약은 병합됐으며, 전체 서비스 API·서비스 fake·S1 수용 사례와 최종 팀 합의의 완료를 의미하지 않는다.
 
 목표: **상대 모듈의 완성을 기다리지 않고도 내 모듈을 개발·테스트할 수 있게 한다.** 제공자와 소비자는 아래의 작은 경계와 사례를 함께 검토한다. 모듈 내부 모델·저장 구조·클래스 구성은 각 담당자가 소유한다.
 
@@ -300,8 +300,8 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 |---|---|---|---|
 | D1 요청 준비·바인딩 | Gateway 소유 불변 요청/view·15초·단일 소비, Policy에 값 전달·fingerprint 대조 | 최민준·이경준 | 가상 binding/핸들의 변조·위조·만료·중복 소비를 무전송으로 검증 |
 | D2 기대 정책 등록/공급 | 신뢰된 등록 입력을 app이 검증, 구체 A/B·객체·동작의 불변 snapshot 주입 | 이동찬·최민준·이경준 | 정책 부재/만료·예외 불명을 보존. 관찰/GT에서 정책 생성 금지 |
-| D3 세션·캡처 lifecycle | WebDiag 상태/generation, Gateway 통신 context, Evidence 캡처 단독 소유. TTL/복구/정리 필드 명시 | 이경준·최민준·윤재상 | 주체 불일치·구세대·복구 충돌·실패 정리를 fake clock으로 검증 |
-| D4 전송 전 감사 | producer별 journal + verify_committed. Policy 결정/Gateway intent 둘 다 실제 commit 확인 | 최민준·윤재상·이동찬 | 위조 receipt/조회 실패는 무전송. 실제 내구성은 통합에서 별도 검증 |
+| D3 세션·캡처 lifecycle | WebDiag 상태/generation, Gateway 통신 context, Evidence 캡처 단독 소유. TTL/복구/정리 필드 명시 | 이경준·최민준 | 주체 불일치·구세대·복구 충돌·실패 정리를 fake clock으로 검증 |
+| D4 전송 전 감사 | producer별 journal + verify_committed. Policy 결정/Gateway intent 둘 다 실제 commit 확인 | 최민준·이경준·이동찬 | 위조 receipt/조회 실패는 무전송. 실제 내구성은 통합에서 별도 검증 |
 | D5 최소 타입·비동기 실행 | I/O 포트 async·계산/메모리 인계 sync, 유한 큐·S1 worker 1개·취소/timeout·동시성 상한. 필수 필드·None·enum·사유 코드와 경계별 작은 계약 PR | 전원 | async fake와 Event로 경합 검증, 취소 후 전송 상태 보존. status/send_status/verdict 혼합 금지 |
 | D6 fingerprint 소유권 | contracts의 stdlib-only 무상태 codec·명시적 payload·고정 벡터. 문서 판번호와 wire version 분리 | 전원 | 같은 PolicyInput은 동일 bytes/digest, 한 업무 필드 변경은 다른 digest, 임의 receipt 필터 금지 |
 | D7 Knowledge 호출 조정 | Host가 후보 등록/조회/revision 검사와 원본 producer 이벤트의 project를 조정 | 이동찬·이경준 | WebDiag의 Knowledge 의존 0개, Host가 producer를 바꾸지 않음, deferred 재투영에 대상 재전송 0건 |
@@ -310,7 +310,7 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 
 ## 11. 병렬 착수·검증 순서
 
-1. **경계 리뷰·새 계약 PR:** 각 담당자가 §5에서 제공/소비 API와 §9 case ID를 표시하고 D1–D7 제안을 검토한다. PM이 변경 기록을 남긴다. [착수 상태](s1-development-status.md)에 따라 C1 codec은 PR #15로 병합됐으며, 다음 C2 실행 경계 계약을 구현·병합하고 필요한 경계별 작은 계약 PR로 연결한다. CLOSED/unmerged PR #8은 선행조건이 아니다.
+1. **경계 리뷰·새 계약 PR:** 각 담당자가 §5에서 제공/소비 API와 §9 case ID를 표시하고 D1–D7 제안을 검토한다. PM이 변경 기록을 남긴다. [착수 상태](s1-development-status.md)에 따라 C1 codec은 PR #15, C2 실행 경계 계약은 PR #20으로 병합됐다. 각 담당자는 이 공유 계약으로 독립 개발하고 추가로 필요한 C3·C4 경계를 작은 계약 PR로 연결한다. CLOSED/unmerged PR #8은 선행조건이 아니다.
 2. **독립 구현:** §8의 첫 PR을 병렬 진행한다. I/O fake도 async def로 구현하고 순수 로직은 동기로 시험한다. 기존 S1-01~20과 상세 규격의 비동기 사례 S1-21~28을 Event·fake clock으로 검증한다. `uv run --no-project --python 3.13.15 scripts/dev.py check <module>`을 실행하며 구현 간 내부 import를 추가하지 않는다.
 3. **초기 조립:** 이동찬이 `app/tests/`에서 실제 외부 통신 없는 fake 시나리오를 조립한다. fake Gateway의 허용 시도 기록 1건은 실제 HTTP 전송 1건을 뜻하지 않는다. 실제 모듈 교체 때 제공자·소비자의 동일 case ID 결과를 비교한다. 전체 검사는 `check all`을 사용한다.
 4. **실제 통합:** 필요한 실행 허가·역할 분리·내구 감사·인증/예산·비밀 보호·실제 전송 통제를 검증한 경로만 테스트 앱에 연결한다. 실제 통합 통과를 fake 테스트와 구분한다.
