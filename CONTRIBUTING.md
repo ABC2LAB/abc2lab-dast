@@ -8,6 +8,20 @@
 
 이름·구조·예외·로그 등 공통 기준은 이 문서의 [공통 코딩 규칙](#공통-코딩-규칙)을 따릅니다. 개인 AI 하네스는 각자의 로컬에서 관리합니다.
 
+## 공유 문서 작성
+
+팀원에게 적용되는 결정·규칙·설계는 Git으로 공유되는 아래 Markdown 문서에 기록합니다. `AGENTS.md`는 개인 로컬 하네스이므로 팀 공유 변경의 기록 위치로 사용하지 않습니다.
+
+| 내용 | 기록 위치 |
+|---|---|
+| 협업·브랜치·PR·공통 코딩 규칙 | 이 문서 |
+| 설치·검사·실행 환경 | [개발 환경 안내](docs/development.md) |
+| 담당 배정·모듈별 개발 방법 | [모듈 개발 가이드](docs/module-development.md) |
+| 아키텍처·책임 경계·API·기능별 계약 | [아키텍처](docs/planning/mcp-architecture.md)·[모듈 설계](docs/planning/module-design-confirmed.md)·[S1 API](docs/planning/s1-api-spec.md) 등 docs/planning/의 해당 문서 |
+| 현재 착수 조건·계약 PR 순서 | [S1 착수 상태](docs/planning/s1-development-status.md) |
+
+새 결정은 관련 공유 문서를 같은 PR에서 갱신하고, README나 개발 가이드에는 해당 문서로 연결합니다. 같은 규칙을 여러 문서에 복사하기보다 한 곳에 정의하고 링크로 참조합니다. 개인 하네스에만 적힌 내용을 팀 합의나 공유 규칙으로 간주하지 않습니다.
+
 ## 시작
 
 ```bash
