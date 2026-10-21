@@ -1,6 +1,6 @@
 # S1 API 설계 개요 v0.5 — 상대 구현 없이 개발·테스트하기
 
-상태: **초기 설계안 / 팀 리뷰 반영 중**. 이 문서는 흐름·책임·개발 사례를 설명한다. **호출별 필수 필드·상태·수명·D1~D7의 선택안은 [S1 API 상세 규격 v0.5](s1-api-spec.md)를 기준으로 검토한다.** I/O 비동기 실행, [PoC 포함 보고서](poc-report-design.md), [공유 fingerprint](fingerprint-contract.md)와 [수정된 계약 PR 선행조건](s1-development-status.md)을 포함한다. 구현된 API·준비된 fake·최종 팀 합의를 의미하지 않으며 폐기된 contracts 구현을 복원하지 않는다.
+상태: **초기 설계안 / 팀 리뷰 반영 중**. 이 문서는 흐름·책임·개발 사례를 설명한다. **호출별 필수 필드·상태·수명·D1~D7의 선택안은 [S1 API 상세 규격](s1-api-spec.md)를 기준으로 검토한다.** I/O 비동기 실행, [PoC 포함 보고서](poc-report-design.md), [공유 fingerprint](fingerprint-contract.md)와 [계약 PR 선행조건](s1-development-status.md)을 포함한다. C1·C2 공유 계약은 병합됐으며, 전체 서비스 API·서비스 fake·S1 수용 사례와 최종 팀 합의의 완료를 의미하지 않는다.
 
 목표: **상대 모듈의 완성을 기다리지 않고도 내 모듈을 개발·테스트할 수 있게 한다.** 제공자와 소비자는 아래의 작은 경계와 사례를 함께 검토한다. 모듈 내부 모델·저장 구조·클래스 구성은 각 담당자가 소유한다.
 
@@ -258,12 +258,11 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 
 | 담당 | 첫 구현 범위 | 자기 테스트에 둘 fake | API 검토 상대 |
 |---|---|---|---|
-| 이동찬 | C1 공유 codec → C2 최소 실행 계약 PR. Knowledge 메모리와 app 조립은 필요한 경계별 별도 PR | Evidence 읽기/저장 receipt, WebDiag 결과, Judge 판정, producer 감사 페이지 | 이경준·윤재상·최민준 |
-| 최민준 | Policy 기본 거부·Gateway prepare/execute 경계와 무전송 transport. Judge 순수 오라클은 같은 담당의 별도 작은 PR | 설정/취소 provider, 감사 journal, 세션, 로컬 Evidence. Judge에는 저장된 비교·정책·주체 fixture | 이경준·윤재상·이동찬 |
-| 이경준 | WebDiag 단일 seed/HTTP 관찰·A/B 주체 확인·비교 조정. Host 작업 계획/중지는 별도 작은 PR | WebDiag에는 Gateway/Policy/로컬 Evidence. Host에는 WebDiag/Knowledge/Judge/Report fake | 최민준·윤재상·이동찬 |
-| 윤재상 | Evidence 로컬 캡처/비교·공개 저장의 실패 주입. Report 집계·eval 평가기는 각각 별도 작은 PR | 공개 저장 실패, 주입 정규화 규칙/canary, 생산자 감사·판정·관찰 요약 | 최민준·이경준·이동찬 |
+| 이동찬 | C1 공유 codec → C2 최소 실행 계약 PR. Knowledge 메모리·app 조립·eval 평가기는 필요한 경계별 별도 PR | Evidence 읽기/저장 receipt, WebDiag 결과, Judge 판정, producer 감사 페이지 | 이경준·최민준 |
+| 최민준 | Policy 기본 거부·Gateway prepare/execute 경계와 무전송 transport. Judge 순수 오라클·Report 집계는 별도 작은 PR | 설정/취소 provider, 감사 journal, 세션, 로컬 Evidence. Judge에는 저장된 비교·정책·주체 fixture | 이경준·이동찬 |
+| 이경준 | WebDiag 단일 seed/HTTP 관찰·A/B 주체 확인·비교 조정. Host 작업 계획/중지와 Evidence 로컬 캡처·저장은 별도 작은 PR | WebDiag에는 Gateway/Policy/로컬 Evidence. Host에는 WebDiag/Knowledge/Judge/Report, Evidence에는 저장 실패·등록 규칙 fake | 최민준·이동찬 |
 
-한 사람의 전체 담당 패키지를 한 PR에 넣지 않는다. 정규화 규칙·canary 초안은 최민준이 정의하고 윤재상이 그 입력으로 Evidence를 테스트한다. 이경준은 최민준의 실제 Gateway를 기다리지 않고 같은 결과 의미의 fake를 사용한다. 이동찬은 각 fake를 조립해 호출 연결을 먼저 확인한다. 일정과 실제 착수 지시는 PM이 팀과 조율한다.
+한 사람의 전체 담당 패키지를 한 PR에 넣지 않는다. 정규화 규칙·canary 초안은 최민준이 정의하고 이경준이 그 입력으로 Evidence를 테스트한다. 이경준은 최민준의 실제 Gateway를 기다리지 않고 같은 결과 의미의 fake를 사용한다. 이동찬은 각 fake를 조립해 호출 연결을 먼저 확인한다. 담당 배정의 정본은 [모듈 개발 가이드](../module-development.md#담당-배정)다. 일정과 실제 착수 지시는 PM이 팀과 조율한다.
 
 `eval/`의 정답은 평가기만 읽는다. 모듈의 로컬 테스트 fixture와 예시 응답은 허구의 입력/예상 출력이며 제품 입력에 `expected_verdict`나 평가 label을 넣지 않는다. `eval/` 하네스 추가 시 별도 실행 명령·CI 수집을 정의한다. 현재 `check eval`은 없다. ([평가 영역](../../eval/README.md))
 
@@ -301,8 +300,8 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 |---|---|---|---|
 | D1 요청 준비·바인딩 | Gateway 소유 불변 요청/view·15초·단일 소비, Policy에 값 전달·fingerprint 대조 | 최민준·이경준 | 가상 binding/핸들의 변조·위조·만료·중복 소비를 무전송으로 검증 |
 | D2 기대 정책 등록/공급 | 신뢰된 등록 입력을 app이 검증, 구체 A/B·객체·동작의 불변 snapshot 주입 | 이동찬·최민준·이경준 | 정책 부재/만료·예외 불명을 보존. 관찰/GT에서 정책 생성 금지 |
-| D3 세션·캡처 lifecycle | WebDiag 상태/generation, Gateway 통신 context, Evidence 캡처 단독 소유. TTL/복구/정리 필드 명시 | 이경준·최민준·윤재상 | 주체 불일치·구세대·복구 충돌·실패 정리를 fake clock으로 검증 |
-| D4 전송 전 감사 | producer별 journal + verify_committed. Policy 결정/Gateway intent 둘 다 실제 commit 확인 | 최민준·윤재상·이동찬 | 위조 receipt/조회 실패는 무전송. 실제 내구성은 통합에서 별도 검증 |
+| D3 세션·캡처 lifecycle | WebDiag 상태/generation, Gateway 통신 context, Evidence 캡처 단독 소유. TTL/복구/정리 필드 명시 | 이경준·최민준 | 주체 불일치·구세대·복구 충돌·실패 정리를 fake clock으로 검증 |
+| D4 전송 전 감사 | producer별 journal + verify_committed. Policy 결정/Gateway intent 둘 다 실제 commit 확인 | 최민준·이경준·이동찬 | 위조 receipt/조회 실패는 무전송. 실제 내구성은 통합에서 별도 검증 |
 | D5 최소 타입·비동기 실행 | I/O 포트 async·계산/메모리 인계 sync, 유한 큐·S1 worker 1개·취소/timeout·동시성 상한. 필수 필드·None·enum·사유 코드와 경계별 작은 계약 PR | 전원 | async fake와 Event로 경합 검증, 취소 후 전송 상태 보존. status/send_status/verdict 혼합 금지 |
 | D6 fingerprint 소유권 | contracts의 stdlib-only 무상태 codec·명시적 payload·고정 벡터. 문서 판번호와 wire version 분리 | 전원 | 같은 PolicyInput은 동일 bytes/digest, 한 업무 필드 변경은 다른 digest, 임의 receipt 필터 금지 |
 | D7 Knowledge 호출 조정 | Host가 후보 등록/조회/revision 검사와 원본 producer 이벤트의 project를 조정 | 이동찬·이경준 | WebDiag의 Knowledge 의존 0개, Host가 producer를 바꾸지 않음, deferred 재투영에 대상 재전송 0건 |
@@ -311,11 +310,11 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 
 ## 11. 병렬 착수·검증 순서
 
-1. **경계 리뷰·새 계약 PR:** 각 담당자가 §5에서 제공/소비 API와 §9 case ID를 표시하고 D1–D7 제안을 검토한다. PM이 변경 기록을 남긴다. [착수 상태](s1-development-status.md)에 따라 C1 codec은 PR #15로 병합됐으며, 다음 C2 실행 경계 계약을 구현·병합하고 필요한 경계별 작은 계약 PR로 연결한다. CLOSED/unmerged PR #8은 선행조건이 아니다.
+1. **경계 리뷰·새 계약 PR:** 각 담당자가 §5에서 제공/소비 API와 §9 case ID를 표시하고 D1–D7 제안을 검토한다. PM이 변경 기록을 남긴다. [착수 상태](s1-development-status.md)에 따라 C1 codec은 PR #15, C2 실행 경계 계약은 PR #20으로 병합됐다. 각 담당자는 이 공유 계약으로 독립 개발하고 추가로 필요한 C3·C4 경계를 작은 계약 PR로 연결한다. CLOSED/unmerged PR #8은 선행조건이 아니다.
 2. **독립 구현:** §8의 첫 PR을 병렬 진행한다. I/O fake도 async def로 구현하고 순수 로직은 동기로 시험한다. 기존 S1-01~20과 상세 규격의 비동기 사례 S1-21~28을 Event·fake clock으로 검증한다. `uv run --no-project --python 3.13.15 scripts/dev.py check <module>`을 실행하며 구현 간 내부 import를 추가하지 않는다.
 3. **초기 조립:** 이동찬이 `app/tests/`에서 실제 외부 통신 없는 fake 시나리오를 조립한다. fake Gateway의 허용 시도 기록 1건은 실제 HTTP 전송 1건을 뜻하지 않는다. 실제 모듈 교체 때 제공자·소비자의 동일 case ID 결과를 비교한다. 전체 검사는 `check all`을 사용한다.
 4. **실제 통합:** 필요한 실행 허가·역할 분리·내구 감사·인증/예산·비밀 보호·실제 전송 통제를 검증한 경로만 테스트 앱에 연결한다. 실제 통합 통과를 fake 테스트와 구분한다.
 
 주요 위험과 대응: opaque 참조의 숨은 저장 구조 결합은 §5.3의 Gateway 소유/값 전달로 줄인다. 공용 타입 비대화는 경계별 최소 PR과 모듈 내부 소유로 제한한다. fake/실제 의미 불일치는 동일 case ID의 전송 기록·상태·근거/감사 연결 비교로 검증한다. 실제 내구성/인가를 fake 통과로 오인하지 않는다.
 
-현재 저장소에는 패키지 골격·환경 검사와 [C1 저수준 fingerprint codec](fingerprint-contract.md#22-c1-공개-api와-사용)이 구현돼 있다. C1은 불변 snapshot·정규 바이트·`primitive-v1` 벡터와 빈 운영 registry의 거부 경계를 검증한다. 이 초안의 실행 API·fake·S1 수용 테스트와 업무별 운영 fingerprint adapter는 후속 구현 대상이다. 문서 초안의 링크·JSON 예시·경계/담당/사례 검사는 실행 수용 테스트를 대신하지 않는다.
+현재 저장소에는 패키지 골격·환경 검사와 [C1 저수준 fingerprint codec](fingerprint-contract.md#22-c1-공개-api와-사용)이 구현돼 있다. 이 C2 변경은 최소 실행 타입·8개 포트, 운영 fingerprint adapter와 무전송 소비자 예제를 추가한다. 저장 전 내용과 최종 결과의 생성 순서는 [C2 lifecycle](fingerprint-contract.md#31-c2-precommit-내용과-최종-결과의-lifecycle), 검증·병합 상태는 [착수 상태](s1-development-status.md)를 따른다. 실제 서비스·영속 journal과 S1 전체 수용 사례는 후속 구현 대상이다. 문서 초안의 링크·JSON 예시 검사는 실행 수용 테스트를 대신하지 않는다.

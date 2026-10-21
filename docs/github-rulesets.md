@@ -89,7 +89,7 @@ module (abc2lab-webdiag)
 | Bypass mode | **For pull requests only**. `Always allow`를 사용하지 않는다. |
 | CI·대화 해결·Force Push·삭제 규칙 | `main-ci-safety`에서 강제하며 이 Ruleset에는 중복 추가하지 않는다. |
 
-`.github/CODEOWNERS`의 네 계정과 리뷰 자동 요청을 유지한다. 리뷰 요청은 필수 승인 수와 별개이며 Bypass 사용 시에도 제거하지 않는다. 스키마·공통 규칙의 추가 담당자 승인과 Bypass 사유 기록은 [기여 안내](../CONTRIBUTING.md#스키마공통-규칙-변경의-승인)에 따라 병합자가 확인한다. 일반적인 승인 수 설정이나 CODEOWNERS만으로 모든 담당자별 추가 승인까지 자동 강제되지는 않는다.
+`.github/CODEOWNERS`에 등록된 현재 팀원(`sleepingman1222`, `mminjun`, `31-no3won`) 전체의 리뷰 자동 요청을 유지한다. 모듈 배정은 [담당 배정표](module-development.md#담당-배정)를 따르며 리뷰 요청 대상을 담당 모듈로 제한하지 않는다. 리뷰 요청은 필수 승인 수와 별개이며 Bypass 사용 시에도 제거하지 않는다. 스키마·공통 규칙의 추가 담당자 승인과 Bypass 사유 기록은 [기여 안내](../CONTRIBUTING.md#스키마공통-규칙-변경의-승인)에 따라 병합자가 확인한다. 일반적인 승인 수 설정이나 CODEOWNERS만으로 모든 담당자별 추가 승인까지 자동 강제되지는 않는다.
 
 ### D. 기존 Branch Protection과 별도 우회 경로
 
