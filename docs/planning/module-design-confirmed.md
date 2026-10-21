@@ -4,7 +4,7 @@
 - v0.2: 1차 피드백 — evidence 순환/원문 생명주기, 교차접근 불변식·블로커 승격, 전송 unknown 재현, 공학/연구 범위 주석, 슬라이스 S1/S2 분할·위임으로 KG 결정적화.
 - v0.3: 2차 피드백 — **S2 위임 억제의 `DELEGATES` 간선은 등록 정책 출처만**(관찰 위임의 순환·공격자 오염 미탐 차단)·3갈래 판정, reachable 홉 상한 포트 계약화, `compare_and_seal` 명칭 통일, §13-2 D-0 승격.
 - 검토 반영(2026-10-20): 제한/부분 조회의 미도달과 확정 가능한 부재 구분, 위임 적용 범위·명시 금지/불명 분리, 서비스별 DB 책임, 실행영역 내부 비교와 공개 근거 저장 분리, 공통 KG 기반 모델 평가 표현을 보정했다. 문서 판 번호와 기존 절 번호는 유지한다.
-- 실행 규격 보완(2026-10-21): I/O 서비스 포트는 async, 순수 계산·유한 메모리 인계는 sync로 구분한다. Host 유한 큐·S1 worker 1개와 취소/timeout·동시성·자원 정리의 구체 기준은 [S1 API 설계 v0.4](s1-api-spec.md#22-비동기-호출과-작업-실행)에 기록한다. [PoC 보고서 계약](poc-report-design.md)은 실행 근거와 등록 요청 레시피를 연결하며 보고 작성 중 재전송하지 않는다.
+- 실행 규격 보완(2026-10-21): I/O 서비스 포트는 async, 순수 계산·유한 메모리 인계는 sync로 구분한다. Host 유한 큐·S1 worker 1개와 취소/timeout·동시성·자원 정리의 구체 기준은 [S1 API 설계 v0.5](s1-api-spec.md#22-비동기-호출과-작업-실행)에 기록한다. [PoC 보고서 계약](poc-report-design.md)은 실행 근거와 등록 요청 레시피를 연결하며 보고 작성 중 재전송하지 않는다. 팀 리뷰에 따라 Host의 Knowledge 호출 조정과 contracts의 결정적 fingerprint codec 소유권을 명시했다.
 - **구현 기준:** 포트/어댑터·조립 루트·S1/S2 골격은 유지한다. 상세 wire schema·배포 구성과 검증 fixture는 아래 의미 계약을 따라 확정하며, 구현 중 드러나는 결함은 고친다. 이 문서는 구현 착수 기준이며 설계/구현/검증의 완료 선언이 아니다.
 - 기준 문서: [mcp-architecture.md](mcp-architecture.md), [mcp-tool-catalog.md](mcp-tool-catalog.md). 충돌하면 아키텍처가 이긴다.
 - 구현 저장소 방향: **별도 신규 레포에서 그린필드로 구현한다.** 초기 설계 기준으로 위 아키텍처·도구 카탈로그와 이 모듈 설계 문서 3개를 가져간다. 기존 레포의 코드/계약을 호환·이관하는 방식은 전제하지 않는다.
@@ -143,6 +143,7 @@ flowchart TB
 - **`gateway`(★)만 대상 웹에 통신한다.** `webdiag`의 실행 기능이 내부 `GatewayPort`를 호출하며 `judge`·`reasoner`는 대상이나 Gateway를 직접 호출하지 않는다. 다른 어떤 패키지도 대상 HTTP 실행기(httpx/Playwright)를 직접 import하지 않는다.
 - **각 서비스의 저장 어댑터만 자기 정본 DB에 접속한다.** `knowledge` 어댑터는 자기 정본과 AGE 접속·등록 그래프 질의를 소유한다. 다른 서비스는 자기 스키마·DB 역할로 정본을 저장하며 그래프는 `KnowledgePort`로 조회한다. DB 자격·raw SQL/Cypher를 공개 서비스 포트나 Host/LLM/UI 입력으로 넘기지 않는다. KG에 쓰는 건 검증된 `Projector`만.
 - **`reasoner`는 점선 의존.** 없어도 전체가 동작. `knowledge` 읽기 포트·`host` 제안 접수 포트만 호출하고 `gateway`·`policy`를 직접 호출하지 못한다.
+- **S1의 Knowledge 조정 호출자는 Host다.** WebDiag는 발견 단서·저장된 관찰/비교·원본 이벤트를 반환하고 Host가 후보 등록/조회·revision 검사·project를 수행한다. WebDiag에는 Knowledge 포트를 주입하지 않는다. Observation/WebDiag·Comparison/Evidence·Verdict/Judge·기대 정책/app 등록 journal의 원본 소유권은 유지한다. 구체 전달 필드는 [S1 규격 §3·§8](s1-api-spec.md#8-knowledge의-후보와-투영)을 따른다.
 - **실행영역 비교(정규화+HMAC)는 `evidence`의 로컬 비교기에서 수행한다.** `gateway`와 같은 Web Execution 영역에 로컬 캡처 버퍼·비교기를 배치한다. `RawResponse`와 run HMAC 키는 이 영역 밖으로 반환·전송·영속 저장하지 않는다. 공개 Evidence 저장/조회 서비스는 민감값 제거 자료·비교 결과·근거 참조만 받는다. Judge도 원문이나 캡처 핸들을 받지 않는다(§5·§7).
 - **evidence 주변 화살표 구분:** Gateway의 원문 캡처와 WebDiag의 비교 호출은 실행영역 내부 동작이며, 공개 Evidence로 향하는 화살표에는 민감값 제거 자료만 흐른다. Judge는 저장된 비교 결과·요약을 읽는다. **정규화 규칙은 `app`이 `judge` oracle에서 로컬 비교기에 주입**한다. evidence는 judge를 import하지 않고 규칙 타입만 `contracts`에 둔다(§13-6).
 
@@ -156,7 +157,7 @@ flowchart TB
 
 | 패키지 | 아키텍처 구성요소 | 공개 포트(의미) | 정본 |
 |---|---|---|---|
-| `contracts` | 공유 타입·포트 | `RunRef`·`TargetScope`·`ExpectedPolicy`·`CandidateEntry`·`Observation`·`EvidenceRef`·`CompareResult`·`PolicyDecision`·`Verdict`·`AuditEvent` + Port Protocol. 실행 전용 타입/포트와 외부 직렬화 허용 계약은 구분 | 없음(순수 데이터) |
+| `contracts` | 공유 타입·포트·결정적 계약 codec | `RunRef`·`TargetScope`·`ExpectedPolicy`·`CandidateEntry`·`Observation`·`EvidenceRef`·`CompareResult`·`PolicyDecision`·`Verdict`·`AuditEvent` + Port Protocol. 실행 전용 타입/포트와 외부 직렬화 허용 계약은 구분. [fingerprint codec](fingerprint-contract.md)은 stdlib-only 순수 동작으로 한정 | 없음(데이터·순수 계약 함수, I/O·가변 상태 없음) |
 | `host` | Scan Controller·Scheduler·Planner·Broker | `start_run`·`get_status`·`stop` / `submit`·`lease`·`complete`·`cancel` / `plan` / `tools_for`·`call` | **Task 상태** |
 | `knowledge` | Knowledge Service·Projector·2 그래프 | `project`·`kg_query_subgraph`·`reachable_subjects`·`register_verdict_event` | 발견 후보·관찰 그래프 |
 | `evidence` | 실행영역 로컬 캡처/비교 + 공개 Evidence Service | 실행 전용 `capture`·`seal`·`compare_and_seal`; 공개 `store_evidence`·`evidence_read_summary` | 공개 저장 서비스의 민감값 제거 근거·비교 결과. 원문/키는 실행영역 임시 메모리만 |
@@ -318,7 +319,7 @@ S2는 정책 출처·적용 조건·제한/완전성·근거 경로가 판정과
 - **감사 타임라인(§8.2):** 목표/가설 → 작업 → 정책 판정·사유 → 실제 요청 시도/관찰 → 근거 → 최종 판정. 차단·미실행·실패·취소·전송 unknown 포함. 가설 없는 기본 관찰은 탐색 목표에 연결.
 - **완전성 확인:** 요청 ID별 기대 vs 실제(정책·전송·근거) 대조 + 생산자별 기대 시작/종료 순번. **건수·순번 일치만으론 완전성 보장 안 됨**(주입 A·B인데 기록 A·A여도 건수 맞을 수 있음). 확인 못 한 범위 unknown.
 - **출처 분리:** 작업=Scheduler, 정책=Policy, 실제 요청=Gateway, 근거=Evidence, 판정=Judge 출처로 확인. 모델 설명·도구 성공 라벨로 실행 사실 보충 금지. 벽시계만으로 순서 단정 금지(단조시계·순번, §8.4).
-- **AuditEvent(의미):** run·producer·seq·goal_ref·policy_decision·request_ref·evidence_ref·verdict_ref·ts_wall·ts_monotonic·send_status(sent/blocked/unknown). 최종 필드 후속.
+- **AuditEvent(의미):** run·producer·seq·goal_ref·policy_decision·request_ref·evidence_ref·verdict_ref·UTC 시각·단조 경과. 전송 사건의 send_status는 sent/not_sent/unknown, 정책 사건의 policy_outcome은 allow/block이며 적용되지 않는 필드는 None이다. blocked를 전송 상태로 쓰지 않는다. 실제 필드는 [S1 감사 규격](s1-api-spec.md#10-감사-커밋과-조회)을 따른다.
 
 ---
 
@@ -344,18 +345,33 @@ S2는 정책 출처·적용 조건·제한/완전성·근거 경로가 판정과
 목표: 등록 2계정 테스트 앱에서 읽기 수평 IDOR 한 건을 **발견 → 관찰 → 정책 → 판정 → 감사**까지 LLM 없이 관통.
 
 ```mermaid
-flowchart LR
-    C["host.controller<br/>start_run"] --> D["webdiag.discovery<br/>collect"]
-    D --> P["host.planner<br/>plan: 기준관찰 + access_compare"]
-    P --> S["host.scheduler<br/>submit·lease"]
-    S --> AU["webdiag.auth<br/>세션 A·B + whoami"]
-    AU --> PO["policy.evaluate"]
-    PO --> G["gateway.execute<br/>A기준·B교차 조회"]
-    G --> LC["evidence · 실행영역 로컬<br/>capture / compare_and_seal"]
-    LC -->|"민감값 제거 자료·비교 결과만"| EV["Evidence 공개 저장 서비스"]
-    EV --> K["knowledge.project<br/>store_memory"]
-    K --> J["judge.judge<br/>수평 IDOR oracle (a)(b)(c)"]
-    J --> R["report.build_report<br/>감사 타임라인"]
+sequenceDiagram
+    participant H as Host Controller/Planner/Scheduler
+    participant W as WebDiag
+    participant K as Knowledge
+    participant G as Gateway
+    participant P as Policy
+    participant E as Evidence 로컬/공개
+    participant J as Judge
+    participant R as Report
+    H->>K: project(app 등록 journal의 PolicyRegistered)
+    H->>W: collect
+    W-->>H: 단서·시도 요약
+    H->>K: register_candidates / get_case_view
+    H->>W: 세션 A·B / whoami / 관찰·access_compare(Candidate 값)
+    W->>G: prepare(구체 요청)
+    W->>P: evaluate(준비 view)
+    W->>G: execute(준비 핸들·저장된 결정)
+    G->>E: capture(실행영역 메모리 전용)
+    G-->>W: 시도·실행 전용 캡처 참조
+    W->>E: seal / compare_and_seal
+    E-->>W: 저장 요약·원본 ComparisonProjected
+    W-->>H: 관찰·비교·원본 이벤트·시도 요약
+    H->>K: project(ObservationProjected / ComparisonProjected)
+    H->>J: judge(정책·주체·저장된 비교)
+    J-->>H: 저장된 Verdict·원본 VerdictProjected
+    H->>K: project(VerdictProjected)
+    H->>R: build_report(근거·감사·PoC 절차)
 ```
 
 조립: `app`이 Knowledge의 `store_memory`, 테스트 앱 대상의 실제 `gateway`, 실제 `policy`·`judge`와 필요한 서비스별 저장 어댑터를 주입한다. 여기서 `store_memory`는 그래프/관계 조회 대역이며 정책·요청 의도·감사까지 메모리만으로 처리하라는 뜻이 아니다. 실제 대상에 요청하는 S1도 전송 전 의도/정책을 내구 기록해야 하며, 이를 제공하지 못하는 메모리 대역 시험은 실제 통신 대신 Gateway 대역으로 수행한다. 최소 내구 기록의 저장/재시작·실패/중지 계약은 해당 어댑터에서 검증한다.
@@ -375,7 +391,7 @@ flowchart LR
 안전이 먼저. 각 단계의 해당 조건을 검증한 뒤 연결한다. 포트의 최종 wire 필드를 모두 정하기 전에 대역으로 수직 경로를 검증할 수 있으나 실제 대상 통신 전에 허가·정책·근거/감사·비밀 보호 경계를 갖춘다. 교차 요청은 §13-2의 단일 전송 관문을 적용하며 그 통과 여부를 대역 시험과 실제 전송에서 구분해 검증한다.
 
 **S1 — 직접 (a)(b)(c) 수평 IDOR (공학 증명):**
-1. `contracts` — 공유 타입 + 포트 Protocol 골격.
+1. `contracts` — [새 최소 계약 PR](s1-development-status.md)의 C1 fingerprint codec → C2 실행 타입·포트부터 경계별 정의. CLOSED/unmerged PR #8은 선행 구현이 아님. 모듈 내부 순수 로직은 병행하고 공개 fake는 해당 계약 병합 뒤 연결.
 2. `gateway` + `policy`(대역) — 실행 경계부터. 전송 3상태·재검사·바인딩. **대역에 "응답 수신 전 연결 끊김" 주입 훅**으로 unknown 재현(A23).
 3. `evidence` — 실행영역 로컬 캡처/비교기와 공개 민감값 제거 저장/조회 서비스를 구분한다. `compare_and_seal`의 원문 메모리/키 생명주기·저장 완료/부분 실패·정규화/HMAC·canary와 원문/캡처 참조의 영역 밖 비노출을 검증한다. 규칙은 app이 주입.
 4. `webdiag/auth` + `webdiag/observe` — 두 계정 세션·whoami·자기 자원 관찰.

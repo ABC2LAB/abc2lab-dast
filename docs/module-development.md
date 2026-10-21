@@ -19,7 +19,7 @@
 
 | 모듈 | uv 패키지 | 책임 |
 |---|---|---|
-| contracts | `abc2lab-contracts` | 공유 타입과 공개 Port Protocol; 의존성 leaf |
+| contracts | `abc2lab-contracts` | 공유 타입·Port Protocol·명시적 fingerprint 순수 codec; stdlib-only 의존성 leaf |
 | host | `abc2lab-host` | Controller, Scheduler, Planner, Broker와 Task 상태 |
 | knowledge | `abc2lab-knowledge` | 후보·관찰 그래프, Projector, Knowledge 저장/조회 |
 | evidence | `abc2lab-evidence` | 실행영역 캡처·비교와 민감값 제거 Evidence 저장/조회 |
@@ -86,13 +86,17 @@ uv run --no-project --python 3.13.15 scripts/dev.py check all
 
 ## 계약과 경계
 
-S1 병렬 개발은 [API 흐름·담당·로컬 fake 사례](planning/s1-api-draft.md)와 [API 상세 규격 v0.4](planning/s1-api-spec.md)를 팀 리뷰 자료로 사용한다. I/O 서비스 포트는 async def로 정의하고 소비자는 await한다. 정책 조건·오라클·정규화의 순수 로직, 세션 메모리 snapshot 조회·캡처 인계/해제는 동기다. Host는 유한 큐·worker 1개로 시작하며 순서·취소·동시성 상한은 [비동기 실행 계약](planning/s1-api-spec.md#22-비동기-호출과-작업-실행)을 따른다.
+S1 병렬 개발은 [API 흐름·담당·로컬 fake 사례](planning/s1-api-draft.md)와 [API 상세 규격 v0.5](planning/s1-api-spec.md)를 팀 리뷰 자료로 사용한다. I/O 서비스 포트는 async def로 정의하고 소비자는 await한다. 정책 조건·오라클·정규화의 순수 로직, 세션 메모리 snapshot 조회·캡처 인계/해제는 동기다. Host는 유한 큐·worker 1개로 시작하며 순서·취소·동시성 상한은 [비동기 실행 계약](planning/s1-api-spec.md#22-비동기-호출과-작업-실행)을 따른다.
 
 로컬 fake도 포트의 async/def를 일치시키고, pytest-asyncio strict 설정에서 `@pytest.mark.asyncio`로 검사한다. Event·fake clock으로 지연·취소·경합을 재현하며 Task/캡처/lease가 남지 않는지 확인한다. 상세 규격의 필수 필드·반환 상태·수명·감사 확인 포트와 S1-01~28 수용 사례는 후속 구현 대상이다. 제공자와 소비자는 자기 입력이 충분한지, 출력을 독립적으로 만들 수 있는지, 실패를 fake로 재현할 수 있는지 더블 체크한다. 실제 소비 경계부터 작은 계약 PR로 확정한다.
 
 [PoC 보고서 계약](planning/poc-report-design.md)은 Gateway의 실제 요청 최소 view → 로컬 Evidence의 등록 레시피/근거 저장 → Report의 재현 절차로 연결한다. S1-29~36에서 민감값 치환·요청 바인딩·무전송 보고·부분/취소 상태를 검증한다. [예시 보고서](examples/s1-poc-report.example.md)는 미실행 가상 문서이며 제품 입력이나 실제 진단 근거가 아니다. Report는 다른 모듈 DB나 Gateway 실행 포트를 직접 사용하지 않는다.
 
 초기 환경 구성 시점의 `contracts`에는 공개 타입/Protocol이 아직 구현되지 않았다. 의존 모듈 구현을 먼저 시작하면서 임의 schema나 `Any` placeholder를 만들지 말고, 필요한 최소 계약을 `contracts` PR로 제안한다. 구현 모듈의 독립 테스트는 그 공개 포트를 구현하는 로컬 fake를 사용한다.
+
+[착수 상태·선행조건](planning/s1-development-status.md)에 따라 CLOSED/unmerged PR #8 대신 새 C1 fingerprint codec → C2 실행 경계 계약을 제안한다. Policy/Gateway 공개 fake는 C2 병합 뒤 연결하며 내부 순수 로직은 먼저 시험할 수 있다. [공유 codec](planning/fingerprint-contract.md)은 모든 모듈이 같은 구현을 재사용한다. 문서 판번호와 policy_input.v1은 별개다. RunRegistration은 app 내부 집계이며 각 서비스에는 필요한 snapshot만 주입한다.
+
+Host는 Knowledge 등록/조회/투영과 run/task/case ID를, WebDiag는 인증·whoami·복구·기준/교차 request_ref 발급을 맡는다. WebDiag에는 Knowledge 포트를 주입하지 않고 Host가 조회한 Candidate 값을 전달한다. 추가 수용 사례 S1-37~42는 codec·identity 매핑·투영 호출자·ID·등록 재검증·전송 직전 세션/예산 검사를 다룬다. 팀원의 개인 status.md/plan.md에도 새 계약 PR 선행조건을 적용한다.
 
 `gateway`만 대상에 통신하고, 각 서비스의 저장 어댑터만 자기 정본 DB에 접근한다. `mcp-*`는 포트를 감싸는 얇은 어댑터다. `app`이 조립하며, 서비스가 다른 서비스의 구체 구현을 직접 생성하지 않는다. 실제 PostgreSQL+AGE, 브라우저 바이너리, MCP 서버는 해당 어댑터의 통합 테스트를 시작하기 전에 준비한다.
 
