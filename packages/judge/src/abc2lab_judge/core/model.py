@@ -1,12 +1,14 @@
 """수평 IDOR 오라클의 내부 도메인 모델.
 
-C4 `Verdict`와 C2 공유 타입(`CheckState`·`ExpectedAccessPolicySnapshot`·`IdentityResult`·
-`ComparisonSignals`)이 병합되기 전의 모듈 내부 타입이다. 공개 계약을 대신하거나 사본으로 쓰지
-않으며, 원문·캡처 핸들·HMAC 키를 받지 않는다. C4 병합 후 `adapters`에서 저장된 비교 결과·정책
-snapshot·신원 결과를 이 모델로 distill하고, 이 판정을 `Verdict`로 발행한다.
+공개 계약(C4 `Verdict`, C2 공유 타입 `CheckState`·`ExpectedAccessPolicySnapshot`·`IdentityResult`·
+C3 `ComparisonSignals`)으로 변환되기 전의 모듈 내부 타입이다. 공개 계약을 대신하거나 사본으로 쓰지
+않으며, 원문·캡처 핸들·HMAC 키를 받지 않는다. C2는 병합됐고(PR #20) C3/C4는 후속이다. `adapters`가
+저장된 비교 결과·정책 snapshot·신원 결과를 이 모델로 distill하고 이 판정을 `Verdict`로 발행할
+책임을 진다.
 
-판정은 보수적이다. (a)(b)(c)를 각각 확인하고 셋이 모두 충족될 때만 CONFIRMED이며, 그 외에는
-SUSPECTED/UNDECIDABLE이다. SUSPECTED의 정확한 허용 조건은 팀 합의 전이므로 명시 신호에만 의존한다.
+판정은 보수적이다. (a)(b)(c)를 각각 확인하고 셋이 모두 충족될 때만 CONFIRMED이다. 하나라도 확인
+불가(`unknown`)면 UNDECIDABLE이 우선하고, 전부 확인됐으나 미충족이면서 명시 이상 신호가 있을 때만
+SUSPECTED다. SUSPECTED의 정확한 허용 조건은 팀 합의 전이므로 명시 신호에만 의존한다.
 """
 
 from __future__ import annotations

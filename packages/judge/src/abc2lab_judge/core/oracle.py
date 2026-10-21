@@ -3,10 +3,13 @@
 (a) 신뢰된 등록 정책이 평가 주체를 명시 금지하고 공유·위임이 모두 해소(none),
 (b) A·B가 서로 다른 검증된 주체,
 (c) 소유자 객체의 비자명 실데이터가 반사·템플릿 배제 후 교차 응답에 나타남
-을 각각 확인한다. 셋이 모두 `yes`일 때만 CONFIRMED이며, 그 외에는 UNKNOWN 사유가 있으면
-UNDECIDABLE, 명시 이상 신호가 있으면 SUSPECTED(팀 합의 전 잠정)로 둔다. HMAC 일치·`owner_id`
-단독·id 반사·HTTP 200·공통 템플릿만으로는 (c)를 충족하지 않는다. 네트워크·저장·원문 없이 동작하는
-순수 함수다.
+을 각각 확인한다. 셋이 모두 `yes`일 때만 CONFIRMED이다. 하나라도 `unknown`(확인 불가)이면
+UNDECIDABLE이 우선하며, 전부 확인됐으나 미충족이면서 명시 이상 신호가 있을 때만
+SUSPECTED(허용 범위는 팀 합의 전 잠정)다. HMAC 일치·`owner_id` 단독·id 반사·HTTP 200·공통
+템플릿만으로는 (c)를 충족하지 않는다.
+
+정책·주체 유효성은 **근거의 관찰 시각(`observed_at`)** 기준으로 판정하며, 판정 시각 TTL 경과만으로
+당시 유효했던 근거를 버리지 않는다. 네트워크·저장·원문 없이 동작하는 순수 함수다.
 """
 
 from __future__ import annotations
@@ -29,11 +32,15 @@ from abc2lab_judge.core.model import (
 )
 
 
-def check_expected_policy(policy: PolicyAssertion, now: datetime) -> CheckOutcome:
-    """(a) 등록 정책이 평가 주체를 명시 금지하고 공유·위임이 모두 해소(none)인지 판정한다."""
+def check_expected_policy(policy: PolicyAssertion, observed_at: datetime) -> CheckOutcome:
+    """(a) 등록 정책이 평가 주체를 명시 금지하고 공유·위임이 모두 해소(none)인지 판정한다.
+
+    유효성은 근거의 관찰 시각 `observed_at` 기준이다. 관찰 이후 시작했거나(valid_from 이후) 관찰
+    당시 이미 만료된 정책은 `UNKNOWN`으로 둔다.
+    """
     if not policy.has_registered_source:
         return CheckOutcome(CheckState.UNKNOWN, JudgeReason.EXPECTED_ACCESS_POLICY_MISSING)
-    if not policy.valid_from <= now < policy.valid_until:
+    if not policy.valid_from <= observed_at < policy.valid_until:
         return CheckOutcome(CheckState.UNKNOWN, JudgeReason.EXPECTED_ACCESS_POLICY_INVALID)
 
     sharing_unknown = policy.sharing is ResolutionState.UNKNOWN
@@ -58,7 +65,8 @@ def check_identity(subjects: SubjectContext) -> CheckOutcome:
         return CheckOutcome(CheckState.UNKNOWN, JudgeReason.SUBJECT_NOT_VERIFIED)
     if subjects.evaluated_status is not SubjectStatus.VERIFIED:
         return CheckOutcome(CheckState.UNKNOWN, JudgeReason.SUBJECT_NOT_VERIFIED)
-    if subjects.owner_subject_ref is None or subjects.evaluated_subject_ref is None:
+    if not subjects.owner_subject_ref or not subjects.evaluated_subject_ref:
+        # None·빈 문자열 주체 참조는 검증된 주체로 인정하지 않는다.
         return CheckOutcome(CheckState.UNKNOWN, JudgeReason.SUBJECT_NOT_VERIFIED)
     if subjects.owner_subject_ref == subjects.evaluated_subject_ref:
         return CheckOutcome(CheckState.NO, JudgeReason.SUBJECTS_NOT_DISTINCT)
@@ -89,23 +97,27 @@ def check_data(facts: ComparisonFacts) -> CheckOutcome:
     return CheckOutcome(CheckState.YES, JudgeReason.DATA_NONTRIVIAL_MATCH)
 
 
-def evaluate_case(case: CaseInput, now: datetime) -> OracleVerdict:
+def evaluate_case(case: CaseInput, observed_at: datetime) -> OracleVerdict:
     """사례를 (a)(b)(c)로 판정한다(보수적). 셋이 모두 yes일 때만 CONFIRMED.
 
     Args:
         case: 정책·주체·비교 신호와 SUSPECTED 잠정 게이트를 담은 사례 입력.
-        now: 정책 유효기간 비교 기준이 되는 timezone-aware UTC 시각.
+        observed_at: 정책 유효성 판정의 기준이 되는 근거 관찰 시각(timezone-aware UTC).
 
     Returns:
         판정값·세 조건의 CheckState·사유 코드. 사유 코드는 정책·신원·데이터 순서다.
     """
-    policy = check_expected_policy(case.policy, now)
+    policy = check_expected_policy(case.policy, observed_at)
     identity = check_identity(case.subjects)
     data = check_data(case.facts)
     checks = (policy, identity, data)
 
+    any_unknown = any(outcome.state is CheckState.UNKNOWN for outcome in checks)
     if all(outcome.state is CheckState.YES for outcome in checks):
         value = VerdictValue.CONFIRMED
+    elif any_unknown:
+        # 확인 불가(정책 부재·유효성 불명·자료 미검증)는 SUSPECTED보다 UNDECIDABLE이 우선한다.
+        value = VerdictValue.UNDECIDABLE
     elif case.has_concrete_anomaly:
         value = VerdictValue.SUSPECTED
     else:
