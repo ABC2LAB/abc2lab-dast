@@ -1,6 +1,6 @@
 # abc2lab-dast
 
-ABC2LAB DAST의 uv 멀티패키지 개발 워크스페이스입니다. 현재는 환경과 패키지 골격을 구성한 단계이며 진단 기능은 아직 구현되지 않았습니다.
+ABC2LAB DAST의 uv 멀티패키지 개발 워크스페이스입니다. 패키지 골격과 C1 결정적 fingerprint codec([PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15))이 구현됐으며, C2 실행 경계 타입·Protocol 및 실제 진단 기능은 아직 구현되지 않았습니다.
 
 ## 개발 시작
 
@@ -43,7 +43,8 @@ uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
 - [모듈 설계](docs/planning/module-design-confirmed.md)
 - [S1 API 흐름·담당·개발 사례](docs/planning/s1-api-draft.md)
 - [S1 API 상세 규격 v0.5](docs/planning/s1-api-spec.md) — 비동기 I/O·공유 fingerprint·Host 투영 조정·PoC 보고서, 팀 리뷰 반영 중 설계안
-- [S1 착수 상태·계약 PR 순서](docs/planning/s1-development-status.md) — PR #8 선행조건을 새 최소 계약 PR로 교체
+- [S1 착수 상태·계약 PR 순서](docs/planning/s1-development-status.md) — C1 병합·검증 완료, C2 실행 경계 구현 대기
+- [C1 fingerprint codec 계약·사용법](docs/planning/fingerprint-contract.md#22-c1-공개-api와-사용) — 불변 snapshot과 정규 UTF-8 바이트, 운영 record adapter는 C2 범위
 - [PoC 포함 보고서 설계](docs/planning/poc-report-design.md) · [미실행 가상 보고서 예시](docs/examples/s1-poc-report.example.md)
 
 `packages/`는 공개 계약과 서비스 패키지, `app/`은 조립 루트, `eval/`은 평가 전용 작업 영역입니다. 담당 배정은 [모듈 개발 가이드](docs/module-development.md#담당-배정)에 기록합니다.
