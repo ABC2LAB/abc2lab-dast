@@ -6,14 +6,28 @@
 
 | 담당자 | 담당 범위 | 작업 묶음 | 계획 비중 |
 |---|---|---|---|
-| 이동찬 (관리자·PM) | `contracts`·`app`·`knowledge` | 공유 계약·조립·KG·관리 | 약 27% |
-| 최민준 | `gateway`·`judge`·`policy` | verifier·실행 관문·통제 결정 | 약 26% |
-| 이경준 | `webdiag`·`host`, P2의 `reasoner` | 관찰·생성·오케스트레이션 | 약 24% |
-| 윤재상 | `evidence`·`report`·루트 `eval/` | 근거·보고·평가 | 약 23% |
+| 이동찬 (관리자·PM) | `contracts`·`app`·`knowledge`·루트 `eval/` | 공유 계약·조립·KG·평가·관리 | 약 34% |
+| 최민준 | `gateway`·`judge`·`policy`·`report` | verifier·실행 관문·통제 결정·보고 | 약 33% |
+| 이경준 | `webdiag`·`host`·`evidence`, P2의 `reasoner` | 관찰·생성·오케스트레이션·근거 | 약 33% |
 
 비중은 팀의 작업 계획 추정치이며 측정된 구현량이 아니다. `reasoner`는 이경준의 P2 범위로 두며 P1 기본 경로에 필수로 넣지 않는다. `mcp-knowledge`·`mcp-webdiag`는 이번 배정에 포함되지 않았으므로 P2 착수 시 담당자를 별도 확정한다.
 
-`eval/`은 윤재상이 소유하는 루트의 평가 전용 작업 영역이다. uv 패키지가 아니며 현재는 [담당 범위 안내](../eval/README.md)만 있다. 평가 하네스·데이터·테스트는 후속 구현 대상이다.
+`eval/`은 이동찬이 소유하는 루트의 평가 전용 작업 영역이다. uv 패키지가 아니며 현재는 [담당 범위 안내](../eval/README.md)만 있다. 평가 하네스·데이터·테스트는 후속 구현 대상이다. 평가 격리를 위해 판정(`judge`) 담당과 분리해 둔다.
+
+## 담당 재배정 (2026-10-21)
+
+윤재상 이탈로 `evidence`·`report`·루트 `eval/`을 남은 세 명이 나눠 맡는다.
+
+| 모듈 | 이전 | 이후 | 기준 |
+|---|---|---|---|
+| `evidence` | 윤재상 | **이경준** | `judge` 담당(최민준)과 다른 소유자에 둬서 Judge가 Evidence를 독립 재검증하는 신뢰 경계를 유지한다. 이경준의 `webdiag`(비교)·`host`(투영)가 이미 Evidence와 맞닿아 있다 |
+| `report` | 윤재상 | **최민준** | Report는 Verdict의 다운스트림 표현이라 판정 담당이 맡아도 탐지·평가 독립성에 영향이 없다. Report는 전송·판정을 하지 않는다 |
+| 루트 `eval/` | 윤재상 | **이동찬** | GT 격리상 판정(`judge`) 담당과 분리한다. 탐지 경로 밖이며 조립자(`app`)·계약(`contracts`) 담당이 주입 경계를 집행하기 좋다 |
+
+- 유지할 경계: 이동찬이 `knowledge`(판정 추론 입력)와 `eval/`(GT)을 함께 맡으므로, 제품의 발견·추론·판정 경로가 GT·`eval/`을 입력·정답 단서로 읽지 않도록 코드 격리를 유지한다. `judge` 테스트의 평가 fixture 사용은 테스트 전용으로 허용한다.
+- 승인 절차: 팀이 3명이 되어 스키마·공통 규칙 변경의 담당자별 승인은 남은 담당 전원(작성자 제외)을 기준으로 한다. [리뷰 승인 Bypass](../CONTRIBUTING.md#리뷰-승인-bypass) 허용 계정에서 `jsang01`은 이미 제외돼 있다. `.github/CODEOWNERS`에서 `@jsang01`을 뺀다.
+- 인계: 기존 계약·설계 문서(`s1-api-draft.md`·`poc-report-design.md`·`s1-development-status.md`·`c3-c4-contract-draft.md`)에 남은 윤재상 리뷰·경계 참여는 새 소유자로 승계하며(evidence→이경준, report→최민준, eval→이동찬), 각 문서는 해당 계약 PR에서 갱신한다.
+- 각자 개인 하네스(status/plan/CLAUDE)는 이 배정으로 갱신한다.
 
 ## 모듈과 패키지
 
@@ -56,6 +70,7 @@ uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
 uv run --no-project --python 3.13.15 scripts/dev.py check gateway
 uv run --no-project --python 3.13.15 scripts/dev.py check judge
 uv run --no-project --python 3.13.15 scripts/dev.py check policy
+uv run --no-project --python 3.13.15 scripts/dev.py check report
 ```
 
 이경준의 P1 검사:
@@ -63,16 +78,10 @@ uv run --no-project --python 3.13.15 scripts/dev.py check policy
 ```bash
 uv run --no-project --python 3.13.15 scripts/dev.py check webdiag
 uv run --no-project --python 3.13.15 scripts/dev.py check host
+uv run --no-project --python 3.13.15 scripts/dev.py check evidence
 ```
 
 P2의 `reasoner` 작업에는 같은 명령의 `check reasoner`를 추가한다.
-
-윤재상의 검사:
-
-```bash
-uv run --no-project --python 3.13.15 scripts/dev.py check evidence
-uv run --no-project --python 3.13.15 scripts/dev.py check report
-```
 
 `eval/`의 실행·검증 명령은 평가 하네스 구현 PR에서 의존성·CI 경로와 함께 정의한다. 현재 `scripts/dev.py check eval`이나 기본 pytest가 평가 테스트까지 검증한다고 보지 않는다.
 
