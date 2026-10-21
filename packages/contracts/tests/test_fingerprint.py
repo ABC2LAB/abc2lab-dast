@@ -182,8 +182,8 @@ def test_reject_lone_unicode_surrogates() -> None:
         freeze_object({"\udfff": "x"})
 
 
-def test_c1_rejects_demo_and_operational_records() -> None:
-    """등록 목록이 비어 있으므로 운영 fingerprint를 발행할 수 없다."""
+def test_registry_rejects_demo_and_unregistered_records() -> None:
+    """C2 등록 후에도 demo와 미등록 객체는 운영 fingerprint를 발행할 수 없다."""
     for record in (_primitive_envelope(), _DemoRecord("demo"), object()):
         with pytest.raises(ValueError, match="unregistered fingerprint record"):
             _registered_record_fingerprint(record)
