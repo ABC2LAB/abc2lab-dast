@@ -356,6 +356,8 @@ Gateway가 다시 검증한다. Policy 기록이 실제 해당 binding/view의 a
 | `StoreReceipt` | `run_key, submission_ref, artifact_ref, artifact_kind: evidence/comparison, source: SourceVersion, committed_at, content_fingerprint: str` |
 | `StoredComparison` | `payload: ComparisonPayload`, `receipts: tuple[StoreReceipt]`. 양쪽 Evidence와 Comparison에 해당하는 완료 receipt 세 개가 있어야 함 |
 
+**Evidence 감사 출처(C3, 2026-10-21 이동찬 확인):** `EvidenceSummary.source_event`는 해당 Evidence artifact를 소유하는 Evidence producer의 자체 감사 이벤트 링크다. Evidence는 fingerprint 전에 evidence_ref/event_ref를 고정하고, 같은 submission의 재확인에서도 이를 재사용한다. 그 링크를 포함한 전체 업무 내용을 저장한 뒤 동일 event_ref/내용의 EVIDENCE 감사 commit까지 확인해야 seal 완료를 발행한다. AuditLink만으로 commit을 인정하지 않는다. Gateway attempt는 별도 producer의 원인 이벤트이며 `CaptureRequest`에 그 감사 필드를 추가하거나 결과 commit을 동기 capture의 선행조건으로 삼지 않는다. 생산자 간 원인 연결은 AuditEvent.causal_links로 구분한다. 비교 artifact의 원본 감사 종류는 COMPARISON이며 필수 저장·감사 확인 전에는 완료 비교/투영을 발행하지 않는다. 상세 수명주기·후속 타입 범위는 [Evidence C3 계약 보완안](evidence-c3-contract.md)을 따른다.
+
 `RedactedBundle.comparison`의 증거 ref는 현재 bundle 또는 같은 run에 이미 저장된 기록에서 올 수 있다. 저장 서비스는 모든 의존성과 출처를 검증한 뒤에만 Comparison을 저장한다. 어떤 의존성이라도 조회할 수 없으면 StoredComparison을 발행하지 않는다. 같은 submission_ref와 정규 내용의 반복 기록은 원래 receipt를 반환하고, 같은 ID의 내용이 다르면 `idempotency_conflict`이다. partial은 성공한 receipt를 보존하지만 한쪽이 빠진 비교를 공개하지 않는다.
 
 EvidenceSummary의 response_class/ComparisonSignals는 주입된 규칙으로 로컬 캡처에서 계산하며, 호출자가 임의 원문을 ‘비식별화됨’으로 포장해 검사를 건너뛸 수 없다. 규칙과 canary의 내용/버전은 Judge 담당자가 제공하고 Evidence가 실행한다. hash/HMAC가 같다는 사실만으로 `nontrivial_data_match=yes`를 만들 수 없다. 정상 객체의 비자명한 내용과 반사/템플릿 반례를 검증해야 하며, 검증할 수 없으면 unknown이다.
@@ -363,6 +365,8 @@ EvidenceSummary의 response_class/ComparisonSignals는 주입된 규칙으로 �
 ExecutedRequestView·RegisteredRequestRecipe는 [PoC 계약 §3](poc-report-design.md#3-최소-추가-타입)을 따른다. Gateway의 실제 요청 최소 view는 원문 응답과 함께 실행 메모리로만 인계한다. capture는 주입된 메모리 등록 정보/캡처 맥락을 동기 대조하며 불일치면 failed/capture_ref=None·원문 해제·capture_binding_mismatch다. 정상 인계 뒤 seal/compare가 공개 가능한 레시피로 치환해 저장한다. 실제 입력 값·인증 값·원문 headers/body는 레시피로 내보내지 않는다. 정당한 인증 POST 등 레시피만 미지원인 경우 capture/응답 근거를 유지하고 request_recipe=None과 사유를 남기며 전송/비교 근거를 지우지 않는다.
 
 캡처 상태는 `active -> released/expired`이며 TTL은 60초, 캡처 하나의 한도는 1 MiB, run당 active 캡처는 최대 8개다. `capture`가 원문을 받은 뒤 독점 버퍼를 사용하고, seal/compare가 필요한 핸들을 원자적으로 가져가며 성공·실패·취소 후 finally에서 해제한다. 핸들 만료·중복 소비·run/리소스/계정/generation 불일치는 모두 실패로 처리하고 공용 DB에서 원문을 복구하지 않는다. 양쪽이 필요하면 같은 compare에서 생성된 A/B 캡처를 사용한다. 한도/파싱 실패가 있어도 sent는 보존하며, 응답을 잘라 비교가 완전하다고 선언하지 않는다.
+
+**응답·캡처 크기 기준(C3-A, 2026-10-21 이동찬 확인):** 1 MiB는 `1_048_576` bytes이며 `len(body) + sum(len(header.name.encode("utf-8")) + len(header.value.encode("utf-8")) for header in headers)`로 계산한다. 모든 중복 헤더도 각각 합산하고, 헤더의 문자열 길이가 아닌 UTF-8 bytes 길이를 쓴다. 정확히 한도인 값은 허용하고 초과하면 `failed`/None·`response_limit_exceeded`로 원문/view를 정리한다. Python 객체·참조·컨테이너 오버헤드와 HTTP framing은 포함하지 않는다. 이는 총 프로세스 메모리 한도가 아닌 보관 payload의 한도다. Gateway와 로컬 Evidence는 같은 기준을 사용하며 본문만 검사하고 헤더를 무제한 보관하지 않는다.
 
 실행 로컬 구성 요소는 `def release_captures(ReleaseCapturesRequest) -> CloseResult`도 제공한다. 입력은 `run_key, capture_refs: tuple[Ref]`이며 빈 tuple은 해당 run의 모든 active를 뜻한다. WebDiag가 실패와 run 종료 시 호출하고 반복 해제는 멱등이다. 중지/TTL 정리도 Evidence가 자체 수행하므로 호출자가 해제를 기억하는 것에만 의존하지 않는다. run HMAC key는 로컬 메모리에만 두고 run 종료 시 폐기한다.
 
@@ -476,7 +480,7 @@ Host는 §9의 조립 절차에 따라 terminal_sequence를 기대 종료 수위
 | prepare / 캡처 TTL | 15초 / 60초 |
 | Session 최대 수명 / 주체 검증 유효 기간 / 내부 lease | 300초 / 30초 / 30초이며 run 유효 기간을 넘지 않음 |
 | 계정별 정상 복구 횟수 | 1회. run/요청 예산 제약도 받음 |
-| 단일 응답 / run의 active 캡처 | 1 MiB / 8개 |
+| 단일 응답 / run의 active 캡처 | 본문 + 헤더 UTF-8 bytes 합계 1 MiB(§7) / 8개 |
 | candidate / case / audit 페이지 상한 | 100 / 100 / 100 |
 | redirect | 기본 0회이며 자동으로 따라가지 않음 |
 

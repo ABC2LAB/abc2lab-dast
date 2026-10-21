@@ -11,6 +11,7 @@ from abc2lab_contracts.audit import (
     PolicyOutcome,
     RequestIntentRecord,
 )
+from abc2lab_contracts.capture import CaptureRequest, ExecutedRequestView, RawHeader, RawResponse
 from abc2lab_contracts.execution import (
     ExecutionRequest,
     PolicyAttributes,
@@ -232,4 +233,47 @@ def execution_request(run_key: RunKey) -> ExecutionRequest:
         1,
         None,
         None,
+    )
+
+
+@pytest.fixture
+def executed_request(execution_request: ExecutionRequest) -> ExecutedRequestView:
+    request = execution_request
+    assert request.session is not None
+    return ExecutedRequestView(
+        run_key=request.run_key,
+        request_ref=request.request_ref,
+        attempt_ref="attempt-demo",
+        operation_ref=request.operation_ref,
+        operation_revision=request.operation_revision,
+        resource_ref=request.resource_ref,
+        resource_binding_ref=request.resource_binding_ref,
+        resource_binding_revision=request.resource_binding_revision,
+        account_ref=request.session.account_ref,
+        session_generation=request.session.generation,
+        purpose=request.purpose,
+        method=request.http.method,
+        actual_origin=request.http.origin,
+        actual_path=request.http.path,
+        actual_parameters=request.http.parameters,
+    )
+
+
+@pytest.fixture
+def capture_request(executed_request: ExecutedRequestView) -> CaptureRequest:
+    view = executed_request
+    return CaptureRequest(
+        run_key=view.run_key,
+        attempt_ref=view.attempt_ref,
+        request_ref=view.request_ref,
+        operation_ref=view.operation_ref,
+        resource_ref=view.resource_ref,
+        account_ref=view.account_ref,
+        session_generation=view.session_generation,
+        identity_ref="identity-a",
+        observed_at=_time(4),
+        executed_request=view,
+        raw_response=RawResponse(
+            200, (RawHeader("Set-Cookie", "secret-canary"),), b"secret-canary"
+        ),
     )

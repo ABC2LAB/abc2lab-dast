@@ -1,4 +1,4 @@
-"""실행 경계의 I/O 포트와 같은 loop의 즉시 세션 읽기 포트다."""
+"""실행 경계의 I/O 포트와 같은 loop의 동기 메모리 포트다."""
 
 from typing import Protocol
 
@@ -8,6 +8,7 @@ from abc2lab_contracts.audit import (
     AuditVerifyRequest,
     AuditVerifyResult,
 )
+from abc2lab_contracts.capture import CaptureRequest, CaptureResult, ReleaseCapturesRequest
 from abc2lab_contracts.execution import (
     AttemptResult,
     ExecuteRequest,
@@ -50,6 +51,33 @@ class SessionBindingReader(Protocol):
 
     def read_session_binding(self, run_key: RunKey, session_ref: Ref) -> SessionBindingResult:
         """await 없는 임계 구역에서도 즉시 현재 상태를 반환한다."""
+        ...
+
+
+class LocalCapturePort(Protocol):
+    """실행 로컬 영역에서만 쓰는 같은 loop·스레드의 동기 메모리 포트다.
+
+    등록 정보·맥락·한도를 유한 메모리에서 대조하고 await·I/O·저장·분석 없이 인계한다.
+    active -> released/expired, TTL 60초, 캡처당 1 MiB, run당 active 8개를 지킨다.
+    1 MiB는 body bytes + 모든 헤더 name/value의 UTF-8 bytes 합계이며 객체 오버헤드는 제외한다.
+    포트 구현은 실패·취소·만료·종료 시 참조를 정리하고 해제된 핸들의 재사용을 막는다.
+    bytes/str의 물리적 소거를 보장하지 않으며 Host/LLM/MCP에 이 포트를 주입하지 않는다.
+    """
+
+    def capture(self, request: CaptureRequest) -> CaptureResult:
+        """원문/view를 인계받고 불일치·한도 초과는 failed/None과 사유로 반환한다.
+
+        완료 후 Gateway는 인계한 참조를 보유하지 않는다. 실패 시 Evidence가 인계받은
+        참조를 정리하며 Gateway도 원문/view 참조를 버리고 알려진 전송 상태를 보존한다.
+        경로·파라미터의 인증 값 제외와 등록 일치 검사는 주입된 등록 정보로 수행한다.
+        """
+        ...
+
+    def release_captures(self, request: ReleaseCapturesRequest) -> CloseResult:
+        """지정 핸들만 멱등 해제한다. 빈 tuple은 해당 run 종료 시 전체 정리다.
+
+        해제 실패 시 사용 가능한 핸들을 남기지 않는다. 이 결과는 전송 상태를 바꾸지 않는다.
+        """
         ...
 
 

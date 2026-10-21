@@ -22,7 +22,7 @@ Policy/Gateway 공개 포트와 그 fake의 공유 선행조건인 **C2 실행 �
 |---|---|---|---|
 | C1 fingerprint codec (**MERGED, PR #15**) | [정규 바이트·검증 경로](fingerprint-contract.md#21-정규-바이트와-운영-계약-검증의-분리), stdlib-only canonical codec·demo 저수준 벡터·빈 운영 registry의 거부 검사 구현 완료 | 공통 canonical codec 사용 가능. 운영 record fingerprint 발행은 C2 typed adapter 검증 범위로 이동 | mminjun·31-no3won·sleepingman1222 |
 | C2 실행 경계 (**MERGED, PR #20**) | 공통 Ref/RunKey/SourceVersion/상태, PolicyInput/Decision 및 필요한 등록·세션 snapshot, prepare/evaluate/execute·세션 읽기·commit 검증/감사 조회의 최소 Protocol. PolicyDecisionContent/IdentityContent precommit lifecycle, typed wrapper·adapter·운영 벡터와 무전송 예제 포함 | Policy/Gateway가 등록된 타입별 fingerprint와 contracts를 사용하는 병렬 개발·검증 | mminjun·31-no3won·sleepingman1222 |
-| C3 로컬 Evidence | capture/seal/compare·캡처 수명·민감값 제거 근거·ComparisonProjected와 저장 receipt, PoC 요청 레시피 | Gateway의 캡처 인계, WebDiag 비교, Evidence 독립 테스트 연결 | 31-no3won·mminjun |
+| C3 로컬 Evidence (**C3-A PR 리뷰 대기·미병합**) | 먼저 capture/release 타입·동기 포트와 무전송 예제. 이후 seal/compare·민감값 제거 근거·ComparisonProjected·저장 receipt·PoC 요청 레시피를 별도 소계약으로 추가 | C3-A 병합 후 Gateway의 캡처 인계와 Evidence 로컬 fake 연결. 전체 비교·저장은 후속 경계 필요 | 31-no3won·mminjun |
 | C4 발견·투영·보고 | Host/WebDiag의 hints/Candidate 전달과 이벤트·조회, Judge/Report 경계. 실제 소비 경계마다 별도 PR로 분할 | Host/Knowledge와 Judge/Report fake 연결, app에서 한 경계씩 교체 | 31-no3won·mminjun·sleepingman1222 |
 
 C2를 위해 C3/C4의 전체 도메인을 먼저 정의하지 않는다. 아직 없는 capture 서비스 등은 실제 연동 전 해당 소계약을 병합한다. C2만으로 전체 Gateway/Evidence 연동이나 S1이 완료된 것으로 표시하지 않는다. 후속 단계의 내부 로직은 필요한 계약 준비와 병행할 수 있다. C3·C4의 gateway/judge 소유 경계(capture·Judge)는 [C3·C4 최소 계약 초안](c3-c4-contract-draft.md)에서 병렬로 제안한다.
@@ -84,3 +84,21 @@ uv run --no-project --python 3.13.15 scripts/dev.py check contracts
 독립 코드 검토와 아키텍처 검토의 지적을 반영해 감사 수위·cursor/snapshot·실패한 세션의 confirmed 표시를 검증했다. 재검토에서 남은 코드·명세 지적과 아키텍처 차단 사항은 없었다. 이는 팀원의 GitHub 승인 리뷰를 대신하지 않는다.
 
 C2는 [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)으로 병합됐다. 각 담당자는 이 계약으로 독립 개발하며 실제 Policy/Gateway/WebDiag·영속 journal·세션/예산 통제·HTTP/DB·C3/C4 및 S1 전체 행동 수용 사례는 후속 검증 범위다. C2 구현은 의존성·`uv.lock`·기존 고정 벡터 파일을 변경하지 않았다.
+
+## 5. C3-A 캡처 계약 — PR 리뷰 대기
+
+2026-10-21, `codex/c3-capture-contracts`에서 `contracts`의 첫 C3 경계를 구현하고 검증했다. [C3-A 구현 범위](c3-c4-contract-draft.md#21-c3-a-캡처-계약-구현--pr-리뷰-대기)는 실행 전용 타입 6개와 `LocalCapturePort`의 동기 메서드 2개다. C2의 8개 포트와 scalar/상태/사유 타입은 유지한다. 기존 S1의 동기 포트 2개를 하나의 `LocalCapturePort` Protocol로 정의하며 S1 전체 포트 수는 늘리지 않는다.
+
+| 검증 | 결과 |
+|---|---|
+| `scripts/dev.py check contracts` | Ruff lint/format·mypy 21개 파일·contracts 테스트 **130개 통과** |
+| 전체 기본 pytest / mypy | **207개 통과** / 48개 소스 파일 통과 |
+| Import Linter | **6개 경계 유지, 위반 0개** |
+| `uv build --package abc2lab-contracts` | wheel·sdist 생성 성공 |
+| 변경 범위 | contracts와 관련 공유 문서만 변경. 타 서비스·의존성·uv.lock·fingerprint codec/registry·기존 벡터 변경 없음 |
+
+`capture.py`의 타입은 불변·repr 비노출을 적용하며 공개 JSON/MCP·저장·fingerprint 대상으로 사용하지 않는다. 포트 구현이 등록과 캡처 맥락·한도·수명·참조 정리를 검사하며, 테스트용 fake의 통과를 실제 Evidence·Gateway 구현이나 전송 허가로 집계하지 않는다. 아직 PR 병합이나 팀 승인 완료 상태가 아니다.
+
+seal/compare·Evidence 공개 저장/조회·ComparisonProjected·요청 레시피와 업무별 fingerprint는 후속 계약이다. Evidence 담당 이경준·Gateway 담당 최민준의 경계 검토 후 한 단계씩 연결하며, 이동찬은 해당 서비스 소스를 수정하지 않는다.
+
+2026-10-21, 이경준의 후속 제안을 검토하고 [Evidence C3 계약 보완안](evidence-c3-contract.md)을 기록했다. EvidenceSummary.source_event는 Evidence가 fingerprint 전에 고정하는 자체 artifact 감사 링크로 이동찬이 확인했다. Gateway 결과 commit을 capture 선행조건으로 두지 않는다. EvidenceSummary/ComparisonPayload에는 별도 Content 타입을 추가하지 않고, 필요한 공유 Evidence·레시피 타입과 evidence/comparison typed fingerprint·벡터를 다음 계약 구현으로 연결한다. 제공자·소비자 리뷰와 코드 구현은 아직 남아 있다.
