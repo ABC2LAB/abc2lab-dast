@@ -20,7 +20,7 @@ codec 버전은 `canonical-json.v1`이다. fingerprint는 다음 envelope의 can
 {"codec_version":"canonical-json.v1","record_kind":"...","schema_version":"...","payload":{}}
 ```
 
-`record_kind`와 `schema_version`은 필수 문자열이다. 등록되지 않은 kind/version은 거부한다. JSON은 `sort_keys=True`, `separators=(",", ":")`, `ensure_ascii=False`, `allow_nan=False`로 생성하고 UTF-8로 인코딩한다. BOM, 앞뒤 공백, 마지막 개행을 넣지 않는다.
+envelope의 codec_version/record_kind/schema_version은 필수 문자열이다. 저수준 canonical_json_bytes는 구조·인코딩을 검사하고, 운영 typed wrapper/registry는 미등록 codec/kind/schema 조합을 거부한다. JSON은 `sort_keys=True`, `separators=(",", ":")`, `ensure_ascii=False`, `allow_nan=False`로 생성하고 UTF-8로 인코딩한다. BOM, 앞뒤 공백, 마지막 개행을 넣지 않는다.
 
 ### 2.1 정규 바이트와 운영 계약 검증의 분리
 
@@ -38,8 +38,8 @@ C1에는 운영 record 등록 항목이 없다. 공통 canonical codec과 등록
 
 허용되는 재귀 값은 다음과 같다.
 
-- 등록된 frozen dataclass의 모든 선언 필드를 문자열 key object로 변환한다. 필드 선언 순서가 아니라 canonical JSON의 key 정렬을 사용한다.
-- `Enum`은 등록된 문자열 `.value`만 사용한다. 임의 객체를 문자열로 바꾸지 않는다.
+- record별 typed adapter가 허용한 frozen dataclass의 모든 payload 필드를 문자열 key object로 변환한다. 필드 선언 순서가 아니라 canonical JSON의 key 정렬을 사용한다.
+- `Enum`은 record별 typed adapter가 허용한 문자열 `.value`만 사용한다. 별도 런타임 타입 등록소나 임의 객체의 문자열 변환을 만들지 않는다.
 - `str`, `bool`, `None`, signed 64-bit 범위의 `int`를 허용한다. `bool`은 `int`보다 먼저 판정한다.
 - tuple은 순서를 보존한 JSON array로 변환한다. tuple의 원소도 같은 폐쇄 규칙을 따른다.
 - 도메인 계약에 명시된 immutable/snapshotted mapping만 허용한다. key는 문자열이어야 하며 재귀 값은 폐쇄 규칙을 따른다. 임의 mapping을 모든 도메인 타입의 빈칸으로 사용하지 않는다.
@@ -67,7 +67,7 @@ receipt·자체 fingerprint를 제외하는 규칙을 필드명으로 재귀 검
 | `StoredComparison` | `ComparisonPayload` fingerprint를 계산하고, Evidence 두 건과 Comparison 한 건의 완료 receipt를 별도로 검증한다. receipt를 payload에 임의로 넣거나 재귀 이름 필터로 제거하지 않는다. |
 | `RequestIntentRecord` | `record_kind=request_intent`, `schema_version=request_intent.v1`, `record_ref=attempt_ref`, `revision=1` 불변. `run_key`, `request_ref`, `attempt_ref`, `binding_id`, `operation_ref`, `operation_revision`, `purpose`, `account_ref`, `session_generation`, `decision_ref`, `evaluated_view_fingerprint`, `created_at` 전부 포함한다. 실제 private bound request의 raw value/header/body/auth는 포함하지 않으며, binding은 실제 view digest와 Gateway 내부 bound request를 가리키는 검증 metadata다. |
 | `AttemptRecord` | `record_kind=attempt`, `schema_version=attempt.v1`, `record_ref=attempt_ref`. `run_key`, `request_ref`, `attempt_ref`, `revision`, `decision_ref`, `binding_id`, `operation_ref`, `account_ref`, `session_generation`, `send_status`, `capture_status`, `occurred_at`, `reason_codes` 전부 포함한다. revision은 상태 revision이며 capture handle, AuthSignal, raw snapshot, headers/body/auth는 포함하지 않는다. 이후 known state는 새 revision으로 append하며 unknown을 추측해 not_sent로 바꾸지 않는다. |
-| `run`, `task` | 아직 wire schema가 확정되지 않았다. C4에서 각 record의 비밀 없는 frozen payload, typed projection, schema/kind, golden vector를 확정하기 전에는 generic codec 사용을 보류한다. |
+| `run`, `task` | 아직 wire schema가 확정되지 않았다. C4에서 각 record의 비밀 없는 frozen payload, typed adapter, schema/kind, golden vector를 확정하기 전에는 record별 wrapper와 운영 fingerprint 발행을 보류한다. |
 
 업무 record에 새 필드가 생기면 해당 변환자와 golden vector를 같은 계약 PR에서 갱신한다. 알 수 없는 record kind/version이나 필드 누락은 성공 fingerprint로 바꾸지 않는다.
 
