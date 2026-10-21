@@ -223,7 +223,7 @@ S1 Host는 같은 사례의 A 기준 요청과 B가 A 객체에 수행하는 교
 
 동일한 감사 Protocol은 여러 생산자가 구현해도 정의를 한 번만 센다. 데이터 타입·순수 codec 함수·Host 내부 포트·후속 web_observe/MCP 도구는 집계하지 않는다.
 
-| 제공자/영역 | async def (24개) | def (3개) |
+| 제공자/영역 | async def (25개) | def (3개) |
 |---|---|---|
 | Host | start_run, get_status, stop (3) | — |
 | WebDiag | collect, http_observe, access_compare, acquire_session, whoami (5) | read_session_binding (1) |
@@ -233,6 +233,8 @@ S1 Host는 같은 사례의 A 기준 요청과 B가 A 객체에 수행하는 교
 | Knowledge | register_candidates, project, get_case_view (3) | — |
 | Judge / Report | judge, build_report (2) | — |
 | 생산자 감사 Protocol | verify_committed, read_audit (2) | — |
+
+현재 집계는 C3의 `recover_submission`을 포함한 총 28개다. 위 v0.3·v0.5 변경 이력의 27개는 이 복구 포트 추가 전 기준이다.
 
 ### 3.2 C2 contracts 포트 범위
 
@@ -339,6 +341,8 @@ Gateway가 다시 검증한다. Policy 기록이 실제 해당 binding/view의 a
 ## 7. Evidence: 실행 전용과 공개 저장
 
 **C3 계약 동결 추가(2026-10-21):** 기존 S1 포트 집계(27개/비동기 24개)는 C3 복구 확장 이전의 기준이다. `recover_submission` 비동기 포트 1개를 추가한 동결 범위는 총 28개/비동기 25개다. 상세 복구·멱등·저장 책임은 [C3 동결안](evidence-c3-freeze.md)을 우선 적용한다. 기존 캡처의 동기/일회용 규칙은 변경하지 않는다.
+
+**C3 결과 상태 보완(2026-10-21, 이동찬 확인):** 저장·봉인·비교의 성공 receipt는 같은 run의 `PARTIAL`/`COMPLETE`에 보존한다. 나머지 근거가 복구 불가여도 성공 receipt가 있으면 `PARTIAL`이며, `FAILED`에는 성공 receipt가 없다. 저장·봉인·비교·조회 결과의 `PARTIAL`/`FAILED`에는 사유가 필요하고, 실패한 조회는 Artifact를 발행하지 않는다. 완결 결과에 함께 들어온 업무 내용과 receipt의 fingerprint 일관성은 contracts에서 대조하며, 실제 저장·감사 증명은 Evidence가 독립 검증한다. 세부 조건은 [동결안 §3·§5](evidence-c3-freeze.md)를 따른다.
 
 | 영역 | 시그니처 | 입력/출력 record |
 |---|---|---|

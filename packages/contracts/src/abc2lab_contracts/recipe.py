@@ -60,7 +60,8 @@ class RegisteredRequestRecipe(ContractRecord):
             raise ValueError("recipe must use a fresh registered session")
         if (
             not self.path_template.startswith("/")
-            or any(char in self.path_template for char in "\r\n\x00?#")
+            or self.path_template.startswith("//")
+            or any(char in self.path_template for char in "\r\n\x00?#\\")
             or "://" in self.path_template
         ):
             raise ValueError("recipe path must be a registered path-only template")

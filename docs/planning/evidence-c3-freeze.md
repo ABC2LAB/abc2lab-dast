@@ -31,11 +31,13 @@
 
 ## 3. 저장 receipt 3개 불변식
 
-`StoredComparison.receipts`는 정확히 `(Owner Evidence receipt, Cross Evidence receipt, Comparison receipt)` 순서. contracts 생성자는 개수, enum 종류(`evidence`, `evidence`, `comparison`), payload의 owner/cross/comparison 참조와 각각의 `artifact_ref`, 중복 부재, 모두 동일한 `run_key`를 강제한다.
+`StoredComparison.receipts`는 정확히 `(Owner Evidence receipt, Cross Evidence receipt, Comparison receipt)` 순서. contracts 생성자는 개수, enum 종류(`evidence`, `evidence`, `comparison`), payload의 owner/cross/comparison 참조와 각각의 `artifact_ref`, 중복 부재, 모두 동일한 `run_key`를 강제한다. 함께 제공된 `ComparisonPayload`의 fingerprint를 재계산해 Comparison receipt의 값과도 대조한다. Owner/Cross Evidence 내용은 이 객체에 없으므로 해당 두 receipt의 내용 대조는 저장 서비스 책임이다. `SealResult.COMPLETE`도 함께 제공된 `EvidenceSummary`의 fingerprint와 저장 receipt를 대조한다. 이 로컬 일관성 검사는 실제 저장·감사 commit의 증명이 아니다.
 
 실제 데이터 내용의 fingerprint 재계산과 원본 artifact 존재, 저장 commit/출처, 감사 기록의 진위는 Evidence 저장 서비스가 독립적으로 검증한다. 기존의 동일 run Evidence는 재사용 가능하며 **각 StoreReceipt의 원래 `submission_ref`, `source`, `committed_at`, fingerprint를 그대로 보존**한다. 세 receipt의 `submission_ref`나 `source.revision`이 동일할 필요는 없다. 새 비교 저장 요청에서 생성한 Comparison receipt만 그 요청의 `source`와 맞춘다. 정상 source 버전 업그레이드만으로 과거 근거를 무효화하지 않는다. 명시적 신뢰 폐기와 소급 효력은 신뢰된 등록 규칙으로 별도 확인한다. 확인 불가면 COMPLETE 금지.
 
 `RedactedBundle.comparison`의 Evidence 의존 참조는 같은 bundle 또는 기존 같은 run의 저장 기록을 허용한다. 모든 의존성과 출처를 저장자가 확인한 후에만 완료 비교를 공개한다. 공개 포트는 `RawResponse`, 쿠키, 실제 path/query 값, 임의 dict payload나 캡처 핸들을 받지 않는다.
+
+레시피가 있는 `EvidenceSummary`는 레시피의 `operation_ref`·`resource_ref`가 자신의 값과 같아야 한다. `RegisteredRequestRecipe`는 `//host`나 역슬래시가 포함된 경로를 거부한다. 이 형태 검사와 별도로 Evidence/Report는 주입된 등록 원본의 동작·자원·바인딩·revision·경로·placeholder·출처를 모두 대조한 뒤 저장·출력해야 한다. contracts 테스트의 무전송 fake는 등록과 다른 레시피가 저장 전에 거부되는 연결 예제이며, 실제 인가·저장·감사 구현을 대신하지 않는다.
 
 ## 4. 제출 멱등성·재시작 복구
 
@@ -52,11 +54,15 @@
 |---|---|
 | 필수 Artifact·StoreReceipt·원본 감사 모두 실재·일치 | `COMPLETE`, 기존 Evidence/StoredComparison/Projection/receipts 반환 |
 | 저장·감사 결과 미확인/지연 I/O 잔존 | `PARTIAL`, 성공한 receipt 유지, 완료 비교·Projection 없음 |
-| 일부 Artifact 저장 성공, 나머지 불명 | `PARTIAL`, 기존 receipt 보존, 무전송 재조회 |
-| 원문 캡처 소멸 + 필요한 Artifact 없음이 **확정** + 진행 I/O 없음 | `FAILED`, 원래 HTTP sent/unknown 상태는 보존 |
-| 동일 submission 다른 바인딩/종류 | `FAILED`, `IDEMPOTENCY_CONFLICT` |
+| 일부 Artifact 저장 성공, 나머지 불명 또는 복구 불가 | `PARTIAL`, 기존 receipt 보존, 가능한 저장·감사 상태만 무전송 재조회 |
+| 성공 receipt 없음 + 원문 캡처 소멸 + 필요한 Artifact 없음이 **확정** + 진행 I/O 없음 | `FAILED`, 원래 HTTP sent/unknown 상태는 보존 |
+| 동일 submission 다른 바인딩/종류 | 충돌한 입력은 `FAILED`, receipt 없이 `IDEMPOTENCY_CONFLICT`; 기존 제출·receipt를 덮어쓰지 않음 |
 
 복구 성공 시 결과는 현재 검증 상태를 기준으로 재구성한다. 해결된 과거 오류는 새 결과의 `reason_codes`에서 제거하며, 실패·미확인 이력은 감사 저널에 그대로 남긴다. `seal`의 COMPLETE에는 해당 Evidence와 저장 receipt 1개가 필요하다. `compare_and_seal` COMPLETE에는 `StoredComparison`과 `ComparisonProjected` 둘 다 필요하다. PARTIAL/FAILED 결과는 저장됐다는 이유만으로 감사 확인되지 않은 완결 Artifact를 발행하지 않는다.
+
+**결과 상태 보완(2026-10-21, 이동찬 확인):** `StoreOutcome`·`SealResult`·`CompareOutcome`에서 성공 receipt가 하나라도 있으면 `PARTIAL` 또는 `COMPLETE`로 반환한다. 나머지 근거를 복구할 수 없어도 성공 receipt를 버리거나 `FAILED`에 넣지 않는다. `FAILED`에는 성공 receipt가 없고, 모든 receipt는 결과와 같은 run이어야 한다. `StoreOutcome.COMPLETE`에는 최소 1개 receipt가 필요하다. `PARTIAL`은 반드시 이후 완료가 가능하다는 뜻이 아니며 대상 요청 재전송의 근거가 아니다.
+
+`StoreOutcome`·`SealResult`·`CompareOutcome`·`EvidenceReadResult`의 `PARTIAL`/`FAILED`는 비어 있지 않은 `reason_codes`가 필요하다. 조회 실패를 성공한 빈 결과로 바꾸지 않는다. `EvidenceReadResult.FAILED`는 Artifact를 발행하지 않으며, 허용된 일부 자료를 반환할 때는 사유와 함께 `PARTIAL`을 쓴다. 정상 조회 결과가 0건인 `COMPLETE`는 허용한다.
 
 ## 6. 리스크·추후 협의 (C3 타입 동결 범위 밖)
 

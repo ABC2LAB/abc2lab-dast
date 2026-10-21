@@ -1,5 +1,6 @@
 """C3 frozen Evidence contract shapes, structural receipts and private port split."""
 
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 from inspect import iscoroutinefunction
@@ -17,6 +18,7 @@ from abc2lab_contracts.evidence import (
     ComparisonPayload,
     ComparisonProjected,
     ComparisonSignals,
+    EvidenceReadRequest,
     EvidenceReadResult,
     EvidenceSubmissionKind,
     EvidenceSummary,
@@ -24,6 +26,7 @@ from abc2lab_contracts.evidence import (
     RedactedBundle,
     SealResult,
     StoredComparison,
+    StoreOutcome,
     StoreReceipt,
 )
 from abc2lab_contracts.fingerprint import comparison_fingerprint, evidence_fingerprint
@@ -320,3 +323,178 @@ def test_evidence_recipe_none_has_nonsecret_reason() -> None:
     )
     assert without_recipe.request_recipe is None
     assert evidence_fingerprint(without_recipe) != evidence_fingerprint(evidence)
+
+
+@pytest.mark.parametrize("status", tuple(ResultStatus))
+def test_store_outcome_rejects_receipt_from_another_run(status: ResultStatus) -> None:
+    foreign = replace(_run(), run_ref="other-run")
+    receipt = replace(_receipts(_comparison())[0], run_key=foreign)
+    with pytest.raises(ValueError, match="run mismatch"):
+        StoreOutcome(_run(), status, (receipt,), (ReasonCode.EVIDENCE_STORE_FAILED,))
+
+
+def test_failed_read_never_publishes_artifacts() -> None:
+    stored = StoredComparison(_comparison(), _receipts(_comparison()))
+    with pytest.raises(ValueError, match="failed read"):
+        EvidenceReadResult(
+            _run(), ResultStatus.FAILED, (_evidence("owner"),), (), (ReasonCode.ACCESS_DENIED,)
+        )
+    with pytest.raises(ValueError, match="failed read"):
+        EvidenceReadResult(_run(), ResultStatus.FAILED, (), (stored,), (ReasonCode.ACCESS_DENIED,))
+
+
+def test_failed_read_is_distinct_from_successful_empty_lookup() -> None:
+    failed = EvidenceReadResult(_run(), ResultStatus.FAILED, (), (), (ReasonCode.ACCESS_DENIED,))
+    complete = EvidenceReadResult(_run(), ResultStatus.COMPLETE, (), (), ())
+    assert failed.status is not complete.status
+    partial = EvidenceReadResult(
+        _run(), ResultStatus.PARTIAL, (_evidence("owner"),), (), (ReasonCode.NOT_FOUND,)
+    )
+    assert partial.evidence
+
+
+def test_complete_seal_rejects_receipt_for_different_content() -> None:
+    receipt = replace(_receipts(_comparison())[0], content_fingerprint="a" * 64)
+    with pytest.raises(ValueError, match="fingerprint mismatch"):
+        SealResult(_run(), ResultStatus.COMPLETE, _evidence("owner"), (receipt,), ())
+
+
+def test_stored_comparison_rejects_mismatched_comparison_store_digest() -> None:
+    payload = _comparison()
+    receipts = _receipts(payload)
+    mismatched = receipts[:2] + (replace(receipts[2], content_fingerprint="a" * 64),)
+    with pytest.raises(ValueError, match="fingerprint mismatch"):
+        StoredComparison(payload, mismatched)
+
+
+def test_recipe_must_describe_the_same_evidence_operation_and_resource() -> None:
+    evidence = _evidence("owner")
+    recipe = _recipe()
+    with pytest.raises(ValueError, match="recipe.*binding"):
+        replace(evidence, request_recipe=replace(recipe, operation_ref="other-operation"))
+    with pytest.raises(ValueError, match="recipe.*binding"):
+        replace(evidence, request_recipe=replace(recipe, resource_ref="other-resource"))
+    with pytest.raises(ValueError, match="recipe.*binding"):
+        replace(evidence, resource_ref=None)
+
+
+@pytest.mark.parametrize("path", ["//other.invalid/objects/1", "/\\other.invalid/objects/1"])
+def test_recipe_rejects_authority_like_paths(path: str) -> None:
+    with pytest.raises(ValueError, match="path"):
+        replace(_recipe(), path_template=path)
+
+
+def test_complete_store_requires_a_committed_receipt() -> None:
+    with pytest.raises(ValueError, match="complete store.*receipt"):
+        StoreOutcome(_run(), ResultStatus.COMPLETE, (), ())
+
+
+@pytest.mark.parametrize("status", [ResultStatus.PARTIAL, ResultStatus.FAILED])
+def test_incomplete_outputs_require_a_reason(status: ResultStatus) -> None:
+    with pytest.raises(ValueError, match="reason"):
+        StoreOutcome(_run(), status, (), ())
+    with pytest.raises(ValueError, match="reason"):
+        EvidenceReadResult(_run(), status, (), (), ())
+    with pytest.raises(ValueError, match="reason"):
+        SealResult(_run(), status, None, (), ())
+    with pytest.raises(ValueError, match="reason"):
+        CompareOutcome(_run(), status, None, None, (), ())
+
+
+def test_successful_receipts_are_preserved_as_partial_even_after_terminal_failure() -> None:
+    receipts = _receipts(_comparison())[:1]
+    reasons = (ReasonCode.CAPTURE_EXPIRED,)
+    assert StoreOutcome(_run(), ResultStatus.PARTIAL, receipts, reasons).receipts == receipts
+    assert SealResult(_run(), ResultStatus.PARTIAL, None, receipts, reasons).receipts == receipts
+    assert (
+        CompareOutcome(_run(), ResultStatus.PARTIAL, None, None, receipts, reasons).receipts
+        == receipts
+    )
+    with pytest.raises(ValueError, match="partial or complete"):
+        StoreOutcome(_run(), ResultStatus.FAILED, receipts, reasons)
+    with pytest.raises(ValueError, match="partial or complete"):
+        SealResult(_run(), ResultStatus.FAILED, None, receipts, reasons)
+    with pytest.raises(ValueError, match="partial or complete"):
+        CompareOutcome(_run(), ResultStatus.FAILED, None, None, receipts, reasons)
+
+
+class _RegisteredRecipeStore:
+    """등록 recipe 한 건과의 대조를 재생하며 실제 저장·감사·인가를 구현하지 않는다."""
+
+    def __init__(self, expected: RegisteredRequestRecipe) -> None:
+        self.expected = expected
+        self.saved: tuple[EvidenceSummary, ...] = ()
+
+    async def store_evidence(self, request: RedactedBundle) -> StoreOutcome:
+        if request.comparison is not None or len(request.evidence) != 1:
+            raise AssertionError("this example only stores one Evidence artifact")
+        evidence = request.evidence[0]
+        # Equality checks every field, including path, slots, source and revisions.
+        # Actual trusted registration/provenance validation belongs to Evidence.
+        if evidence.request_recipe != self.expected:
+            return StoreOutcome(
+                request.run_key, ResultStatus.FAILED, (), (ReasonCode.RECIPE_BINDING_MISMATCH,)
+            )
+        self.saved = request.evidence
+        receipt = StoreReceipt(
+            request.run_key,
+            request.submission_ref,
+            evidence.evidence_ref,
+            ArtifactKind.EVIDENCE,
+            request.source,
+            STAMP,
+            evidence_fingerprint(evidence),
+        )
+        return StoreOutcome(request.run_key, ResultStatus.COMPLETE, (receipt,), ())
+
+    async def evidence_read_summary(self, request: EvidenceReadRequest) -> EvidenceReadResult:
+        return EvidenceReadResult(
+            request.run_key, ResultStatus.FAILED, (), (), (ReasonCode.ACCESS_DENIED,)
+        )
+
+
+_RECIPE_CHANGES: tuple[Callable[[RegisteredRequestRecipe], RegisteredRequestRecipe], ...] = (
+    lambda recipe: replace(recipe, operation_ref="unregistered-operation"),
+    lambda recipe: replace(recipe, operation_revision=2),
+    lambda recipe: replace(recipe, resource_ref="unregistered-resource"),
+    lambda recipe: replace(recipe, resource_binding_ref="unregistered-binding"),
+    lambda recipe: replace(recipe, resource_binding_revision=2),
+    lambda recipe: replace(recipe, path_template="/objects/unregistered-value"),
+    lambda recipe: replace(
+        recipe,
+        parameters=(RecipeParameter("object_id", ParameterLocation.PATH, "${UNKNOWN_SLOT}"),),
+    ),
+    lambda recipe: replace(recipe, source=_source(2)),
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", _RECIPE_CHANGES)
+async def test_recipe_consumer_rejects_shape_valid_unregistered_recipes_before_storage(
+    change: Callable[[RegisteredRequestRecipe], RegisteredRequestRecipe],
+) -> None:
+    changed = change(_recipe())
+    evidence = replace(
+        _evidence("owner"),
+        request_recipe=changed,
+        operation_ref=changed.operation_ref,
+        resource_ref=changed.resource_ref,
+    )
+    example = _RegisteredRecipeStore(_recipe())
+    port: EvidencePort = example
+    result = await port.store_evidence(RedactedBundle(_run(), "sub", (evidence,), None, _source()))
+    assert result.status is ResultStatus.FAILED
+    assert result.reason_codes == (ReasonCode.RECIPE_BINDING_MISMATCH,)
+    assert not result.receipts
+    assert not example.saved
+
+
+@pytest.mark.asyncio
+async def test_recipe_consumer_accepts_registered_recipe_without_target_io() -> None:
+    evidence = _evidence("owner")
+    example = _RegisteredRecipeStore(_recipe())
+    port: EvidencePort = example
+    result = await port.store_evidence(RedactedBundle(_run(), "sub", (evidence,), None, _source()))
+    assert result.status is ResultStatus.COMPLETE
+    assert result.receipts[0].content_fingerprint == evidence_fingerprint(evidence)
+    assert example.saved == (evidence,)

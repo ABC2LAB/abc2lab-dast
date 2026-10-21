@@ -33,11 +33,11 @@ Gateway transport
 
 응답의 원인인 Gateway attempt와 Evidence의 artifact 이벤트는 구분한다. 생산자 간 원인 연결은 `AuditEvent.causal_links`에서 표현한다. 필요한 Gateway 링크의 전달·조회 방식은 후속 Evidence/Gateway 경계 리뷰에서 고정하며, 이 문서만으로 SealRequest/CompareRequest에 새 필드나 새 감사 조회 포트를 추가하지 않는다. 어떤 방식이든 원문 인계 전에 Gateway 결과 commit을 기다리게 하지 않고, caller가 준 링크 자체를 commit 증명으로 취급하지 않는다.
 
-## 3. 후속 contracts 구현 범위
+## 3. 이번 contracts 구현 범위
 
 필드는 [S1 §7](s1-api-spec.md#7-evidence-실행-전용과-공개-저장)과 [PoC 최소 타입](poc-report-design.md#3-최소-추가-타입)을 따른다. 기존 C2의 `ComparisonRules`·`IdentityResult`·`AuditLink`·감사 타입과 scalar/상태/사유를 재사용한다.
 
-| 묶음 | 추가할 계약 |
+| 묶음 | 구현한 공유 계약 |
 |---|---|
 | 공개 근거·비교 자료 | `EvidenceSummary`, `ComparisonSignals`, `ComparisonPayload`, `StoredComparison` |
 | 저장·조회 | `ArtifactKind(evidence/comparison)`, `StoreReceipt`, `RedactedBundle`, `StoreOutcome`, `EvidenceReadRequest`, `EvidenceReadResult` |
@@ -77,6 +77,6 @@ Gateway transport
 | WebDiag·Host 소비·전달 | 이경준 |
 | Judge·Report 소비·비교 규칙 제공 | 최민준 |
 
-후속 계약 PR에서는 저장 전·후 fingerprint 일치, 동일 submission의 event_ref 재사용, 잘못된 producer/kind/ref/revision/내용 거부, 한쪽 근거 누락, 저장 성공 후 감사 실패·불명, 부분 receipt 보존과 무전송 재확인을 검사한다. 캡처 크기는 기존 C3-A의 **본문 + 모든 헤더 이름·값 UTF-8 bytes 합계 1 MiB** 기준을 따른다.
+이번 contracts 테스트는 완결 결과의 업무 내용/receipt fingerprint 일치, 잘못된 producer/kind/ref/revision/내용 거부, 성공 receipt의 같은 run·`PARTIAL` 보존, 미완료 사유 필수, 실패 조회의 자료 비공개를 검사한다. 등록과 다른 레시피를 저장 전에 거부하는 무전송 fake 예제도 포함한다. 상태의 정확한 의미는 [동결안 §5](evidence-c3-freeze.md#5-complete--partial--failed)를 따른다. 동일 submission의 event_ref 재사용, 한쪽 근거 누락과 저장·감사 실패/불명의 실제 복구·동시성 검증은 Evidence 제공자 구현에서 수행해야 한다. 캡처 크기는 기존 C3-A의 **본문 + 모든 헤더 이름·값 UTF-8 bytes 합계 1 MiB** 기준을 따른다.
 
 제안자가 보고한 Evidence 로컬 구현·격리 검사 결과는 제공자 측 진행 상황이며, 현재 공유 checkout에 그 구현이 제공됐거나 검증됐다는 의미는 아니다. 임시 `_c3_records.py`·fingerprinting 구현은 해당 담당자가 공유 계약 병합 후 import로 교체한다. 이동찬의 작업은 contracts와 관련 문서에 한정한다.

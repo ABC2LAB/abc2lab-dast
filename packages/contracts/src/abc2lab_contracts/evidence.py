@@ -71,6 +71,11 @@ class EvidenceSummary(ContractRecord):
             raise ValueError("evidence HTTP status must be between 100 and 599")
         if self.request_recipe is None and not self.recipe_reason_codes:
             raise ValueError("missing recipe must retain a reason")
+        if self.request_recipe is not None and (
+            self.request_recipe.operation_ref != self.operation_ref
+            or self.request_recipe.resource_ref != self.resource_ref
+        ):
+            raise ValueError("evidence recipe operation/resource binding mismatch")
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +152,10 @@ class StoredComparison(ContractRecord):
         # Original submission_ref and source may legitimately differ across receipts.
         if len({(r.artifact_kind, r.artifact_ref) for r in self.receipts}) != 3:
             raise ValueError("duplicate comparison receipts")
+        from abc2lab_contracts.fingerprint import comparison_fingerprint
+
+        if comparison.content_fingerprint != comparison_fingerprint(self.payload):
+            raise ValueError("comparison store receipt content fingerprint mismatch")
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +190,16 @@ class StoreOutcome(ContractRecord):
     receipts: tuple[StoreReceipt, ...]
     reason_codes: tuple[ReasonCode, ...]
 
+    def _validate_invariants(self) -> None:
+        if any(receipt.run_key != self.run_key for receipt in self.receipts):
+            raise ValueError("store receipt run mismatch")
+        if self.status is ResultStatus.COMPLETE and not self.receipts:
+            raise ValueError("complete store requires at least one receipt")
+        if self.status is ResultStatus.FAILED and self.receipts:
+            raise ValueError("stored receipts require a partial or complete store result")
+        if self.status is not ResultStatus.COMPLETE and not self.reason_codes:
+            raise ValueError("incomplete store requires a reason")
+
 
 @dataclass(frozen=True, slots=True)
 class EvidenceReadRequest(ContractRecord):
@@ -203,6 +222,10 @@ class EvidenceReadResult(ContractRecord):
     reason_codes: tuple[ReasonCode, ...]
 
     def _validate_invariants(self) -> None:
+        if self.status is not ResultStatus.COMPLETE and not self.reason_codes:
+            raise ValueError("incomplete Evidence read requires a reason")
+        if self.status is ResultStatus.FAILED and (self.evidence or self.comparisons):
+            raise ValueError("failed read cannot publish artifacts")
         if any(item.run_key != self.run_key for item in self.evidence):
             raise ValueError("Evidence read run mismatch")
         if any(item.payload.run_key != self.run_key for item in self.comparisons):
@@ -230,8 +253,12 @@ class SealResult(ContractRecord):
     reason_codes: tuple[ReasonCode, ...]
 
     def _validate_invariants(self) -> None:
+        if self.status is not ResultStatus.COMPLETE and not self.reason_codes:
+            raise ValueError("incomplete seal requires a reason")
         if any(item.run_key != self.run_key for item in self.receipts):
             raise ValueError("seal receipt run mismatch")
+        if self.status is ResultStatus.FAILED and self.receipts:
+            raise ValueError("stored receipts require a partial or complete seal result")
         if self.status is ResultStatus.COMPLETE:
             if self.evidence is None or self.evidence.run_key != self.run_key:
                 raise ValueError("complete seal requires matching Evidence")
@@ -243,6 +270,10 @@ class SealResult(ContractRecord):
                 or receipt.artifact_ref != self.evidence.evidence_ref
             ):
                 raise ValueError("complete seal receipt must match Evidence")
+            from abc2lab_contracts.fingerprint import evidence_fingerprint
+
+            if receipt.content_fingerprint != evidence_fingerprint(self.evidence):
+                raise ValueError("seal receipt content fingerprint mismatch")
         elif self.evidence is not None:
             raise ValueError("incomplete seal cannot publish Evidence")
 
@@ -318,8 +349,12 @@ class CompareOutcome(ContractRecord):
     reason_codes: tuple[ReasonCode, ...]
 
     def _validate_invariants(self) -> None:
+        if self.status is not ResultStatus.COMPLETE and not self.reason_codes:
+            raise ValueError("incomplete compare requires a reason")
         if any(item.run_key != self.run_key for item in self.receipts):
             raise ValueError("compare receipt run mismatch")
+        if self.status is ResultStatus.FAILED and self.receipts:
+            raise ValueError("stored receipts require a partial or complete compare result")
         if self.status is ResultStatus.COMPLETE:
             if self.stored_comparison is None or self.projection_event is None:
                 raise ValueError("complete compare requires stored comparison and projection")
