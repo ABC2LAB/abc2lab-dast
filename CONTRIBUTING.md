@@ -96,7 +96,7 @@ main에 직접 push하지 말고 PR로 병합합니다. 병합 후에는 브랜�
 
 - 다른 모듈의 내부 구현·스키마·유틸리티를 import하지 않는다. 공유 타입과 호출 포트는 `contracts`에 두고, `app`만 구체 구현을 조립·주입한다.
 - `contracts`는 표준 라이브러리만 사용하는 의존성 최하단이다. 공유 데이터는 의미가 명확한 `dataclass`·enum·Protocol 등으로 정의한다. 스키마를 피하려고 임의 dict나 빈 `Any` API를 사용하지 않는다. 본래 매핑인 자료에 dict를 사용하는 것은 허용한다.
-- contracts는 dataclass·enum·Protocol과 함께 명시적으로 합의한 **결정적 순수 계약 함수**를 허용한다. fingerprint의 바이트 동일성은 [공유 계약 codec](docs/planning/fingerprint-contract.md)의 단일 stdlib-only 무상태 구현으로 보장한다. I/O·업무 판정·비밀 제거·범용 utils를 추가하는 허용은 아니다. 각 모듈과 fake는 이 codec을 재사용한다.
+- fingerprint의 바이트 동일성은 [공유 계약 codec](docs/planning/fingerprint-contract.md)의 단일 구현으로 보장한다. contracts에 예외적으로 두는 무상태 순수 함수이며 I/O·업무 판정·비밀 제거·범용 utils를 추가하는 허용은 아니다. 각 모듈과 fake는 이 codec을 재사용한다.
 - Pydantic이 필요한 외부 입력·MCP 와이어 검증은 해당 어댑터에서 처리한다. Pydantic 모델이나 별도 JSON 파일을 전체 도메인의 정본으로 지정하지 않는다.
 - 공개 타입·포트가 아직 비어 있으면 최소 의미 계약부터 제안한다. 필요한 로컬 fake는 그 공개 포트를 구현한다. scaffold를 기능 구현이나 준비된 test double로 표시하지 않는다.
 - 공개 스키마가 바뀌면 PR 제목에 `스키마 변경`을 표시하고 영향받는 모듈·호환성·검증 결과를 적는다. 계약 담당 이동찬과 영향받는 모듈 담당자 중 작성자를 제외한 관련자를 리뷰에 포함한다.
