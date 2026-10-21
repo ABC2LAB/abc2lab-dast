@@ -34,7 +34,7 @@ uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
 
 팀 공지 예시:
 
-> ABC2LAB DAST 저장소에서 배정된 모듈을 개발합니다. Git과 uv 0.12.23을 준비하고 `uv run --no-project --python 3.13.15 scripts/dev.py setup all`을 한 번 실행하세요. 작업 중에는 같은 명령의 `check <모듈>`로 본인 패키지만 검사합니다. 담당자별 범위와 검사 명령은 [모듈 개발 가이드](docs/module-development.md), PR 절차는 [기여 안내](CONTRIBUTING.md)를 따릅니다. 리뷰는 작성자를 제외한 팀원 모두에게 요청되며, 1명 승인과 필수 CI 통과 후 병합합니다.
+> ABC2LAB DAST 저장소에서 배정된 모듈을 개발합니다. Git과 uv 0.12.23을 준비하고 `uv run --no-project --python 3.13.15 scripts/dev.py setup all`을 한 번 실행하세요. 작업 중에는 같은 명령의 `check <모듈>`로 본인 패키지만 검사합니다. 담당자별 범위와 검사 명령은 [모듈 개발 가이드](docs/module-development.md), PR 절차는 [기여 안내](CONTRIBUTING.md)를 따릅니다. 리뷰는 작성자를 제외한 팀원 모두에게 요청합니다. 일반 PR은 1명 승인과 필수 CI 통과, 스키마·공통 규칙 변경은 기여 안내의 추가 승인 기준을 적용합니다.
 
 ## 설계 기준
 
