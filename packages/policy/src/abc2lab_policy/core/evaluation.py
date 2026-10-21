@@ -79,8 +79,6 @@ def _first_denial(
         return PolicyReason.OUT_OF_SCOPE
     if request.purpose not in operation.allowed_purposes:
         return PolicyReason.PURPOSE_NOT_ALLOWED
-    if authorization.read_only_profile and operation.is_business_write:
-        return PolicyReason.BUSINESS_WRITE_BLOCKED
 
     needs_verified_identity = request.purpose not in _PREAUTH_PURPOSES
     if needs_verified_identity and request.identity_status is not IdentityStatus.VERIFIED:
