@@ -1,4 +1,4 @@
-"""Closed runtime validation for immutable C2 contract records."""
+"""Closed runtime validation for immutable contract records."""
 
 from __future__ import annotations
 
@@ -119,6 +119,10 @@ def _validate_value(name: str, value: object, annotation: object) -> None:
         if type(value) is not str:
             raise TypeError(f"{name} must be str")
         value.encode("utf-8", errors="strict")
+        return
+    if annotation is bytes:
+        if type(value) is not bytes:
+            raise TypeError(f"{name} must be immutable bytes")
         return
     if annotation is datetime:
         if type(value) is not datetime:

@@ -90,7 +90,7 @@ receipt·자체 fingerprint를 제외하는 규칙을 필드명으로 재귀 검
 | `Observation` | `record_kind=observation`, `schema_version=observation.v1`. 모든 business field를 포함한다. |
 | `Verdict` | `record_kind=verdict`, `schema_version=verdict.v1`. 모든 business field를 포함한다. |
 | `ExpectedAccessPolicySnapshot` | `record_kind=expected_policy`, `schema_version=expected_policy.v1`. 모든 business field를 포함한다. |
-| `EvidenceSummary` | `record_kind=evidence`, `schema_version=evidence.v1`. 모든 business field를 포함한다. |
+| `EvidenceSummary` | `record_kind=evidence`, `schema_version=evidence.v1`. fingerprint 전에 고정한 Evidence 자체 `source_event: AuditLink`와 nullable recipe 필드를 포함한 모든 business field를 포함한다. 링크는 commit 증명이 아니며 아래 §3.3의 수명주기를 따른다. |
 | `ComparisonPayload` | `record_kind=comparison`, `schema_version=comparison.v1`. 모든 business field를 포함한다. |
 | `StoredComparison` | `ComparisonPayload` fingerprint를 계산하고, Evidence 두 건과 Comparison 한 건의 완료 receipt를 별도로 검증한다. receipt를 payload에 임의로 넣거나 재귀 이름 필터로 제거하지 않는다. |
 | `RequestIntentRecord` | `record_kind=request_intent`, `schema_version=request_intent.v1`, `record_ref=attempt_ref`, `revision=1` 불변. `run_key`, `request_ref`, `attempt_ref`, `binding_id`, `operation_ref`, `operation_revision`, `purpose`, `account_ref`, `session_generation`, `decision_ref`, `evaluated_view_fingerprint`, `created_at` 전부 포함한다. 실제 private bound request의 raw value/header/body/auth는 포함하지 않으며, binding은 실제 view digest와 Gateway 내부 bound request를 가리키는 검증 metadata다. |
@@ -126,6 +126,14 @@ receipt·자체 fingerprint를 제외하는 규칙을 필드명으로 재귀 검
 ```bash
 uv run --no-project --python 3.13.15 scripts/dev.py check contracts
 ```
+
+### 3.3 C3 Evidence·Comparison의 저장 전 내용과 감사
+
+2026-10-21 이동찬 확인: `EvidenceSummary.source_event`는 Evidence 자체 artifact 감사 링크이며 producer/event_ref를 fingerprint 전에 고정한다. 같은 submission의 재확인에서도 이 값과 업무 내용을 재사용한다. 그 내용의 저장과 동일 이벤트의 EVIDENCE 감사 commit을 확인한 뒤 완료 근거를 발행한다. Gateway attempt를 이 필드에 넣지 않으며, producer 간 인과는 AuditEvent.causal_links로 구분한다.
+
+EvidenceSummary는 감사 영수증 필드를 갖지 않으므로 별도 EvidenceSummaryContent 없이 그 record의 전체 업무 내용을 fingerprint할 수 있다. ComparisonPayload도 이미 영수증 없는 비교 내용이며 별도 ComparisonContent를 만들지 않는다. 저장 receipt는 StoredComparison에, 원본 COMPARISON 감사 receipt는 ComparisonProjected에 결합하고 각 내용을 별도로 검증한다. record 자체 revision이 없는 artifact는 감사 바인딩 revision 1을 사용한다.
+
+후속 구현에서는 evidence.v1/comparison.v1 typed wrapper·정확한 adapter·고정 벡터를 함께 추가한다. **현재 이 두 운영 kind의 구현·registry 등록이 완료된 것은 아니다.** 공유 타입·레시피 자료형·실패/멱등 수명주기의 구체 범위는 [Evidence C3 계약 보완안](evidence-c3-contract.md)을 따른다.
 
 ## 4. 고정 벡터와 후속 테스트
 

@@ -1,6 +1,6 @@
 # C3·C4 최소 계약 초안 (gateway/judge 소유 범위)
 
-상태: **제안 / 이동찬 리뷰 반영 (2026-10-21)**. 작성 최민준. [C1·C2](s1-development-status.md#1-작은-계약-pr로-다시-시작)와 병렬로 제안한 C3·C4의 **최소 타입·Protocol** 초안이다. 구현·벡터·fake는 포함하지 않는다. 이 초안은 [S1 API 상세 규격](s1-api-spec.md)과 [PoC 보고서 계약](poc-report-design.md)의 필드를 구현 가능한 Protocol 경계로 좁힌 것이며, 상위 두 문서가 충돌 시 우선한다. 현재 담당은 [배정표](../module-development.md#담당-배정)를 따른다.
+상태: **제안 / 이동찬 리뷰 반영 (2026-10-21)**. 작성 최민준. [C1·C2](s1-development-status.md#1-작은-계약-pr로-다시-시작)와 병렬로 제안한 C3·C4의 **최소 타입·Protocol** 초안이다. C3-A의 로컬 타입·포트·무전송 예제 구현은 §2.1에 연결하며 아직 미병합이다. 나머지 경계의 구현·벡터·fake는 포함하지 않는다. 이 초안은 [S1 API 상세 규격](s1-api-spec.md)과 [PoC 보고서 계약](poc-report-design.md)의 필드를 구현 가능한 Protocol 경계로 좁힌 것이며, 상위 두 문서가 충돌 시 우선한다. 현재 담당은 [배정표](../module-development.md#담당-배정)를 따른다.
 
 ## 1. 범위와 선행 의존
 
@@ -38,7 +38,7 @@ class LocalCapturePort(Protocol):
 - 지원 객체 GET의 경로·파라미터·자원 바인딩이 등록과 불일치 → `capture_binding_mismatch`
 - 응답이 한도(1 MiB) 초과·파싱 실패 → `response_limit_exceeded`/`capture_unavailable` (전송은 `sent/unavailable`로 보존)
 
-**소유권·수명(§7, 이동찬 리뷰 B):** `active -> released/expired`. 60초 TTL, 캡처당 1 MiB, run당 active 8개(§11 한도 재사용). `release_captures` 반복 호출은 멱등. 원문 버퍼·캡처 핸들·HMAC 키를 하위 API·로그·결과에 넣지 않는다. 동기 capture는 바인딩·한도 검증과 소유권 인계만 하고, 민감값 제거·데이터 분석은 비동기 seal(Evidence·이경준)의 책임이다.
+**소유권·수명(§7, 이동찬 리뷰 B):** `active -> released/expired`. 60초 TTL, 캡처당 1 MiB, run당 active 8개(§11 한도 재사용). 크기는 [상세 규격 §7](s1-api-spec.md#7-evidence-실행-전용과-공개-저장)의 본문 bytes + 모든 헤더 이름·값 UTF-8 bytes 합계로 계산하며 Python 객체 오버헤드는 제외한다(2026-10-21 이동찬 확인). `release_captures` 반복 호출은 멱등. 원문 버퍼·캡처 핸들·HMAC 키를 하위 API·로그·결과에 넣지 않는다. 동기 capture는 바인딩·한도 검증과 소유권 인계만 하고, 민감값 제거·데이터 분석은 비동기 seal(Evidence·이경준)의 책임이다.
 
 `bytes`/`str`는 불변이라 '즉시 해제'는 메모리 내용의 물리적 소거가 아니라 **참조·핸들 수명 관리**를 뜻한다. 다음으로 정의한다.
 
@@ -49,6 +49,23 @@ class LocalCapturePort(Protocol):
 - 메모리 내용의 확실한 소거가 보안 요구사항이면 전용 버퍼 타입·소거 정책을 별도 설계한다. 이 계약 범위 밖의 후속이다.
 
 적용 사례: S1-33(다른 run/객체/계정/generation/revision 결합 → `capture_binding_mismatch`), S1-31(canary·원문·인증 값 미출력), S1-04(전송 확정 후 캡처 실패 → `sent/unavailable`).
+
+### 2.1 C3-A 캡처 계약 구현 — PR 리뷰 대기
+
+2026-10-21, `codex/c3-capture-contracts`에서 첫 경계의 타입·포트를 구현했다. **아직 병합되지 않았으며 C3 전체나 Evidence 구현의 완료를 뜻하지 않는다.** 이동찬의 `contracts`와 관련 문서만 변경하며 Gateway·Evidence 소스는 각 담당자가 구현한다.
+
+- 타입: [`abc2lab_contracts.capture`](../../packages/contracts/src/abc2lab_contracts/capture.py)의 `RawHeader`, `RawResponse`, `ExecutedRequestView`, `CaptureRequest`, `CaptureResult`, `ReleaseCapturesRequest`.
+- 포트: [`abc2lab_contracts.ports.LocalCapturePort`](../../packages/contracts/src/abc2lab_contracts/ports.py)의 동기 `capture`·`release_captures`. 기존 `CloseResult`·`RequestParameter`·run/ref/status/사유 타입을 재사용한다.
+- 생성자는 정확한 불변 타입·tuple·양수 generation·시각을 검증한다. `actual_parameters`는 객체 GET의 비인증 path/query만 허용하며 인증·identify 등 비대상 요청에는 빈 tuple을 쓴다. 정당한 인증 POST의 원문 응답 인계는 유지한다. 어떤 이름·값이 인증 정보인지는 Gateway와 Evidence가 주입된 등록 정보로 검사한다.
+- 생성자는 **캡처 맥락/등록 불일치나 1 MiB 초과를 거부하지 않는다.** 구조가 맞는 입력을 포트에 전달해야 구현이 `failed`/None·사유와 참조 정리를 수행할 수 있다. 이 실패를 예외로 바꾸거나 응답을 잘라 성공시키지 않는다. `CaptureResult`는 complete/핸들 또는 failed/사유만 허용하고 partial은 받지 않는다.
+- 계약 값의 `repr`에서 원문·경로·핸들을 숨긴다. 직접 필드 접근·`dataclasses.asdict`·pickle을 막는 접근 통제는 아니며, 서비스 조립·전달·로그 경계는 각 구현과 통합 테스트가 검증한다.
+- 원문용 정확한 `bytes`의 구조 검증만 추가했다. canonical codec·운영 fingerprint registry·C1/C2 고정 벡터는 변경하지 않으며 캡처 타입과 bytes는 두 fingerprint 경로에서 계속 거부한다. 실행 전용 값의 직렬화나 새 운영 fingerprint wrapper는 제공하지 않는다.
+
+[`test_capture_contracts.py`](../../packages/contracts/tests/test_capture_contracts.py)는 결과 불변식·시각·비인증 파라미터 형태·repr·fingerprint 거부를 검사한다. [`test_no_io_capture.py`](../../packages/contracts/tests/test_no_io_capture.py)는 가짜 등록 view·시계·메모리 포트로 동기 인계, 불일치/한도 실패, 이미 알려진 sent 보존, 취소 시 해당 작업의 핸들만 정리, TTL·용량·멱등 해제를 재생한다. 이 fake는 소비자 예제이며 실제 전송 snapshot 검증·독점 소유권·메모리 소거·영속 저장 구현의 증거가 아니다.
+
+다음 경계는 Evidence 담당 이경준과 정의할 seal/compare·민감값 제거 Evidence·저장 receipt·요청 레시피다. 해당 공개 record와 fingerprint adapter·벡터는 별도 소계약으로 추가한다. C3-A에는 이 포트나 실제 캡처 서비스, HMAC·정규화·레시피 생성·DB 저장을 넣지 않는다. 관련 검토자는 Gateway 최민준과 Evidence 이경준이다.
+
+2026-10-21 Evidence 담당자 제안에 대한 [계약 보완안](evidence-c3-contract.md)을 추가했다. 이동찬은 EvidenceSummary.source_event를 Evidence 자체 감사 링크로 고정하는 방향을 확인했다. CaptureRequest에 Gateway source_event를 추가하지 않으며, ComparisonPayload를 기존 content로 사용하고 원본 비교 감사는 COMPARISON으로 기록한다. 공개 Evidence 타입·레시피 자료형·fingerprint 구현은 후속 계약 PR 대상이다.
 
 ## 3. C4 — Judge `judge` 경계
 
@@ -120,4 +137,4 @@ class JudgePort(Protocol):
 - C4: `expected_access`·sharing·delegation 중 하나만 바뀌어도 `CONFIRMED` 미발행(S1-08·S1-09).
 - C4: 같은 submission의 중복·충돌·revision 증가 처리(S1-07~09).
 
-구현은 C2 정합 후 각 경계 PR에서 진행한다. 이 초안은 리뷰용 제안이며 계약 구현·fake·테스트의 완료를 뜻하지 않는다.
+구현은 각 경계 PR에서 진행한다. C3-A의 로컬 구현과 검증은 §2.1 및 [착수 상태](s1-development-status.md#5-c3-a-캡처-계약--pr-리뷰-대기)에 구분해 기록한다. 이 초안만으로 나머지 계약·fake·테스트나 실제 서비스의 완료를 뜻하지 않는다.
