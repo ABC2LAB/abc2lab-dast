@@ -1,6 +1,6 @@
-# S1 API 설계 개요 v0.3 — 상대 구현 없이 개발·테스트하기
+# S1 API 설계 개요 v0.5 — 상대 구현 없이 개발·테스트하기
 
-상태: **초기 설계안 / 팀 더블 체크 전**. 이 문서는 흐름·책임·개발 사례를 설명한다. **호출별 필수 필드·상태·수명·D1~D5의 선택안은 [S1 API 상세 규격 v0.3](s1-api-spec.md)를 기준으로 검토한다.** I/O 포트의 async 호출, Host 유한 작업 큐·worker 1개, 취소/timeout과 동시성 계약을 포함한다. 구현된 API·준비된 fake·팀 합의를 의미하지 않으며 `contracts` 구현을 복원하지 않는다.
+상태: **초기 설계안 / 팀 리뷰 반영 중**. 이 문서는 흐름·책임·개발 사례를 설명한다. **호출별 필수 필드·상태·수명·D1~D7의 선택안은 [S1 API 상세 규격 v0.5](s1-api-spec.md)를 기준으로 검토한다.** I/O 비동기 실행, [PoC 포함 보고서](poc-report-design.md), [공유 fingerprint](fingerprint-contract.md)와 [수정된 계약 PR 선행조건](s1-development-status.md)을 포함한다. 구현된 API·준비된 fake·최종 팀 합의를 의미하지 않으며 폐기된 contracts 구현을 복원하지 않는다.
 
 목표: **상대 모듈의 완성을 기다리지 않고도 내 모듈을 개발·테스트할 수 있게 한다.** 제공자와 소비자는 아래의 작은 경계와 사례를 함께 검토한다. 모듈 내부 모델·저장 구조·클래스 구성은 각 담당자가 소유한다.
 
@@ -18,7 +18,7 @@
 |---|---|---|
 | 호출 | I/O 서비스 포트 async, 순수 계산·메모리 인계 sync. Host 유한 큐·S1 worker 1개, await 순서·취소·유한 동시성은 [상세 규격 §2.2](s1-api-spec.md#22-비동기-호출과-작업-실행) | 내부 클래스·저장 어댑터·계산 최적화. 공유 포트의 await 여부는 제공자/소비자가 일치시킴 |
 | 데이터 | 각 경계를 통과하는 최소 값과 식별자의 의미 | DB row·브라우저 상태·ORM/Pydantic 모델·내부 캐시 |
-| 공유 코드 | 팀 합의 뒤 실제 교환하는 최소 타입·Protocol만 경계별로 작은 PR | 모든 타입의 선행 공용화·거대한 RunContext 작성 |
+| 공유 코드 | 최소 타입·Protocol과 [fingerprint 계약의 순수 codec](fingerprint-contract.md)을 경계별 작은 PR로 제공 | 모든 타입의 선행 공용화·거대한 RunContext·범용 utils 작성 |
 | 대역 | 소비 모듈의 `tests/fakes/`에 로컬 fake. 같은 사례를 제공자도 검증 | 다른 서비스 구현 import·다른 담당자 DB·실제 서버 기동 |
 | 조립 | `app`에서 구현/fake·신뢰된 설정·저장 어댑터를 주입 | 서비스가 상대 구체 구현을 직접 생성하는 코드 |
 
@@ -46,7 +46,7 @@
 아래 이름은 문서용 타입 이름이다. 실제 Python 정의·모듈 경로는 경계별 계약 PR에서 확정한다.
 
 - `RunKey`: `organization_ref`, `target_ref`, `environment_ref`, `run_ref` 네 식별자. 다른 실행·대상·조직의 자료와 혼용하지 않는다. 설정·예산·세션 전체를 넣지 않는다.
-- `request_ref`: 논리 요청 식별자. `attempt_ref`: 실제 전송 시도 식별자. `binding_id`: Gateway가 준비한 불변 요청 전체와 정책용 view를 연결하는 값. 서로 대체하지 않는다.
+- `request_ref`: WebDiag가 인증·whoami·복구·기준·교차 동작마다 최초 prepare 전에 발급·보존하는 논리 요청 ID. Host는 run/task/case를, Gateway는 binding_id/attempt_ref를 발급한다. Host는 request_ref를 입력하지 않고 결과·감사에서 연결한다. unknown을 새 ID로 자동 재전송하지 않는다.
 - 설정·정책·규칙 snapshot은 출처·revision·유효 범위를 포함한다. 같은 식별자/revision의 내용을 변경하지 않는다. 계정/세션은 별칭·generation으로 연결한다.
 - `complete`는 해당 작업 결과가 완성됐다는 뜻이다. 부분 결과는 `partial`, 수행/확인 불가는 `failed`와 사유로 보존한다. 취소·만료·자료 부재·자료 권한 거부는 사유로 구분하고 성공한 빈 결과로 바꾸지 않는다.
 - 전송 상태의 정본 표기는 `sent`, `not_sent`, `unknown`이다. 전송 후 응답·캡처 실패는 `sent`를 유지한다. `unknown`은 자동 재전송하지 않는다.
@@ -54,7 +54,7 @@
 - 결과에 존재하지 않는 참조는 `None`이다. 가짜 참조·빈 문자열을 채우지 않는다. 완료되지 않은 저장의 참조를 사용 가능한 근거로 발행하지 않는다.
 - 시간은 명시적인 timezone-aware UTC 감사 시각과 producer 순번을 사용한다. timeout·경과 시간에는 monotonic clock을 쓴다. 벽시계만으로 생산자 간 인과 순서를 정하지 않는다.
 
-감사 페이지에서도 정책 사건의 `policy_outcome=allow/block`과 Gateway 전송 사건의 `send_status=sent/not_sent/unknown`을 구분한다. [기존 모듈 설계 §8](module-design-confirmed.md#8-근거감사-체인)의 `AuditEvent`에 적힌 `sent/blocked/unknown`은 최종 필드 확정 전의 의미 예시다. 이번 설계에서는 `blocked`를 전송 enum에 추가하지 않고 정책 차단 사건으로 표현한다. 기존 `blocked` 표기만 보고 실제 미전송을 추정하지 않으며, Gateway의 해당 시도 기록이 확인돼야 `not_sent`를 연결한다.
+감사 페이지에서도 정책 사건의 policy_outcome=allow/block과 Gateway 전송 사건의 send_status=sent/not_sent/unknown을 구분한다. [모듈 설계 §8](module-design-confirmed.md#8-근거감사-체인)도 같은 표기를 사용한다. 정책 차단만 보고 실제 미전송을 추정하지 않으며 Gateway의 해당 시도 기록이 확인돼야 not_sent를 연결한다.
 
 ## 5. API 경계 목록
 
@@ -67,13 +67,13 @@
 | `async def start_run(request: StartRunRequest) -> StartRunResult` | 대상/환경·검증된 등록 설정 참조·submission_ref 멱등 키. 범위·계정·프로필·예산·기대 정책은 app이 주입 | 수락한 실행 참조 또는 시작 거부. 같은 키로 수락 여부 재확인, 중복 생성/배정 없음 | Host / 진입점 |
 | `async def get_status(run: RunKey) -> RunStatus` | 실행 키 | 대기·실행·종료 작업과 실패·중지·미확인 범위, 전송 3상태를 구분한 집계 | Host / 진입점 |
 | `async def stop(run: RunKey) -> StopReceipt` | 실행 키 | 중지 접수와 실제 종료를 구분. 이미 진행 중인 전송의 불명을 지우지 않음 | Host / 진입점 |
-| `async def collect(request: DiscoveryRequest) -> CandidateBatch` | 실행 키·허가된 seed·계정/관찰 프로필·유한 탐색 상한 | 후보 참조·출처·revision·관찰 필요 조건·`complete/partial/failed` | WebDiag / Host |
-| `async def http_observe(request: ObserveRequest) -> ObserveResult` | 실행 키·자기 자원 요청/후보 참조·계정·관찰 프로필 | 아래 `Observation` 또는 차단·실패·부분 결과. 교차 자원 관찰로 전환하지 않음 | WebDiag / Host |
-| `async def access_compare(request: AccessCompareRequest) -> AccessCompareResult` | 실행 키·자원/후보 참조·소유자/평가 계정·적용 기대 정책 snapshot·교차 실행 확인 기록 | 저장 완료 비교·근거 참조와 미충족 조건. 실제 교차 요청은 이 기능 내부에서만 조정 | WebDiag / Host |
+| `async def collect(request: DiscoveryRequest) -> DiscoveryResult` | 실행 키·허가된 seed·계정·유한 탐색 상한 | CandidateHint 단서·출처·관찰 필요 조건·모든 전송 시도·complete/partial/failed. 후보 ID/revision은 Host가 Knowledge 등록 후 받음 | WebDiag / Host |
+| `async def http_observe(request: ObserveRequest) -> ObserveResult` | 실행 키·Host가 조회한 자기 자원 Candidate 값·계정·관찰 프로필 | 아래 Observation·원본 projection_events 또는 차단·실패·부분 결과. 교차 자원 관찰로 전환하지 않음 | WebDiag / Host |
+| `async def access_compare(request: AccessCompareRequest) -> AccessCompareResult` | 실행 키·case_ref·Candidate 값·소유자/평가 계정·선택한 등록 기대 정책/교차 확인 | 저장 완료 비교·원본 projection_events·근거 참조와 미충족 조건. 실제 교차 요청은 이 기능 내부에서만 조정 | WebDiag / Host |
 
-S1은 HTTP 한 경로를 우선 제안한다. 브라우저 관찰은 같은 반환 의미를 따르는 후속 입력 어댑터다. `collect`의 결과는 실제 WebDiag가 Knowledge 후보 등록 경계를 호출해 받은 후보 참조다. 후보 발견만으로 관찰·검사 완료로 표시하지 않는다.
+S1은 HTTP 단일 경로이며 web_observe는 후속 브라우저 어댑터다. collect는 민감값을 제거한 단서만 반환하고 **Host가 Knowledge 후보 등록·조회·revision 검증을 수행**한다. Host는 ObserveRequest/AccessCompareRequest에 Candidate 전체를 값으로 전달한다. WebDiag에는 Knowledge 포트를 주입하지 않는다. 후보 발견만으로 관찰·검사 완료로 표시하지 않는다.
 
-Host의 `submit/lease/complete/cancel`과 Planner/Broker 구성은 이경준 담당 내부 포트로 먼저 시험한다. 유한 ready 큐·worker 1개를 사용하고 get_status/stop은 검사 worker를 기다리지 않는 제어 경로로 둔다. 외부 소비자가 필요해질 때만 공유한다. 첫 Planner는 A의 기준 관찰과 `access_compare` 작업을 구성하며 B 자기 객체·4응답 고정 세트를 요구하지 않는다.
+Host의 plan·submit/lease/complete/cancel은 host 내부 Protocol이며 S1 contracts에 포함하지 않는다. tools_for/call Broker·MCP/LLM 라우팅은 S1에서 구현·호출하지 않는다. 유한 ready 큐·worker 1개를 사용하고 get_status/stop은 검사 worker를 기다리지 않는 제어 경로로 둔다. 첫 Planner는 A의 기준 관찰과 access_compare 작업을 구성하며 B 자기 객체·4응답 고정 세트를 요구하지 않는다. 공개 포트 수는 [상세 규격 §3.1](s1-api-spec.md#31-s1-포트-수-대조)의 24 async+3 sync다.
 
 ### 5.2 WebDiag 인증 경계
 
@@ -116,11 +116,11 @@ Host의 `submit/lease/complete/cancel`과 Planner/Broker 구성은 이경준 담
 | `scope`, `profile`, `budget` | app에서 검증·주입한 적용 설정의 값·출처·revision·유효 범위. Policy의 자체 규칙과 대조 |
 | `operation_revision`, `policy_attributes.resource_binding_ref/revision` | 등록 동작·구체 객체의 불변 바인딩을 식별. Gateway는 실제 파라미터 값도 대조 |
 | `owner_identity`, `expected_policy` | 교차 시 소유자 주체 확인과 등록 기대 정책 snapshot. Gateway가 신뢰된 현재 상태/등록 입력에 대조 |
-| `cross_execution_confirmation` | 교차 시 필수인 유효한 확인 snapshot. 다른 목적에는 `None` |
+| `cross_confirmation` | 교차 시 필수인 유효한 확인 snapshot. 다른 목적에는 None. Host는 등록 원본에서 선택·전달만 하며 Gateway/Policy가 전체 내용을 재검증 |
 
 Gateway는 준비 요청과 위 view를 같은 불변 `BoundRequestSnapshot`으로 소유한다. `PolicyDecision`의 최소 값은 `decision_ref`, `binding_id`, **`evaluated_view_fingerprint`**, `outcome`, `reason_codes`, `audit_receipt`다. Policy는 실제 평가한 view의 모든 필수 필드로 fingerprint를 계산하며, 입력에 적힌 fingerprint를 그대로 신뢰해 복사하지 않는다. Gateway는 저장한 view로 계산한 값과 결정의 값을 대조하고 실제 준비 요청도 snapshot과 일치하는지 검사한다. fake에서도 view 한 필드만 바꾼 경우를 거부해야 한다.
 
-fingerprint는 [상세 규격 §5](s1-api-spec.md#5-gateway와-policy의-실행-경계)의 canonical JSON/SHA-256을 사용한다. 인증·권한 부여를 대신하지 않으며 Policy의 실제 저장 기록과 바인딩도 확인한다. 준비 핸들 거부는 `prepared_handle_invalid`, `prepared_handle_expired`, `prepared_handle_foreign_scope`, `prepared_handle_consumed`를 구분하고 모두 `not_sent`로 반환한다. 가상 transport 호출 기록은 0건이어야 한다.
+fingerprint는 [공유 codec 계약](fingerprint-contract.md)의 중첩 변환·버전/kind envelope·고정 벡터를 따른다. contracts의 단일 순수 구현을 재사용하며 PolicyInput.schema_version=policy_input.v1은 문서 판번호와 별개다. 인증·권한 부여를 대신하지 않으며 Policy의 실제 저장 기록과 바인딩도 확인한다. 준비 핸들 거부는 prepared_handle_invalid/prepared_handle_expired/prepared_handle_foreign_scope/prepared_handle_consumed를 구분하고 모두 not_sent다. 가상 transport 호출 기록은 0건이어야 한다.
 
 `AttemptResult` 최소 값: 실행 키·`request_ref`·`attempt_ref`·`decision_ref`·`binding_id`·`send_status`·캡처 상태·실행 전용 `capture_ref | None`·사유·감사 연결. 전송 거부는 `not_sent`, 미확정 전송은 `unknown`으로 보존한다. 전송 후 캡처 실패는 `sent/unavailable`이다. `capture_ref`가 있어도 공개 Evidence 저장 완료는 별개다.
 
@@ -153,7 +153,7 @@ fingerprint는 [상세 규격 §5](s1-api-spec.md#5-gateway와-policy의-실행-
 
 `CompareOutcome`은 `complete/partial/failed`, 성공 저장 receipt 목록, 사유를 보존한다. **`StoredComparison`은 기준·교차 두 근거와 비교 결과가 모두 저장 완료된 경우에만 존재**한다. 한쪽 저장 실패 시 이미 저장된 불변 근거는 보존하되 확정 가능한 비교 결과로 발행하지 않는다.
 
-### 5.5 WebDiag/Host/Judge → Knowledge
+### 5.5 Host → Knowledge
 
 | API 제안 | 최소 입력 | 결과·실패 의미 |
 |---|---|---|
@@ -161,7 +161,7 @@ fingerprint는 [상세 규격 §5](s1-api-spec.md#5-gateway와-policy의-실행-
 | `async def project(request: ProjectionSubmission) -> ProjectionAck` | 실행 키·불변 원본 이벤트 ID·생산자·원본 revision·저장 완료 근거 참조 | 적용 revision/이미 적용됨 또는 거부·지연·실패. 같은 ID/다른 내용은 충돌 |
 | `async def get_case_view(request: CaseReadRequest) -> CaseReadResult` | 실행 키·사례/자원 참조·조회자 권한·snapshot·유한 반환 상한 | 후보·관찰·정책/근거/판정 참조·revision·누락/최신성·`complete/partial/failed` |
 
-후보 정본과 정규화는 Knowledge가 소유한다. WebDiag는 생성한 단서를 제출한다. `ProjectionSubmission`은 원본 서비스가 자기 정본 변경과 함께 저장한 변경 참조에서 오며, 신뢰되지 않은 임의 이벤트를 사실로 반영하지 않는다. 검증된 Projector만 그래프를 갱신한다. `A가 X를 조회했다`에서 `A가 X를 소유한다`를 자동 생성하지 않는다.
+후보 정본과 정규화는 Knowledge가 소유한다. **Host가 단서 등록·후보 조회·모든 투영 제출을 조정**한다. Observation/WebDiag, Comparison/Evidence, Verdict/Judge, 기대 정책/app 등록 journal이 각각 원본 producer이며 Host는 commit된 이벤트를 변경 없이 전달한다. 반환 필드와 이벤트별 제출 시점은 [상세 규격 §8](s1-api-spec.md#8-knowledge의-후보와-투영)에 정의한다. deferred 투영을 재제출할 때 대상 요청을 다시 보내지 않는다. 검증된 Projector만 그래프를 갱신하며 A가 X를 조회했다는 사실에서 A가 X를 소유한다고 추론하지 않는다.
 
 S1은 `store_memory`로 테스트한다. 다른 서비스의 작업/정책/근거 정본을 Knowledge로 옮기지 않는다. `reachable_subjects`와 다중 홉 위임 질의는 S2에서 별도 계약으로 제안한다.
 
@@ -170,7 +170,7 @@ S1은 `store_memory`로 테스트한다. 다른 서비스의 작업/정책/근�
 | API 제안 | 최소 입력 | 결과·실패 의미 |
 |---|---|---|
 | `async def judge(request: JudgeRequest) -> JudgeResult` | 실행 키·사례 참조·등록 기대 접근 정책 snapshot 또는 부재·A/B 주체 확인·저장 완료 비교 참조 | `Verdict` 또는 판정 자체의 처리 실패. Verdict는 `CONFIRMED/SUSPECTED/UNDECIDABLE`·조건·근거·버전·사유·revision |
-| `async def build_report(request: ReportInput) -> ReportResult` | 실행 키·관찰/판정/작업 요약·생산자별 기대 기록. 감사 페이지는 주입된 읽기 포트로 조회 | DiagnosisReport 또는 생성 실패. 제한·전송 불명·감사 완전성을 보존 |
+| `async def build_report(request: ReportInput) -> ReportResult` | 실행 키·관찰/판정/작업 요약·생산자별 기대 기록. 근거/요청 레시피·감사는 주입된 읽기 포트로 조회 | DiagnosisReport와 PoC 상태/절차 또는 생성 실패. Report는 재전송 없이 제한·전송 불명·감사 완전성을 보존 |
 | `async def read_audit(request: AuditReadRequest) -> AuditPage` | 실행 키·호출자 권한·producer/cursor·유한 반환 상한 | 각 생산자의 허용 이벤트·순번·연결 참조·다음 cursor·완전성/실패. 각 소유 서비스가 제공 |
 
 Host가 작업을 조정하고 `app`이 Judge/Report가 소비할 읽기 포트를 주입한다. Report가 타 서비스 DB를 읽지 않는다. 감사는 기대 request/event ID와 실제 연결을 비교한다. A·B가 필요한데 A·A 두 건이 있는 경우를 완료로 처리하지 않는다. 생산자별 저장 내구성과 조회 snapshot을 확인하지 못하면 감사 완전성은 unknown이다.
@@ -191,7 +191,7 @@ Judge는 다음 셋을 각각 확인한다: **(a)** 현재 적용되는 등록 �
 
 ## 7. 구체적인 입출력 예시
 
-예시는 설명용 JSON 표기다. 최종 wire schema나 외부 API를 정의하지 않는다. 생략된 실행 키·정책/주체 확인·저장 receipt는 위 타입 정의에 따라 포함해야 한다. 문자열은 가상 식별자이며 실행 권한을 부여하지 않는다.
+예시는 전체 record가 아닌 설명용 JSON 발췌다. 최종 wire schema나 외부 API를 정의하지 않는다. 생략된 실행 키·Candidate 필드·정책/주체 확인·저장 receipt·원본 projection_event(s)는 위 타입 정의에 따라 포함해야 한다. 문자열은 가상 식별자이며 실행 권한을 부여하지 않는다.
 
 실행 영역 내부에서 `execute`가 전송 여부를 확인하지 못한 예:
 
@@ -213,10 +213,10 @@ Host에 반환하는 `access_compare` 부분 결과 예:
 
 ```json
 {
-  "request": {"resource_ref": "resource-1", "owner_account_ref": "account-a", "evaluated_account_ref": "account-b"},
+  "request": {"candidate": {"candidate_ref": "candidate-1", "revision": 1, "resource_ref": "resource-1"}, "owner_account_ref": "account-a", "evaluated_account_ref": "account-b"},
   "response": {
     "case_ref": "case-1", "status": "partial",
-    "evidence_refs": ["evidence-owner-1"], "stored_comparison_ref": null,
+    "stored_evidence_refs": ["evidence-owner-1"], "stored_comparison": null,
     "attempt_summaries": [
       {"request_ref": "request-owner-1", "attempt_ref": "attempt-owner-1", "send_status": "sent"},
       {"request_ref": "request-cross-1", "attempt_ref": "attempt-cross-1", "send_status": "sent"}
@@ -230,7 +230,7 @@ Host에 반환하는 `access_compare` 부분 결과 예:
 
 ```json
 {
-  "request": {"candidate_ref": "candidate-1", "account_ref": "account-a"},
+  "request": {"candidate": {"candidate_ref": "candidate-1", "revision": 1}, "account_ref": "account-a"},
   "response": {
     "status": "failed", "observation": null,
     "attempt_summaries": [
@@ -245,10 +245,11 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 
 ```json
 {
-  "request": {"case_ref": "case-1", "expected_access_policy": null, "stored_comparison_ref": "comparison-1"},
+  "request": {"case_ref": "case-1", "expected_policy": null, "comparison_ref": "comparison-1"},
   "response": {
-    "case_ref": "case-1", "verdict": "UNDECIDABLE",
-    "reason_codes": ["expected_access_policy_missing"], "comparison_ref": "comparison-1"
+    "status": "complete",
+    "verdict": {"case_ref": "case-1", "value": "UNDECIDABLE", "comparison_ref": "comparison-1", "reason_codes": ["expected_access_policy_missing"]},
+    "reason_codes": []
   }
 }
 ```
@@ -257,9 +258,9 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 
 | 담당 | 첫 구현 범위 | 자기 테스트에 둘 fake | API 검토 상대 |
 |---|---|---|---|
-| 이동찬 | Knowledge 후보/관찰 투영·`store_memory`·사례 조회. `app` fake 조립 | Evidence 읽기/저장 receipt, WebDiag 결과, Judge 판정, producer 감사 페이지 | 이경준·윤재상·최민준 |
+| 이동찬 | C1 공유 codec → C2 최소 실행 계약 PR. Knowledge 메모리와 app 조립은 필요한 경계별 별도 PR | Evidence 읽기/저장 receipt, WebDiag 결과, Judge 판정, producer 감사 페이지 | 이경준·윤재상·최민준 |
 | 최민준 | Policy 기본 거부·Gateway prepare/execute 경계와 무전송 transport. Judge 순수 오라클은 같은 담당의 별도 작은 PR | 설정/취소 provider, 감사 journal, 세션, 로컬 Evidence. Judge에는 저장된 비교·정책·주체 fixture | 이경준·윤재상·이동찬 |
-| 이경준 | WebDiag 단일 seed/HTTP 관찰·A/B 주체 확인·비교 조정. Host 작업 계획/중지는 별도 작은 PR | Gateway, Policy, Evidence 로컬 비교/봉인, Knowledge 후보 등록/조회, Judge/Report | 최민준·윤재상·이동찬 |
+| 이경준 | WebDiag 단일 seed/HTTP 관찰·A/B 주체 확인·비교 조정. Host 작업 계획/중지는 별도 작은 PR | WebDiag에는 Gateway/Policy/로컬 Evidence. Host에는 WebDiag/Knowledge/Judge/Report fake | 최민준·윤재상·이동찬 |
 | 윤재상 | Evidence 로컬 캡처/비교·공개 저장의 실패 주입. Report 집계·eval 평가기는 각각 별도 작은 PR | 공개 저장 실패, 주입 정규화 규칙/canary, 생산자 감사·판정·관찰 요약 | 최민준·이경준·이동찬 |
 
 한 사람의 전체 담당 패키지를 한 PR에 넣지 않는다. 정규화 규칙·canary 초안은 최민준이 정의하고 윤재상이 그 입력으로 Evidence를 테스트한다. 이경준은 최민준의 실제 Gateway를 기다리지 않고 같은 결과 의미의 fake를 사용한다. 이동찬은 각 fake를 조립해 호출 연결을 먼저 확인한다. 일정과 실제 착수 지시는 PM이 팀과 조율한다.
@@ -290,6 +291,10 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 
 초기 통합은 `app/tests/`에서 모든 상대를 fake로 조립해 위 상태/근거 연결을 확인한다. 이후 한 모듈씩 실제 구현으로 교체해 같은 사례를 반복한다. 실제 네트워크·저장 통합은 `integration` marker와 별도 준비/실행 방법을 갖춘다. 기본 pytest는 integration을 제외한다.
 
+상세 규격의 추가 사례 S1-14~28과 [PoC 사례 S1-29~36](poc-report-design.md#6-예시와-구현-검증)도 해당 구현 PR에서 검증한다. PoC는 원 실행의 레시피·근거를 설명하며 S1 별도 재실행 상태는 not_run이다. [가상 예시 보고서](../examples/s1-poc-report.example.md)를 실제 발견/검증 결과로 사용하지 않는다.
+
+팀 리뷰 보완 사례 S1-37~42는 [상세 규격 §11](s1-api-spec.md#11-초기-한도-사유-코드와-개발-사례)에 정의한다. 공유 codec·identity 축약·Host 투영·request ID 발급·등록 재검증·전송 직전 최신 세션/잔여 예산을 검증한다.
+
 ## 10. 선택한 초기 설계와 팀 리뷰
 
 | 항목 | 이번에 선택한 기준안 | 검토자 | 독립 개발·통합에서 확인할 것 |
@@ -299,12 +304,14 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 | D3 세션·캡처 lifecycle | WebDiag 상태/generation, Gateway 통신 context, Evidence 캡처 단독 소유. TTL/복구/정리 필드 명시 | 이경준·최민준·윤재상 | 주체 불일치·구세대·복구 충돌·실패 정리를 fake clock으로 검증 |
 | D4 전송 전 감사 | producer별 journal + verify_committed. Policy 결정/Gateway intent 둘 다 실제 commit 확인 | 최민준·윤재상·이동찬 | 위조 receipt/조회 실패는 무전송. 실제 내구성은 통합에서 별도 검증 |
 | D5 최소 타입·비동기 실행 | I/O 포트 async·계산/메모리 인계 sync, 유한 큐·S1 worker 1개·취소/timeout·동시성 상한. 필수 필드·None·enum·사유 코드와 경계별 작은 계약 PR | 전원 | async fake와 Event로 경합 검증, 취소 후 전송 상태 보존. status/send_status/verdict 혼합 금지 |
+| D6 fingerprint 소유권 | contracts의 stdlib-only 무상태 codec·명시적 payload·고정 벡터. 문서 판번호와 wire version 분리 | 전원 | 같은 PolicyInput은 동일 bytes/digest, 한 업무 필드 변경은 다른 digest, 임의 receipt 필터 금지 |
+| D7 Knowledge 호출 조정 | Host가 후보 등록/조회/revision 검사와 원본 producer 이벤트의 project를 조정 | 이동찬·이경준 | WebDiag의 Knowledge 의존 0개, Host가 producer를 바꾸지 않음, deferred 재투영에 대상 재전송 0건 |
 
 이번 기준안은 팀원이 입력/출력과 실패 사례를 더블 체크할 출발점이다. PM은 리뷰에 따른 수정·담당·적용 revision을 기록한다. 실제 교차 요청 전에는 [기존 D-0 단일 관문](module-design-confirmed.md#13-열린-결정-착수-전중-팀이-잠글-것)과 대상 허가·기대 정책·주체·안전 정책·Gateway 재검사를 충족해야 한다. 이 요구는 fake 개발의 대기 조건이 아니다.
 
 ## 11. 병렬 착수·검증 순서
 
-1. **경계 리뷰:** 각 담당자가 §5에서 제공/소비 API와 §9 case ID를 표시하고 D1–D5 제안을 검토한다. PM이 변경 기록을 남긴다. 확정 문서에 따라 최소 공유 타입을 경계별 PR로 추가한다.
+1. **경계 리뷰·새 계약 PR:** 각 담당자가 §5에서 제공/소비 API와 §9 case ID를 표시하고 D1–D7 제안을 검토한다. PM이 변경 기록을 남긴다. [착수 상태](s1-development-status.md)의 C1·C2를 먼저 병합하고 필요한 경계별 작은 계약 PR로 연결한다. CLOSED/unmerged PR #8은 선행조건이 아니다.
 2. **독립 구현:** §8의 첫 PR을 병렬 진행한다. I/O fake도 async def로 구현하고 순수 로직은 동기로 시험한다. 기존 S1-01~20과 상세 규격의 비동기 사례 S1-21~28을 Event·fake clock으로 검증한다. `uv run --no-project --python 3.13.15 scripts/dev.py check <module>`을 실행하며 구현 간 내부 import를 추가하지 않는다.
 3. **초기 조립:** 이동찬이 `app/tests/`에서 실제 외부 통신 없는 fake 시나리오를 조립한다. fake Gateway의 허용 시도 기록 1건은 실제 HTTP 전송 1건을 뜻하지 않는다. 실제 모듈 교체 때 제공자·소비자의 동일 case ID 결과를 비교한다. 전체 검사는 `check all`을 사용한다.
 4. **실제 통합:** 필요한 실행 허가·역할 분리·내구 감사·인증/예산·비밀 보호·실제 전송 통제를 검증한 경로만 테스트 앱에 연결한다. 실제 통합 통과를 fake 테스트와 구분한다.

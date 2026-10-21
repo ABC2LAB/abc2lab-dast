@@ -1,20 +1,26 @@
-# S1 모듈 간 API 설계 v0.3
+# S1 모듈 간 API 설계 v0.5
 
-상태: **초기 설계안 / 팀 더블 체크 전**. [초안의 흐름·담당·수용 사례](s1-api-draft.md)를 구현 가능한 입력·반환 규격으로 구체화한다. 아래 선택은 이번 설계의 기준안이며 팀 합의나 구현 완료를 뜻하지 않는다. `contracts`·서비스 코드·의존성은 이번 문서 변경에 포함하지 않는다.
+상태: **초기 설계안 / 팀 리뷰 반영 중**. [초안의 흐름·담당·수용 사례](s1-api-draft.md)를 구현 가능한 입력·반환 규격으로 구체화한다. 아래 선택은 이번 설계의 기준안이며 최종 팀 합의나 구현 완료를 뜻하지 않는다. `contracts`·서비스 코드·의존성은 이번 문서 변경에 포함하지 않는다.
 
 목표는 **상대 구현 없이 같은 입력과 실패 사례로 개발·테스트하기**다. Python 직접 호출에서 **I/O 서비스 포트는 비동기, 순수 계산과 제한된 메모리 상태 인계는 동기**로 구분한다. Host는 단일 프로세스의 유한 작업 큐와 S1 worker 1개로 실행한다. REST·MCP·배포 프로토콜은 정의하지 않는다. 상위 [아키텍처](mcp-architecture.md)와 [모듈 설계](module-design-confirmed.md)가 우선한다.
 
 v0.3 변경: v0.2의 일괄 동기 호출을 수정했다. 아래 포트 27개 중 I/O 서비스 포트 24개는 `async def`, 실행 내부의 메모리 전용 포트 3개는 `def`다. 데이터 소유권과 원문 비노출 경계는 유지하며, 비동기 실행·취소·동시성 설정과 S1-21~28 수용 사례를 추가한다.
 
+v0.4 변경: [PoC 포함 진단 보고서 계약](poc-report-design.md)을 추가했다. 실행 요청의 최소 view를 로컬 Evidence에서 대조·치환해 요청 레시피를 저장하고, Report는 원 실행의 근거와 연결된 재현 절차를 제공한다. `documented`와 별도 재실행을 구분하며 S1 replay_status는 not_run이다. [미실행 가상 보고서 예시](../examples/s1-poc-report.example.md)와 후속 수용 사례 S1-29~36을 제공한다. 포트 수와 async/def 구분은 유지한다.
+
+v0.5 변경: Host의 Knowledge 등록·조회·투영 책임, WebDiag의 논리 요청 ID 발급, Gateway의 identity 축약과 전송 직전 세션 재조회를 고정했다. [공유 fingerprint 계약](fingerprint-contract.md)은 stdlib-only 순수 codec의 위치·payload·고정 벡터를 정의하며 문서 판번호와 `policy_input.v1`을 분리한다. [착수 상태와 계약 PR 순서](s1-development-status.md)는 폐기된 PR #8 대신 새 최소 계약 PR을 선행조건으로 삼는다. §3.1에서 27개 포트를 열거한다.
+
 ## 1. 이번에 선택한 기준
 
-| 결정 | v0.3 선택 | 검토할 담당 |
+| 결정 | v0.5 선택 | 검토할 담당 |
 |---|---|---|
 | D1 요청 전달 | WebDiag가 구체 요청을 값으로 전달 → Gateway가 불변 요청과 정책 view를 함께 보관 → Policy가 view를 평가 → Gateway가 재검사·전송. 준비 핸들은 Gateway만 해석 | 최민준·이경준 |
 | D2 기대 권한 | 운영자가 등록한 기대 접근 정책을 `app`이 검증·run에 결합해 불변 값으로 주입. 실행 안전 정책과 별개 | 이동찬·최민준·이경준 |
 | D3 세션/원문 | WebDiag가 세션 상태·generation·주체 확인을 소유. Gateway는 인증 비밀·계정별 통신 context를 소유. 로컬 Evidence만 원문 버퍼·캡처 수명을 소유 | 이경준·최민준·윤재상 |
 | D4 감사 | 생산자별 journal. `verify_committed`로 정책 결정과 전송 intent의 실제 저장을 확인한 뒤 전송. 다른 모듈 DB 직접 조회 없음 | 최민준·윤재상·이동찬 |
 | D5 타입/호출 | I/O 포트 async + 순수 계산/메모리 인계 sync, Host 유한 큐·S1 worker 1개. 불변 dataclass/enum/Protocol과 결과 완성도·전송 상태·판정을 분리 | 전원 |
+| D6 계약 fingerprint | contracts.fingerprint의 단일 stdlib-only 순수 codec과 타입별 payload 변환을 재사용. 이동찬 구현·소비자 공동 검토 | 전원 |
+| D7 Knowledge 조정 | Host가 단서 등록·후보 snapshot 조회·모든 Projection 제출을 조정. WebDiag에는 Knowledge 포트를 주입하지 않음 | 이동찬·이경준 |
 
 S1의 첫 입력은 **등록된 테스트 앱·두 계정·읽기 GET 동작 한 개·A 소유 객체 한 개**로 제한한다. `app`이 동작 템플릿, 객체 별칭과 실제 요청 값의 연결, 인증/주체 확인 프로필, 기대 정책을 주입한다. 발견기는 등록 seed에서 이 동작의 후보를 제출한다. 동적 미등록 객체는 후보로 남길 수 있지만 소유/정책 연결 없이 교차 실행하지 않는다. B 자기 객체, 범용 크롤러, MFA/SSO, 브라우저, LLM, AGE는 이 최초 경로의 전제 조건이 아니다.
 
@@ -29,9 +35,13 @@ sequenceDiagram
     participant J as Judge
     participant R as Report
     Note over H: 유한 ready 큐 · S1 worker 1개<br/>진행 조회·중지는 별도 제어 경로
-    H->>W: await collect / acquire_session / whoami
-    W->>K: await register_candidates
-    H->>W: await http_observe / access_compare
+    H->>K: await project(등록 journal의 PolicyRegistered)
+    H->>W: await collect
+    W-->>H: DiscoveryResult(hints, 시도 요약)
+    H->>K: await register_candidates(hints)
+    H->>K: await get_case_view(선택한 후보·revision)
+    H->>W: await acquire_session / whoami
+    H->>W: await http_observe / access_compare(Candidate 값)
     W->>G: await prepare(구체 요청)
     G-->>W: 준비 핸들 + 정책 view
     W->>P: await evaluate(view)
@@ -43,9 +53,11 @@ sequenceDiagram
     G-->>W: 전송 상태 + 실행 전용 캡처 참조
     W->>E: await seal / compare_and_seal
     E-->>W: 저장 완료 요약·비교
-    W->>K: await project(원본 이벤트·저장 근거)
-    W-->>H: 공개 결과 + 모든 전송 시도 요약
+    W-->>H: 공개 결과 + 원본 Projection 이벤트 + 모든 전송 시도 요약
+    H->>K: await project(ObservationProjected / ComparisonProjected)
     H->>J: await judge(정책, 주체 확인, 저장된 비교)
+    J-->>H: 저장된 Verdict + 원본 VerdictProjected
+    H->>K: await project(VerdictProjected)
     H->>R: await build_report(요약, 감사 범위)
 ```
 
@@ -70,7 +82,9 @@ sequenceDiagram
 | `AuditLink` | `producer: Ref`, `event_ref: Ref` | 감사 원본 조회용 연결 |
 | `CloseResult` | `run_key`, `status: ResultStatus`, `reason_codes` | complete는 정리 확인, failed는 미확인/실패. 정리 실패도 알려진 전송 상태를 바꾸지 않음 |
 
-실행 후 결과는 `run_key`를 포함한다. 요청에도 `RunKey`를 명시하며 전역 현재 run에서 찾지 않는다. `request_ref`는 논리 요청, `attempt_ref`는 Gateway 실행 호출 한 번, `binding_id`는 준비 요청 한 개다. `operation_ref`는 등록된 대상 동작, `submission_ref`는 저장/제출 호출의 멱등 키다. 같은 동작을 여러 번 호출해도 submission_ref는 별개이며, 같은 제출의 재호출에서만 재사용한다. 이 식별자를 서로 대체하지 않는다.
+실행 후 결과는 run_key를 포함한다. 요청에도 RunKey를 명시하며 전역 현재 run에서 찾지 않는다. **Host는 run/task/case ID, WebDiag는 모든 논리 HTTP 동작의 request_ref, Gateway는 binding_id와 execute 호출별 attempt_ref를 발급한다.** WebDiag는 인증·whoami·복구·기준/교차 요청 각각의 request_ref를 최초 prepare 전에 자기 작업 기록에 고정한다. Host가 request_ref를 입력하거나 Gateway가 바꾸지 않는다. 전송 없이 유효한 identity를 재사용하면 새 request_ref/attempt_ref를 만들지 않는다. 복구의 새 로그인/identify는 별개 동작이며 unknown인 객체 요청을 새 ID로 자동 재전송하지 않는다. not_sent가 입증된 동일 논리 동작을 명시적으로 재준비할 때만 원 request_ref를 유지한다.
+
+operation_ref는 등록된 대상 동작, submission_ref는 저장/제출 호출의 멱등 키다. 각 제출 호출자가 최초 제출 전에 생성·보존하며 같은 제출의 재호출에서만 재사용한다. 서로 다른 제출이 submission_ref를 공유하지 않는다. 이 식별자를 서로 대체하지 않는다. Host의 중복 작업 수락 방지와 WebDiag의 request 기록·Gateway attempt 기록을 함께 검증하며 단순 ID 재발급으로 미확정 실행을 숨기지 않는다.
 
 복구 가능한 운영 실패는 `status/reason_codes`로 반환한다. `asyncio.CancelledError`는 정리·기록 후 상위로 전파하며 정상 결과로 삼키지 않는다. 타입 위반·불변조건을 깨는 프로그래밍 오류도 숨기지 않는다. 경계에서 예상하지 못한 예외가 나면 Host가 해당 작업을 실패·감사 미확인으로 남긴다. 반환을 못 받았다는 이유로 미전송으로 처리하거나 자동 재호출하지 않는다.
 
@@ -93,9 +107,11 @@ sequenceDiagram
 
 `app`은 `RunRegistration`을 검증하고 각 모듈에 필요한 부분만 생성자로 주입한다. 이것은 새 중앙 설정 서비스나 모든 호출에 붙는 RunContext가 아니다. S1은 실행 중 설정을 수정하지 않고 취소 신호만 별도로 전달한다. 설정을 바꾸면 새 revision/run을 사용한다.
 
+RunRegistration은 app 내부의 등록 집계 타입이며 서비스가 import하는 공용 요청 타입이 아니다. 공유 snapshot/포트의 contracts 위치와 작은 PR 선행조건은 [착수 상태](s1-development-status.md#1-작은-계약-pr로-다시-시작)를 따른다.
+
 | Record | 필드 |
 |---|---|
-| `RunRegistration` | `run_key`, `scope: ScopeSnapshot`, `execution_profile: ExecutionProfileSnapshot`, `budget: BudgetSnapshot`, `accounts: tuple[AccountRegistration]`, `operations: tuple[OperationRegistration]`, `expected_policies: tuple[ExpectedAccessPolicySnapshot]`, `comparison_rules: ComparisonRules`, `limits: RunLimits` |
+| `RunRegistration` | `run_key`, `scope: ScopeSnapshot`, `execution_profile: ExecutionProfileSnapshot`, `budget: BudgetSnapshot`, `accounts: tuple[AccountRegistration]`, `operations: tuple[OperationRegistration]`, `expected_policies: tuple[ExpectedAccessPolicySnapshot]`, `cross_confirmations: tuple[CrossExecutionConfirmation]`, `comparison_rules: ComparisonRules`, `limits: RunLimits` |
 | `ScopeSnapshot` | `source: SourceVersion`, `allowed_origins: tuple[str]`, `allowed_operation_refs: tuple[Ref]`, `valid_from: UtcTime`, `valid_until: UtcTime` |
 | `ExecutionProfileSnapshot` | `source: SourceVersion`, `allowed_methods: tuple[str]`, `allowed_purposes: tuple[Purpose]`, `allow_redirects: bool`, `valid_until: UtcTime` |
 | `BudgetSnapshot` | `source: SourceVersion`, `max_attempts: int`, `max_duration_ms: int`, `max_response_bytes: int`. 모두 양수 |
@@ -110,6 +126,10 @@ sequenceDiagram
 `ExpectedAccessPolicySnapshot`은 운영자가 특정 A/B 사례에 대해 등록한 선언이며, 권한 일반 추론 엔진이 아니다. 복잡한 역할/위임을 아직 해석하지 못하면 `unknown`을 반환하고, 관계 조회 확장은 S2에서 다룬다. `sharing/delegation=resolved_none`에는 반드시 등록 출처가 있어야 하며, 조회하지 않았다는 사실을 없음으로 해석할 수 없다. Policy의 실행 허가, HTTP 성공, owner 필드 또는 `eval/` GT로 이 정책을 생성할 수 없다.
 
 공개 요청의 구성 ref는 현재 run에 주입된 기록과 일치해야 하며, 그렇지 않으면 `configuration_missing`이다. WebDiag는 등록 값으로 실제 요청을 구성하고 Gateway가 독립적으로 재검증한다. Knowledge는 별칭·출처·발견 사실만 저장하며, 자격 증명이나 선언되지 않은 RequestSpecRef를 해석하거나 저장하지 않는다.
+
+Host가 요청에 넣는 expected_policy/cross_confirmation은 주입된 RunRegistration의 해당 tuple에서 **선택해 그대로 전달하는 값**이다. Host/WebDiag/LLM이 새 정책·확인을 구성한 것으로 취급하지 않는다. Gateway.prepare와 Policy.evaluate는 각각 app이 주입한 원본의 전체 필드·출처·revision·run/자원/동작/계정·유효기간에 재대조한다. 같은 ref에 deny를 allow로 바꾸거나 기한을 늘린 값도 거부한다.
+
+BudgetSnapshot은 정적 한도와 그 출처만 나타낸다. 남은 시도 수·사용량·permit은 Gateway 소유의 가변 상태이며 PolicyInput/fingerprint에 넣지 않는다. 각 execute의 전송 직전 임계 구역에서 현재 예산을 원자 차감한다. fake에서도 정적 snapshot이 같다는 이유로 이미 소진된 예산을 되살리지 않는다.
 
 등록 인증 프로필의 최소 의미는 로그인/주체 확인 operation 연결, 허용 method/origin, 계정별 Vault 연결, 등록된 성공·만료 신호와 subject 추출/별칭 매핑이다. 실제 로그인 필드·CSRF·원래 subject 값의 매핑은 Gateway 소유 비공개 설정 타입이며 app이 주입한다. WebDiag/Policy에는 비밀 없는 operation 연결·프로필 버전만 주입한다. 첫 whoami는 등록 JSON 경로의 값을 등록된 subject 별칭으로 매핑하는 방식으로 제한하고, 지원하지 못하면 unsupported_authentication을 반환한다.
 
@@ -163,19 +183,21 @@ Python 3.13의 [Task 취소·TaskGroup·timeout](https://docs.python.org/3.13/li
 | 제공자 → 소비자 | 비동기 시그니처 |
 |---|---|
 | Host → 진입점 | `async def start_run(StartRunRequest) -> StartRunResult`, `async def get_status(RunKey) -> RunStatus`, `async def stop(RunKey) -> StopReceipt` |
-| WebDiag → Host | `async def collect(DiscoveryRequest) -> CandidateBatch`, `async def http_observe(ObserveRequest) -> ObserveResult`, `async def access_compare(AccessCompareRequest) -> AccessCompareResult` |
+| WebDiag → Host | `async def collect(DiscoveryRequest) -> DiscoveryResult`, `async def http_observe(ObserveRequest) -> ObserveResult`, `async def access_compare(AccessCompareRequest) -> AccessCompareResult` |
 | WebDiag → Host/자체 관찰 흐름 | `async def acquire_session(SessionRequest) -> SessionResult`, `async def whoami(IdentityRequest) -> IdentityResult` |
+
+S1 WebDiag는 **HTTP 단일 경로**이며 web_observe는 브라우저 후속 어댑터다. Host의 plan, submit/lease/complete/cancel은 host 패키지 내부 Protocol이며 S1 contracts에 넣지 않는다. tools_for/call Broker와 MCP/LLM 도구 라우팅은 S1에 구현·호출하지 않는다. Host가 서비스 포트를 직접 await하며 위 내부 이름은 아래 27포트 집계에서 제외한다.
 
 | 입력 record | 필수 필드 |
 |---|---|
 | `StartRunRequest` | `organization_ref`, `target_ref`, `environment_ref`, `registration_ref: Ref`, `submission_ref: Ref`. 진입점은 검증된 등록 구성을 선택하고 호출 멱등 키를 제공하며, 비밀번호나 임의 URL을 제출하지 않음 |
 | `DiscoveryRequest` | `run_key`, `seed_operation_refs: tuple[Ref]`, `account_ref: Ref`, `max_candidates: int` |
-| `ObserveRequest` | `run_key`, `request_ref`, `candidate_ref: Ref`, `candidate_revision: Revision`, `account_ref`, `observation_profile_ref: Ref` |
-| `AccessCompareRequest` | `run_key`, `case_ref: Ref`, `candidate_ref`, `candidate_revision`, `owner_account_ref`, `evaluated_account_ref`, `expected_policy: ExpectedAccessPolicySnapshot?`, `cross_confirmation: CrossExecutionConfirmation?` |
+| `ObserveRequest` | `run_key`, `candidate: Candidate`, `account_ref`, `observation_profile_ref: Ref` |
+| `AccessCompareRequest` | `run_key`, `case_ref: Ref`, `candidate: Candidate`, `owner_account_ref`, `evaluated_account_ref`, `expected_policy: ExpectedAccessPolicySnapshot?`, `cross_confirmation: CrossExecutionConfirmation?` |
 | `SessionRequest` | `run_key`, `account_ref`, `auth_profile_ref` |
 | `IdentityRequest` | `run_key`, `session: SessionHandle`, `identity_profile_ref` |
 
-candidate는 §8의 `get_case_view`를 통해 읽고 요청 revision을 검증해야 한다. 등록되지 않은 객체의 본인/타인 소유가 불명확하면 `http_observe`는 객체 요청을 실행하지 않으며, `access_compare`를 우회하는 교차 호출로 변질될 수 없다. 후보가 없으면 `not_found`, revision이 일치하지 않으면 `revision_conflict`이다.
+Host가 §8의 get_case_view로 선택한 후보를 읽고 작업에 기록된 candidate_ref/revision을 검증한 뒤 불변 Candidate 전체를 전달한다. 후보 부재는 not_found, revision 변경은 revision_conflict로 작업을 중단한다. WebDiag는 Knowledge를 조회하지 않고 전달된 run·후보와 주입된 동작/자원 등록의 일치를 검사한다. Candidate는 실행 권한이나 요청 resolver가 아니며 Gateway/Policy의 독립 재검증을 대신하지 않는다. 등록되지 않은 객체의 본인/타인 소유가 불명확하면 http_observe는 객체 요청을 실행하지 않으며 access_compare 우회 호출로 변질될 수 없다.
 
 | 출력 record | 필수 필드/상태 |
 |---|---|
@@ -184,14 +206,31 @@ candidate는 §8의 `get_case_view`를 통해 읽고 요청 revision을 검증�
 | `RunStatus` | `run_key`, `state: queued/running/stopping/completed/failed/stopped`, `tasks: tuple[TaskSummary]`, `send_counts: SendCounts`, `audit_completeness: complete/unknown`, `reason_codes` |
 | `TaskSummary` | `task_ref`, `kind: collect/observe/compare/judge/report`, `state: queued/running/complete/partial/failed/cancelled`, `attempt_summaries: tuple[AttemptSummary]`, `reason_codes` |
 | `StopReceipt` | `run_key`, `status`, `stop_state: requested/stopped/unknown`, `requested_at: UtcTime`, `reason_codes`. requested는 이미 종료되었다는 뜻이 아님 |
-| `CandidateBatch` | `run_key`, `status`, `candidates: tuple[Candidate]`, `knowledge_revision: Revision?`, `attempt_summaries`, `reason_codes` |
-| `ObserveResult` | `run_key`, `status`, `observation: Observation?`, `attempt_summaries`, `reason_codes` |
-| `AccessCompareResult` | `run_key`, `case_ref`, `status`, `owner_identity: IdentityResult?`, `evaluated_identity: IdentityResult?`, `owner_observation: Observation?`, `stored_comparison: StoredComparison?`, `stored_evidence_refs: tuple[Ref]`, `attempt_summaries`, `reason_codes` |
+| `DiscoveryResult` | `run_key`, `status`, `hints: tuple[CandidateHint]`, `attempt_summaries`, `reason_codes`. Knowledge 등록 전의 민감값 제거 단서이며 ID/revision을 발급하지 않음 |
+| `ObserveResult` | `run_key`, `status`, `observation: Observation?`, `projection_events: tuple[ObservationProjected]`, `attempt_summaries`, `reason_codes` |
+| `AccessCompareResult` | `run_key`, `case_ref`, `status`, `owner_identity: IdentityResult?`, `evaluated_identity: IdentityResult?`, `owner_observation: Observation?`, `stored_comparison: StoredComparison?`, `stored_evidence_refs: tuple[Ref]`, `projection_events: tuple[WebDiagProjectionEvent]`, `attempt_summaries`, `reason_codes` |
 | `Observation` | `run_key`, `observation_ref`, `candidate_ref`, `resource_ref`, `operation_ref`, `account_ref`, `session_generation: int`, `identity_ref: Ref`, `response_class: ResponseClass`, `evidence_ref: Ref`, `source_event: AuditLink`, `observed_at: UtcTime`, `reason_codes` |
 
 `Observation`은 공개 Evidence가 저장된 경우에만 존재한다. `complete`는 관찰/비교 작업이 완료되었다는 뜻이며, 권한이 올바르거나 취약점이 존재한다는 뜻은 아니다. `AccessCompareResult.complete`에는 `stored_comparison`이 있어야 한다. partial은 저장된 한쪽 결과를 보존할 수 있고, failed도 이미 발생한 attempt를 보존해야 한다. collect의 인증/발견 요청도 attempt_summaries에 포함한다.
 
+`WebDiagProjectionEvent = ObservationProjected | ComparisonProjected`라는 폐쇄 union을 사용한다. Observation을 반환하면 해당 원본 ObservationProjected도 함께 반환한다. CompareOutcome.complete와 AccessCompareResult.complete에는 완료된 ComparisonProjected가 필요하다. 원본 감사 commit 실패는 partial/사유로 남기고 완료된 artifact·receipt·이벤트를 보존한다. 이벤트를 완성하려고 같은 대상 요청을 재전송하지 않는다.
+
 S1 Host는 같은 사례의 A 기준 요청과 B가 A 객체에 수행하는 교차 비교 작업을 생성하며, B 자신의 객체는 요구하지 않는다. `access_compare`는 호출 내부에서 A/B의 유효 세션과 기준 응답을 다시 얻고 Host가 전달한 원문/캡처 핸들을 받지 않는다. 첫 버전은 비동기 worker 1개로 사례별 순서를 검증하고, 대기 중에도 상태 조회·중지는 처리한다. 작업 큐의 lease/complete는 Host 내부 프로토콜이다.
+
+### 3.1 S1 포트 수 대조
+
+동일한 감사 Protocol은 여러 생산자가 구현해도 정의를 한 번만 센다. 데이터 타입·순수 codec 함수·Host 내부 포트·후속 web_observe/MCP 도구는 집계하지 않는다.
+
+| 제공자/영역 | async def (24개) | def (3개) |
+|---|---|---|
+| Host | start_run, get_status, stop (3) | — |
+| WebDiag | collect, http_observe, access_compare, acquire_session, whoami (5) | read_session_binding (1) |
+| Gateway | prepare, execute, open_session_context, close_session_context (4) | — |
+| Policy | evaluate (1) | — |
+| Evidence | seal, compare_and_seal, store_evidence, evidence_read_summary (4) | capture, release_captures (2) |
+| Knowledge | register_candidates, project, get_case_view (3) | — |
+| Judge / Report | judge, build_report (2) | — |
+| 생산자 감사 Protocol | verify_committed, read_audit (2) | — |
 
 ## 4. 인증·세션 통제
 
@@ -206,6 +245,18 @@ S1 Host는 같은 사례의 A 기준 요청과 B가 A 객체에 수행하는 교
 `SessionState`: `not_ready -> authenticating -> confirmed`; 실패 시 `unavailable`; 만료 의심 시 `expiry_suspected -> recovering -> confirmed/unavailable`; 종료 시 `closed`. `confirmed`에는 `whoami`가 실제 subject·계정·generation을 검증하고 Evidence와 identity 감사 기록의 저장을 완료해야 한다. 이때 IdentityResult의 선택 필드는 모두 존재한다. 로그인만 성공한 세션은 authenticating 상태이다. subject가 일치하지 않으면 대상 계정으로 계속 사용할 수 없다.
 
 세션은 호출자가 상태를 위조할 수 있는 증명이 아니다. WebDiag가 상태 머신/generation/주체 검증의 유일한 기록자이다. Gateway는 계정별 독립 cookie jar와 인증 비밀을 보유하고, 주입된 읽기 전용 `SessionBindingReader`의 `def read_session_binding(run_key: RunKey, session_ref: Ref) -> SessionBindingResult`로 현재 상태를 얻는다. `SessionBindingResult` 필드는 `run_key, status, binding: SessionBinding?, reason_codes`이다. 이는 네트워크나 로그인 부작용 없이 이미 존재하는 상태를 읽는 포트이며, Gateway 콜백에서 WebDiag workflow를 진행하지 않는다.
+
+**Gateway.prepare의 identity 축약:** IdentityResult.status와 PolicyInput.identity_status는 역할이 다른 enum이며 다음과 같이 매핑한다. 상세 상태·사유는 세션 결과와 감사에 보존한다.
+
+| 현재 바인딩 | PolicyInput.identity_status | 조건/효과 |
+|---|---|---|
+| 유효한 verified | verified | run/session/account/generation·subject·identity/Evidence/감사 저장·기한까지 일치할 때만 허용 |
+| unknown / expired / mismatch | unknown | identity_unknown/session_expired/identity_mismatch 보존. 객체 관찰·교차 전송 차단 |
+| 세션은 있으나 identity가 없거나 오래된 generation/기한 | unknown | 인증/identify 절차의 미확인 상태이며 익명으로 강등하지 않음 |
+| 요청의 session=None | anonymous | 주체 관련 ref/generation은 None. 등록 동작이 익명을 허용해야만 평가 가능 |
+| session ref는 있으나 snapshot 조회 실패·다른 run/context | view 미발행 | PrepareResult.failed. 이를 anonymous로 바꾸지 않음 |
+
+만료된 verified도 unknown으로 축약한다. Gateway는 prepare에서 실제 snapshot을 읽어 이 값을 만들며 호출자의 identity_status를 받지 않는다. owner_identity도 유효한 verified 값에서만 만든다.
 
 전송 context가 암묵적인 공유 레지스트리가 되지 않도록 Gateway는 다음 **실행 전용** 제어 포트를 WebDiag에 제공한다. 로컬 fake를 사용할 수 있다.
 
@@ -238,7 +289,7 @@ acquire_session은 필요한 로그인과 whoami까지 마쳐 confirmed 세션�
 | `PreparedRequestHandle` | 불투명한 `Ref`. Gateway 인스턴스가 발급하고 독점적으로 해석하며 공개 Host/로그에서는 사용하지 않음 |
 | `PrepareResult` | `run_key`, `status`, `prepared_handle: PreparedRequestHandle?`, `policy_input: PolicyInput?`, `reason_codes`. 성공 시 두 값이 모두 존재하고 실패 시 모두 None이며, prepare는 전송하지 않음 |
 | `PolicyAttributes` | `registered_path_matches: bool`, `parameter_names: tuple[str]`, `parameters_match_registration: bool`, `resource_ref: Ref?`, `resource_binding_ref: Ref?`, `resource_binding_revision: Revision?`, `resource_owner_subject_ref: Ref?`, `provenance: SourceVersion`. 매개변수의 실제 값은 노출하지 않음 |
-| `PolicyInput` | `schema_version: str` 고정값 `s1.v0.3`, `run_key`, `request_ref`, `binding_id`, `binding_issuer: Ref`, `expires_at: UtcTime`, `origin: str`, `method: str`, `operation_ref`, `operation_revision: Revision`, `purpose`, `policy_attributes: PolicyAttributes`, `account_ref: Ref?`, `session_generation: int?`, `identity_ref: Ref?`, `subject_ref: Ref?`, `identity_status: verified/unknown/anonymous`, `owner_identity: IdentityBindingSummary?`, `scope: ScopeSnapshot`, `profile: ExecutionProfileSnapshot`, `budget: BudgetSnapshot`, `expected_policy: ExpectedAccessPolicySnapshot?`, `cross_confirmation: CrossExecutionConfirmation?` |
+| `PolicyInput` | `schema_version: str` 고정값 `policy_input.v1`, `run_key`, `request_ref`, `binding_id`, `binding_issuer: Ref`, `expires_at: UtcTime`, `origin: str`, `method: str`, `operation_ref`, `operation_revision: Revision`, `purpose`, `policy_attributes: PolicyAttributes`, `account_ref: Ref?`, `session_generation: int?`, `identity_ref: Ref?`, `subject_ref: Ref?`, `identity_status: verified/unknown/anonymous`, `owner_identity: IdentityBindingSummary?`, `scope: ScopeSnapshot`, `profile: ExecutionProfileSnapshot`, `budget: BudgetSnapshot`, `expected_policy: ExpectedAccessPolicySnapshot?`, `cross_confirmation: CrossExecutionConfirmation?` |
 | `PolicyDecision` | `run_key`, `decision_ref`, `binding_id`, `evaluated_view_fingerprint: str`, `outcome: allow/block`, `policy_version: SourceVersion`, `issued_at`, `expires_at`, `audit_receipt: AuditReceipt`, `reason_codes` |
 | `PolicyDecisionResult` | `run_key`, `status`, `decision: PolicyDecision?`, `reason_codes`. 감사 기록에 실패하면 failed/None이며 실행 가능한 allow를 발급하지 않음 |
 | `ExecuteRequest` | `run_key`, `request_ref`, `prepared_handle`, `decision: PolicyDecision?`. 유효 핸들의 request_ref와 반드시 일치. None 또는 block은 감사 가능한 not_sent를 생성하고 transport로 진입하지 않음 |
@@ -250,11 +301,13 @@ S1은 임의 요청 헤더·스크립트·자격 증명 필드의 전달을 지�
 
 핸들을 해석하지 못한 거부도 입력의 request_ref에 새 attempt_ref를 연결해 기록한다. 이때 decision_ref/binding_id는 검증된 값이 없으면 None이다. 입력 ref만으로 다른 run의 저장된 요청 정보를 노출하지 않는다.
 
-**view 일관성:** Policy는 수신한 전체 `PolicyInput`으로 SHA-256을 계산한다. 정규 바이트는 UTF-8 JSON, 필드명 정렬, 공백 없는 구분, `ensure_ascii=False`, NaN/float 금지를 사용한다. enum은 위 문자열, tuple은 배열, None은 null, 시간은 소수점 이하 6자리 마이크로초 UTC `Z`로 표현한다. 호출자가 별도로 채울 수 있는 fingerprint를 제외한 모든 필드를 포함한다. Gateway는 자체 저장한 동일 view를 다시 계산해 비교하고 실제 요청 snapshot·구성·현재 세션도 검사한다. 이 fingerprint는 값의 일관성에만 사용하며, 신뢰할 출처는 app이 주입한 Policy 인스턴스와 §10의 journal 검증에 의존하고 서명이나 bearer permit이 아니다.
+**view 일관성:** Policy와 Gateway는 [공유 fingerprint 계약](fingerprint-contract.md)의 contracts 순수 codec으로 전체 PolicyInput과 버전/kind envelope의 SHA-256을 각각 계산한다. 중첩 필드·SourceVersion·tuple·None·UTC 시각도 같은 코드와 고정 벡터를 사용하며 모듈별 재구현/fake codec을 허용하지 않는다. PolicyInput에는 자체 digest 필드가 없고 모든 필드를 포함한다. Gateway는 자체 저장한 view로 재계산하고 실제 요청 snapshot·구성·현재 세션도 검사한다. fingerprint는 값의 일관성에만 사용하며 출처는 주입된 Policy 인스턴스와 §10 journal 검증에 의존한다. 서명이나 bearer permit이 아니다. 문서 v0.x를 올려도 wire 의미가 같으면 policy_input.v1을 유지하며 허용하지 않는 schema_version은 평가/전송 전에 거부한다.
 
 Policy의 기본값은 block이다. 등록되지 않은 origin/operation/매개변수 구조, 만료된 구성, 불일치하는 신원, 누락된 교차 확인, 취소 또는 판정 불가는 모두 거부한다. Policy는 view의 ‘검사 통과’ 선언으로 주입된 등록 규칙을 대체하지 않으며 출처/revision과 등록 allowed_purposes/auth_profile이 일치해야 한다. Gateway는 등록된 resource_binding의 정확한 실제 값과 인코딩된 요청을 대조하며, Policy는 바인딩 ref/revision과 등록 소유자·현재 subject의 관계를 재검사한다. raw 값이나 민감값의 단순 hash를 정책 view로 내보내지 않는다.
 
 교차 실행에는 유효하면서 서로 다른 A/B 주체, 특정 객체·동작·계정에 맞는 확인과 기대 정책이 필요하다. Gateway는 owner_session과 실제 실행 session을 읽기 포트로 각각 확인해 owner_identity/실행 subject를 구성하며 caller의 신원 주장을 복사하지 않는다. 교차 외에는 owner_session/owner_identity/expected_policy/cross_confirmation을 None으로 둔다. 초기 S1은 등록된 `deny + resolved_none/resolved_none` 사례만 실행한다. Policy와 Gateway가 주입된 기대 정책 원본에 snapshot을 대조한다. 확인은 신뢰된 등록 입력으로 생성하며 Host/LLM이 같은 이름의 문자열을 직접 입력해 권한을 얻을 수 없다.
+
+S1에서는 WebDiag가 prepare → evaluate → execute를 직렬 await한다. 별도 네트워크 RPC가 아닌 in-process 포트 호출이며 commit/전송 인과 순서를 유지한다. S2에서 동시 사례 수를 늘릴 때 대기·TTL·중복 정책 조회 비용을 측정하고 호출 결합 여부를 별도 검토한다. 최적화가 Gateway의 최종 재검증이나 producer commit 확인을 생략할 근거는 아니다.
 
 Gateway가 다시 검증한다. Policy 기록이 실제 해당 binding/view의 allow인지, run/구성이 취소되거나 만료되지 않았는지, 현재 목적지/Host/SNI/DNS가 범위 내인지, 세션 generation/신원이 유효한지, 준비 내용이 바뀌지 않았는지, 예산을 원자적으로 차감할 수 있는지를 확인한다. redirects, transport 자동 재시도, origin 간 이동은 기본적으로 끈다. 차단된 이동이 두 번째 암묵적 전송을 일으켜서는 안 된다. 파생 요청을 지원할 때는 각각 새 준비/정책/감사가 필요하다.
 
@@ -275,16 +328,16 @@ Gateway가 다시 검증한다. Policy 기록이 실제 해당 binding/view의 a
 
 | 영역 | 시그니처 | 입력/출력 record |
 |---|---|---|
-| 전용: Gateway → 로컬 Evidence | `def capture(CaptureRequest) -> CaptureResult` | 입력 `run_key, attempt_ref, request_ref, operation_ref, resource_ref: Ref?, account_ref: Ref?, session_generation: int?, identity_ref: Ref?, observed_at, raw_response: RawResponse`; 출력 `run_key, status, capture_ref: Ref?, reason_codes` |
+| 전용: Gateway → 로컬 Evidence | `def capture(CaptureRequest) -> CaptureResult` | 입력 `run_key, attempt_ref, request_ref, operation_ref, resource_ref: Ref?, account_ref: Ref?, session_generation: int?, identity_ref: Ref?, observed_at, executed_request: ExecutedRequestView, raw_response: RawResponse`; 출력 `run_key, status, capture_ref: Ref?, reason_codes` |
 | 전용: WebDiag → 로컬 Evidence | `async def seal(SealRequest) -> SealResult` | 입력 `run_key, submission_ref: Ref, capture_ref, rules: ComparisonRules`; 출력 `run_key, status, evidence: EvidenceSummary?, receipts: tuple[StoreReceipt], reason_codes` |
-| 전용: WebDiag → 로컬 Evidence | `async def compare_and_seal(CompareRequest) -> CompareOutcome` | 입력 `run_key, case_ref, submission_ref, resource_ref, operation_ref, owner_capture_ref, cross_capture_ref, owner_identity: IdentityResult, evaluated_identity: IdentityResult, rules`; 출력 `run_key, status, stored_comparison: StoredComparison?, receipts, reason_codes` |
+| 전용: WebDiag → 로컬 Evidence | `async def compare_and_seal(CompareRequest) -> CompareOutcome` | 입력 `run_key, case_ref, submission_ref, resource_ref, operation_ref, owner_capture_ref, cross_capture_ref, owner_identity: IdentityResult, evaluated_identity: IdentityResult, rules`; 출력 `run_key, status, stored_comparison: StoredComparison?, projection_event: ComparisonProjected?, receipts, reason_codes`. projection_event는 Evidence 원본 감사 commit을 확인한 경우에만 존재 |
 | 공개: 로컬 Evidence → Evidence 저장 서비스 | `async def store_evidence(RedactedBundle) -> StoreOutcome` | 출력 `run_key, status, receipts, reason_codes` |
 | 공개: 읽기 호출자 → Evidence | `async def evidence_read_summary(EvidenceReadRequest) -> EvidenceReadResult` | 입력 `run_key, context: ReadContext, evidence_refs: tuple[Ref], comparison_refs: tuple[Ref]`; 출력 `run_key, status, evidence: tuple[EvidenceSummary], comparisons: tuple[StoredComparison], reason_codes` |
 
 | Record | 필드/제약 |
 |---|---|
 | `RawResponse` | `status_code: int`, `headers: tuple[RawHeader]`, `body: bytes`. 실행 메모리에만 존재하며 비밀을 포함할 수 있음. `RawHeader`는 `name: str, value: str` |
-| `EvidenceSummary` | `run_key, evidence_ref, attempt_ref, operation_ref, resource_ref: Ref?, account_ref: Ref?, session_generation: int?, identity_ref: Ref?, response_class, http_status: int, observed_at, redaction_version: SourceVersion, source_event: AuditLink` |
+| `EvidenceSummary` | `run_key, evidence_ref, attempt_ref, operation_ref, resource_ref: Ref?, account_ref: Ref?, session_generation: int?, identity_ref: Ref?, response_class, http_status: int, observed_at, redaction_version: SourceVersion, source_event: AuditLink, request_recipe: RegisteredRequestRecipe?, recipe_reason_codes: tuple[ReasonCode]` |
 | `ComparisonSignals` | `same_resource: CheckState`, `distinct_verified_subjects: CheckState`, `owner_normal_data: CheckState`, `cross_normal_data: CheckState`, `nontrivial_data_match: CheckState`, `reflection_excluded: CheckState`, `template_excluded: CheckState` |
 | `ComparisonPayload` | `run_key, comparison_ref, case_ref, resource_ref, operation_ref, owner_evidence_ref, cross_evidence_ref, owner_identity_ref, evaluated_identity_ref, signals: ComparisonSignals, rules: ComparisonRules` |
 | `RedactedBundle` | `run_key, submission_ref, evidence: tuple[EvidenceSummary], comparison: ComparisonPayload?, source: SourceVersion`. 원문/가역적인 본문/임의 확장 JSON을 받지 않음 |
@@ -294,6 +347,8 @@ Gateway가 다시 검증한다. Policy 기록이 실제 해당 binding/view의 a
 `RedactedBundle.comparison`의 증거 ref는 현재 bundle 또는 같은 run에 이미 저장된 기록에서 올 수 있다. 저장 서비스는 모든 의존성과 출처를 검증한 뒤에만 Comparison을 저장한다. 어떤 의존성이라도 조회할 수 없으면 StoredComparison을 발행하지 않는다. 같은 submission_ref와 정규 내용의 반복 기록은 원래 receipt를 반환하고, 같은 ID의 내용이 다르면 `idempotency_conflict`이다. partial은 성공한 receipt를 보존하지만 한쪽이 빠진 비교를 공개하지 않는다.
 
 EvidenceSummary의 response_class/ComparisonSignals는 주입된 규칙으로 로컬 캡처에서 계산하며, 호출자가 임의 원문을 ‘비식별화됨’으로 포장해 검사를 건너뛸 수 없다. 규칙과 canary의 내용/버전은 Judge 담당자가 제공하고 Evidence가 실행한다. hash/HMAC가 같다는 사실만으로 `nontrivial_data_match=yes`를 만들 수 없다. 정상 객체의 비자명한 내용과 반사/템플릿 반례를 검증해야 하며, 검증할 수 없으면 unknown이다.
+
+ExecutedRequestView·RegisteredRequestRecipe는 [PoC 계약 §3](poc-report-design.md#3-최소-추가-타입)을 따른다. Gateway의 실제 요청 최소 view는 원문 응답과 함께 실행 메모리로만 인계한다. capture는 주입된 메모리 등록 정보/캡처 맥락을 동기 대조하며 불일치면 failed/capture_ref=None·원문 해제·capture_binding_mismatch다. 정상 인계 뒤 seal/compare가 공개 가능한 레시피로 치환해 저장한다. 실제 입력 값·인증 값·원문 headers/body는 레시피로 내보내지 않는다. 정당한 인증 POST 등 레시피만 미지원인 경우 capture/응답 근거를 유지하고 request_recipe=None과 사유를 남기며 전송/비교 근거를 지우지 않는다.
 
 캡처 상태는 `active -> released/expired`이며 TTL은 60초, 캡처 하나의 한도는 1 MiB, run당 active 캡처는 최대 8개다. `capture`가 원문을 받은 뒤 독점 버퍼를 사용하고, seal/compare가 필요한 핸들을 원자적으로 가져가며 성공·실패·취소 후 finally에서 해제한다. 핸들 만료·중복 소비·run/리소스/계정/generation 불일치는 모두 실패로 처리하고 공용 DB에서 원문을 복구하지 않는다. 양쪽이 필요하면 같은 compare에서 생성된 A/B 캡처를 사용한다. 한도/파싱 실패가 있어도 sent는 보존하며, 응답을 잘라 비교가 완전하다고 선언하지 않는다.
 
@@ -317,9 +372,19 @@ EvidenceSummary의 response_class/ComparisonSignals는 주입된 규칙으로 �
 | `VerdictProjected` | `kind=verdict, verdict: Verdict` 추가 |
 | `PolicyRegistered` | `kind=expected_policy, policy: ExpectedAccessPolicySnapshot` 추가. 신뢰할 수 있는 등록 생산자만 제출 가능 |
 
-후보 ID/중복 제거와 graph revision은 Knowledge가 생성한다. WebDiag가 Knowledge ID를 임의로 만들지 않는다. 완전한 candidate는 명시적으로 읽어 얻으며, candidate_ref를 모듈 간에 정의되지 않은 실행 요청 resolver로 사용하지 않는다.
+후보 ID/중복 제거와 graph revision은 Knowledge가 생성한다. S1에서 위 세 포트의 조정 호출자는 Host다. WebDiag.collect는 CandidateHint만 반환하고 Host가 register_candidates에 제출한다. Host가 get_case_view로 Candidate를 조회·revision 검증해 WebDiag에 전달하며 WebDiag에 Knowledge 읽기/쓰기 포트를 주입하지 않는다. candidate_ref를 모듈 간에 정의되지 않은 실행 요청 resolver로 사용하지 않는다.
 
-투영은 생산자가 저장한 이벤트를 읽는다. Knowledge는 app이 주입한 생산자의 `verify_committed`와 Evidence 요약 읽기 포트로 원본/출처와 의존성을 검증한다. 검증할 fingerprint는 투영 안의 실제 원본 payload에서 계산한다. Observation은 WebDiag, ComparisonPayload는 Evidence, Verdict는 Judge, 기대 정책은 app의 등록 journal이 원본 생산자다. 전달자인 WebDiag/Host가 이 소유권을 바꾸지 않는다. 존재하지 않는 Evidence, 출처 없는 이벤트, 같은 event_ref의 다른 내용은 모두 거부한다. 일시적으로 검증할 수 없으면 deferred를 사용하고 applied로 위장하지 않는다. 이미 완전히 적용된 같은 이벤트는 멱등적으로 duplicate를 반환한다. Graph는 작업/Policy/감사의 정본이 아니며, 접근 관찰로 OWNS를 추론하지 않는다. S1은 메모리 graph를 사용하고 프로세스 재시작 시 각 정본에서 재구성할 수 있다.
+| 이벤트/등록 | 원본 생성·commit | Host가 받는 값과 제출 시점 |
+|---|---|---|
+| CandidateSubmission | WebDiag의 발견 단서, Knowledge의 후보 정본 | collect의 DiscoveryResult.hints를 Host가 등록. Knowledge가 ID/revision 발급 |
+| ObservationProjected | WebDiag의 Observation journal | 저장된 Evidence에 연결해 WebDiag가 원본 이벤트를 ObserveResult/AccessCompareResult.projection_events에 반환한 뒤 Host가 project |
+| ComparisonProjected | Evidence의 ComparisonPayload journal | compare_and_seal의 projection_event를 WebDiag가 변경 없이 결과에 전달한 뒤 Host가 project |
+| VerdictProjected | Judge의 Verdict journal | JudgeResult.projection_event를 받은 Host가 project |
+| PolicyRegistered | app의 신뢰된 등록 journal | app이 검증·commit한 이벤트를 Host에 주입. Host가 사례 실행 전에 project |
+
+각 producer는 원본 event_ref/run/producer/source_revision/source_receipt와 payload를 결합한 이벤트를 만든다. Host가 다른 producer의 receipt를 새로 만들거나 자기 producer로 서명하지 않는다. WebDiag도 Evidence의 ComparisonProjected를 재작성하지 않는다. 원본 commit 확인이 없으면 이벤트를 만들지 않고 partial/failed 결과에서도 이미 완료된 projection_events와 attempts를 보존한다. Host는 source event_ref로 제출을 추적하며 projection이 deferred/실패해도 원 Evidence·Verdict를 지우거나 대상 요청을 재실행하지 않는다. 후속 재투영은 같은 원본 이벤트로만 수행한다.
+
+투영은 생산자가 저장한 이벤트를 읽는다. Knowledge는 app이 주입한 생산자의 verify_committed와 Evidence 요약 읽기 포트로 원본/출처와 의존성을 검증한다. 검증할 fingerprint는 투영 안의 실제 원본 payload에서 계산한다. ComparisonProjected는 StoredComparison.payload를 hash하고 receipt 세 개도 별도로 확인한다. 전달자인 Host가 소유권을 바꾸지 않는다. 존재하지 않는 Evidence, 출처 없는 이벤트, 같은 event_ref의 다른 내용은 모두 거부한다. 일시적으로 검증할 수 없으면 deferred를 사용하고 applied로 위장하지 않는다. 이미 완전히 적용된 같은 이벤트는 멱등적으로 duplicate를 반환한다. Graph는 작업/Policy/감사의 정본이 아니며 접근 관찰로 OWNS를 추론하지 않는다. S1은 메모리 graph를 사용하고 프로세스 재시작 시 각 정본에서 재구성할 수 있다.
 
 at_revision=None이면 현재 일관된 snapshot을 가져온다. 지정한 revision이 없거나 더 이상 읽을 수 없으면 failed/revision_unavailable을 반환하며 최신 값으로 조용히 바꾸지 않는다. limit를 초과하면 partial/truncated를 반환하고, 한 번의 limit 범위는 1–100이다. S1은 모든 메모리 snapshot의 무기한 보존을 약속하지 않으며, 이력 저장소가 없을 때는 현재 revision만 지원하고 이전 값을 명시적으로 거부한다.
 
@@ -327,7 +392,7 @@ at_revision=None이면 현재 일관된 snapshot을 가져온다. 지정한 revi
 
 | 시그니처 | 입력 | 출력 |
 |---|---|---|
-| `async def judge(JudgeRequest) -> JudgeResult` | `run_key, case_ref, submission_ref, expected_policy: ExpectedAccessPolicySnapshot?, owner_identity: IdentityResult?, evaluated_identity: IdentityResult?, comparison_ref: Ref?` | `run_key, status, verdict: Verdict?, reason_codes` |
+| `async def judge(JudgeRequest) -> JudgeResult` | `run_key, case_ref, submission_ref, expected_policy: ExpectedAccessPolicySnapshot?, owner_identity: IdentityResult?, evaluated_identity: IdentityResult?, comparison_ref: Ref?` | `run_key, status, verdict: Verdict?, projection_event: VerdictProjected?, reason_codes`. complete는 판정과 원본 이벤트를 함께 반환 |
 | `async def build_report(ReportInput) -> ReportResult` | `run_key, context: ReadContext, tasks: tuple[TaskSummary], observations: tuple[Observation], comparisons: tuple[AccessCompareResult], verdicts: tuple[Verdict], audit_expectations: tuple[AuditExpectation]` | `run_key, status, report: DiagnosisReport?, reason_codes` |
 
 | Record | 필드 |
@@ -335,7 +400,7 @@ at_revision=None이면 현재 일관된 snapshot을 가져온다. 지정한 revi
 | `Verdict` | `run_key, verdict_ref, revision, case_ref, value: CONFIRMED/SUSPECTED/UNDECIDABLE, policy_check: CheckState, identity_check: CheckState, data_check: CheckState, expected_policy_source: SourceVersion?, comparison_ref: Ref?, evidence_refs, oracle_version: SourceVersion, source_event: AuditLink, reason_codes` |
 | `AuditExpectation` | `producer, first_sequence: int, last_sequence: int?, expected_event_refs: tuple[Ref], request_refs: tuple[Ref], attempt_refs: tuple[Ref]`. 종료 수위가 없으면 완전하다고 선언할 수 없음 |
 | `AuditGap` | `producer, request_ref: Ref?, attempt_ref: Ref?, event_ref: Ref?, reason_code` |
-| `DiagnosisReport` | `run_key, report_ref, verdicts, send_counts: SendCounts, incomplete_task_refs: tuple[Ref], audit_completeness: complete/unknown, audit_gaps: tuple[AuditGap], evidence_refs: tuple[Ref], comparison_refs: tuple[Ref], comparison_limits: tuple[CaseLimit], reason_codes` |
+| `DiagnosisReport` | `run_key, report_ref, verdicts, send_counts: SendCounts, incomplete_task_refs: tuple[Ref], audit_completeness: complete/unknown, audit_gaps: tuple[AuditGap], evidence_refs: tuple[Ref], comparison_refs: tuple[Ref], comparison_limits: tuple[CaseLimit], pocs: tuple[PocReport], reason_codes` |
 | `CaseLimit` | `case_ref`, `status: ResultStatus`, `stored_evidence_refs: tuple[Ref]`, `comparison_ref: Ref?`, `reason_codes`. 판정 전 실패/partial 사례도 보존 |
 
 Judge는 Evidence 읽기 포트로 저장된 comparison과 모든 receipt를 가져와 실제 주체·유효 기간·자원·정책의 대응을 검증하며, 호출자가 임의로 구성한 StoredComparison을 신뢰하지 않는다. WebDiag의 verify_committed로 IdentityResult의 정확한 내용과 identity 감사 receipt도 확인한다. 주체/정책 유효성은 각 근거의 observed_at 당시 유효했는지 확인하며, 판정 시각에 이미 TTL이 지났다는 이유만으로 당시 유효한 근거를 버리지 않는다. 정책이 없거나 실행 당시 만료되었거나 자료를 검증할 수 없으면 `UNDECIDABLE` Verdict를 반환한다. 이는 판정 작업 자체는 완료되었으므로 JudgeResult.complete일 수 있다. Judge가 판정/감사를 저장하지 못하면 failed/None이다. 같은 submission_ref를 다시 호출하면 멱등이며, 자료를 읽지 못했다고 Gateway에 재전송을 요구하지 않는다.
@@ -343,6 +408,8 @@ Judge는 Evidence 읽기 포트로 저장된 comparison과 모든 receipt를 가
 다음 세 항목이 모두 yes일 때만 CONFIRMED다. (a) 신뢰할 수 있는 정책이 B를 명시적으로 금지하고 공유/위임 예외가 해결됨, (b) A/B가 유효하고 서로 다른 검증된 subject임, (c) 같은 A 객체의 정상적이고 비자명한 실제 데이터가 B의 교차 응답에 나타나며 반사/템플릿이 제외됨. 신호가 부족하지만 구체적인 이상 징후가 있을 때만 SUSPECTED이며, 200/HMAC/ID echo/owner_id만으로 승격할 수 없다. 기대 정책이 허용하거나 유효성이 불명확하거나 증거가 부족한 사례는 취약점으로 확정할 수 없다. 보고서에는 그 이유를 보존하고 ‘안전’ 결론을 꾸며내지 않는다.
 
 Report는 각 생산자의 감사 페이지와 공개 Evidence를 읽고 다른 모듈의 DB는 읽지 않는다. 모든 기대 이벤트/요청 연관, 생산자의 시작·종료 수위와 필요한 저장 기록이 일치할 때만 audit complete이다. A/A 두 건은 기대한 A/B를 충족하지 못한다. 읽기에 실패해도 gap과 unknown을 붙인 partial 보고서를 생성할 수 있으며, 알려진 sent와 unknown을 보존하고 not_sent로 보완하지 않는다.
+
+PocReport는 [PoC 보고서 계약](poc-report-design.md)의 실제 참조·등록 요청 레시피에서 생성한다. 원 실행의 저장된 CONFIRMED와 필요한 근거·레시피·감사를 확인하면 documented, 자료가 부족하면 incomplete, 형식/공개가 불가하면 unavailable다. S1 replay_status는 not_run이고 Report는 재전송하지 않는다. CONFIRMED 사례의 필수 PoC가 미완료면 report를 보존한 partial 결과로 반환한다. 미확정 판정을 정확히 설명하는 보고는 PoC를 확정하지 않았다는 이유만으로 생성 실패가 되지 않는다. PoC 가용성과 Judge 판정은 별개다.
 
 ## 10. 감사 커밋과 조회
 
@@ -355,15 +422,21 @@ Report는 각 생산자의 감사 페이지와 공개 Evidence를 읽고 다른 
 
 | Record | 필드 |
 |---|---|
+| `RequestIntentRecord` | `run_key`, `request_ref`, `attempt_ref`, `binding_id`, `operation_ref`, `operation_revision: Revision`, `purpose: Purpose`, `account_ref: Ref?`, `session_generation: int?`, `decision_ref: Ref`, `evaluated_view_fingerprint: str`, `created_at: UtcTime`. 불변 revision=1이며 record_ref는 attempt_ref |
+| `AttemptRecord` | `run_key`, `request_ref`, `attempt_ref`, `revision: Revision`, `decision_ref: Ref?`, `binding_id: Ref?`, `operation_ref: Ref?`, `account_ref: Ref?`, `session_generation: int?`, `send_status: SendStatus`, `capture_status: CaptureStatus`, `occurred_at: UtcTime`, `reason_codes`. record_ref는 attempt_ref, record_revision은 revision |
 | `AuditRecordBinding` | `event_kind: run/task/identity/observation/expected_policy/policy_decision/request_intent/attempt/evidence/comparison/verdict`, `record_ref: Ref`, `record_revision: Revision`, `record_fingerprint: str`, `request_ref: Ref?, attempt_ref: Ref?, binding_id: Ref?` |
 | `AuditReceipt` | `run_key, producer, event_ref, sequence: int, binding: AuditRecordBinding, committed_at: UtcTime` |
 | `AuditEvent` | `receipt: AuditReceipt`, `causal_links: tuple[AuditLink]`, `goal_ref: Ref?`, `task_ref: Ref?`, `case_ref: Ref?`, `account_ref: Ref?`, `session_generation: int?`, `evidence_refs: tuple[Ref]`, `verdict_refs: tuple[Ref]`, `occurred_at: UtcTime`, `recorded_at: UtcTime`, `producer_instance_ref: Ref`, `elapsed_ms: int`, `policy_outcome: allow/block/None`, `send_status: SendStatus?`, `reason_codes` |
 
-verify는 receipt의 겉모양을 검증하는 것이 아니다. 생산자가 자신이 커밋한 기록을 실제로 읽어 run·이벤트 ID·revision·fingerprint와 모든 binding을 비교한 뒤 verified를 반환한다. Gateway는 받은 PolicyDecision의 업무 필드에서 expected fingerprint를 직접 계산해 검증 요청을 만들며 receipt.binding을 그대로 expected에 복사하지 않는다. 따라서 실제 block 기록에 가짜 allow만 덧씌워도 불일치한다. 모든 생산자는 §5의 정규 JSON/SHA-256 규칙을 공유하며 fingerprint는 receipt와 자체 fingerprint를 제외한 원본 record의 모든 업무 필드를 포함하고 원문/비밀은 포함하지 않는다. 자체 revision 없는 불변 artifact의 record_revision은 1이다. 호출자가 가진 digest는 생산자의 확인을 대신하지 않는다.
+verify는 receipt의 겉모양을 검증하는 것이 아니다. 생산자가 자신이 커밋한 기록을 실제로 읽어 run·이벤트 ID·revision·fingerprint와 모든 binding을 비교한 뒤 verified를 반환한다. Gateway는 받은 PolicyDecision의 업무 필드에서 expected fingerprint를 직접 계산해 검증 요청을 만들며 receipt.binding을 그대로 expected에 복사하지 않는다. 따라서 실제 block 기록에 가짜 allow만 덧씌워도 불일치한다. 모든 생산자/소비자는 [contracts codec의 명시적 record별 payload](fingerprint-contract.md#3-record별-payload)를 사용한다. 임의 필드명에 따라 receipt/fingerprint를 재귀적으로 지우는 범용 필터를 만들지 않는다. 자체 revision 없는 불변 artifact의 record_revision은 1이다. 호출자가 가진 digest는 생산자의 확인을 대신하지 않는다.
+
+RequestIntentRecord는 전송 전 불변 준비 snapshot과 결정을 연결하는 **비밀 없는 감사 payload**다. Gateway는 실제 전송 snapshot을 실행 영역에 보유하고 같은 binding/view와 독립 대조한다. 원문 요청·실제 파라미터의 단순 hash·자격 증명·캡처 핸들을 이 record에 넣지 않는다. AttemptRecord는 §6의 전송/캡처 조합을 따르며 capture_ref/auth_signal을 제외한다. 유효 핸들을 해석하지 못한 시도는 해당 operation/account/generation/decision/binding을 None으로 남긴다. 뒤늦게 확인한 상태는 새 revision·감사 이벤트로 보존하고 이전 기록을 덮어쓰지 않는다. 증거 없이 unknown을 not_sent로 바꾸지 않는다. 두 record의 kind/schema와 고정 벡터는 C2 계약 범위다. run/task payload는 Host 경계 계약에서 별도 확정하며 그 전에는 해당 감사를 구현 완료로 표시하지 않는다.
 
 elapsed_ms는 해당 producer_instance의 단조 시계 시작점 이후 경과 시간이고, sequence는 run/producer의 영속 순번이다. 재시작 시 instance_ref를 새로 만들고 sequence는 이어간다. 생산자 간 인과는 causal_links로 연결하며 시각만으로 순서를 합성하지 않는다. event binding의 request/attempt와 evidence/verdict/task 연결을 함께 대조한다.
 
 Gateway 실행 순서: ① Policy decision과 commit 검증, ② attempt_ref를 생성하고 구체 요청의 intent를 기록한 뒤 자신의 commit 확인, ③ 전송 임계 구역에서 취소/바인딩/신원/범위를 다시 확인하고 예산 원자 차감, ④ transport 진입, ⑤ sent/not_sent/unknown과 캡처 결과 기록. ①②를 입증할 수 없거나 저장에 실패하면 절대 ④로 진입하지 않는다. ③ 이후에도 외부 취소가 발생할 수 있으며 stop은 시작된 전송을 회수한다고 보장할 수 없다.
+
+③은 prepare 때의 snapshot을 재사용하는 검사가 아니다. 모든 permit/감사 await가 끝난 후, **같은 event-loop의 await 없는 임계 구역에서 read_session_binding을 다시 호출**해 실행 계정과 교차 요청의 owner 계정 모두의 현재 session/account/generation/identity/context/cancelled·기한을 준비 view와 재대조한다. 변경·조회 실패면 session_generation_changed 등 사유와 not_sent를 남기고 transport는 0회다. 이 최종 읽기와 예산 차감·transport 진입 예약 사이에는 await가 없다. 실제 전송 진입 전에 제어를 넘긴 구현은 돌아온 뒤 같은 검사를 다시 해야 한다. fake는 ①②/permit 대기 중 generation을 교체해 S1-14/17/25를 검증한다.
 
 S1 fake journal은 흐름 테스트를 위해 verified를 반환할 수 있지만 실제 HTTP는 검증된 영속 어댑터만 사용해야 한다. app은 memory fake를 실제 transport에 연결하는 것을 명시적으로 거부한다. 프로세스 장애 후 intent만 있고 완료 이벤트가 확정되지 않은 attempt는 unknown으로 복구하며 재전송으로 감사를 보완하지 않는다. 실행 후 감사가 실패해도 실제 전송 상태, audit_commit_failed 사유와 미확인 공백을 보존한다.
 
@@ -392,9 +465,11 @@ TTL과 deadline에는 단조 시계를 사용하고 모듈 간 기록에는 명�
 | 사유 코드 그룹 | 초기 코드 |
 |---|---|
 | 입력/읽기 | `configuration_missing`, `not_found`, `access_denied`, `revision_conflict`, `revision_unavailable`, `snapshot_expired`, `idempotency_conflict`, `unsupported_authentication`, `queue_full` |
+| 계약 버전 | `unsupported_schema_version`. 문서 판번호로 대체하거나 알 수 없는 codec/kind/schema를 추측하지 않음 |
 | 준비/정책 | `policy_blocked`, `policy_view_mismatch`, `prepared_handle_invalid`, `prepared_handle_expired`, `prepared_handle_foreign_scope`, `prepared_handle_consumed`, `scope_mismatch`, `expected_access_policy_missing`, `expected_access_policy_invalid`, `cross_confirmation_missing`, `sharing_or_delegation_unknown` |
 | 세션/중지 | `identity_unknown`, `identity_mismatch`, `session_expired`, `session_generation_changed`, `session_busy`, `recovery_exhausted`, `cancelled`, `budget_exhausted`, `deadline_exceeded`, `cleanup_timeout`, `internal_error`, `scheduler_failed` |
 | 전송/증거/감사 | `send_acknowledgement_lost`, `capture_unavailable`, `capture_expired`, `capture_binding_mismatch`, `response_limit_exceeded`, `evidence_store_failed`, `cross_evidence_store_failed`, `comparison_incomplete`, `source_unverified`, `audit_commit_failed`, `audit_verification_unknown`, `audit_gap` |
+| PoC | `recipe_missing`, `recipe_unsupported`, `recipe_not_exportable`, `recipe_binding_mismatch`, `poc_evidence_incomplete`, `poc_verdict_unconfirmed`, `poc_audit_incomplete` |
 
 제공자와 소비자는 [13개 S1 수용 사례](s1-api-draft.md#9-독립-개발초기-통합-수용-기준)의 동일한 case ID를 사용한다. 다음 v0.2~v0.3 필수 테스트 사례도 추가하며, 모두 **앞으로 작성할 테스트**다.
 
@@ -418,9 +493,22 @@ TTL과 deadline에는 단조 시계를 사용하고 모듈 간 기록에는 명�
 
 비동기 단위 테스트는 저장소의 pytest-asyncio strict 설정에 맞춰 `@pytest.mark.asyncio`와 명시적 비동기 fixture를 사용한다. 지연/경합은 실제 sleep 대신 제어 가능한 Event·fake clock·fake journal로 주입한다. async 포트 fake는 async def, 위 세 동기 포트 fake는 def로 구현한다. teardown에서 소유 Task 종료와 캡처/lease 반환을 확인하고 미회수 Task·미await coroutine을 통과로 처리하지 않는다. 상한 대기에는 테스트 자체 timeout도 둬 교착을 검출한다.
 
+v0.4의 요청 레시피·PoC 출력·비밀 치환·무전송 보고·취소/변조 사례 S1-29~36은 [PoC 계약 §6](poc-report-design.md#6-예시와-구현-검증)을 따른다. 이들 역시 향후 구현할 테스트이며 예시 보고서로 동작 검증을 대체하지 않는다.
+
+v0.5의 후속 검증 요구사항은 다음과 같다. 실제 테스트가 이미 존재한다는 뜻은 아니다.
+
+| ID | 입력/장애 | 관찰 가능한 결과 |
+|---|---|---|
+| S1-37 | 중첩 key/SourceVersion 선언 순서·enum·tuple·None·offset 시각·float/미지원 타입 | 공유 codec의 고정 canonical bytes/digest 일치, tuple 순서/업무 필드 변경은 다른 digest, float/naive/비문자열 key 거부 |
+| S1-38 | verified/unknown/expired/mismatch·identity 부재·session 부재/조회 실패 | §4의 Gateway 매핑 일치. expired/mismatch를 anonymous로 바꾸지 않고 상세 사유 보존 |
+| S1-39 | 발견 단서와 각 producer의 저장 이벤트, stale candidate revision·deferred projection | Host만 register/get_case/project 호출. WebDiag의 Knowledge 의존 0개, 원본 producer/receipt 유지, stale 후보는 실행 0건, 재투영에 대상 재전송 0건 |
+| S1-40 | 인증·whoami·기준/교차·복구·저장 멱등 재확인 | WebDiag가 동작별 request_ref를 한 번 발급·보존하고 Gateway가 attempt에 그대로 연결. identity 재사용은 새 시도 0개, unknown 재전송 0건 |
+| S1-41 | Host의 정책/확인 값 한 필드 변조·미지원 wire version | Gateway/Policy가 주입 원본에 불일치로 차단하고 transport 0건. 문서 판번호만 바뀌어도 policy_input.v1은 유지 |
+| S1-42 | 동일 BudgetSnapshot으로 두 번째 시도·commit await 중 generation/context 변경 | 남은 예산을 fingerprint에 넣지 않고 전송 직전 최신 상태 재조회·원자 차감. 소진 예산/구세대의 전송 0건 |
+
 ## 12. 계약 PR과 팀 검토
 
-1. **실행 경계를 먼저 작은 PR로 작업:** 최소 공유 참조/상태와 Gateway/Policy·Evidence 실행 로컬 포트를 정의한다. 실제로 패키지 간 사용하는 타입만 `contracts`에 넣는다. 실행 중인 contracts 서비스를 만들거나 모든 모델을 한 번에 작성하지 않는다.
+1. **폐기된 PR #8 대신 새 실행 경계 계약 PR:** [착수 상태](s1-development-status.md)의 C1(codec+고정 벡터) → C2(최소 실행 타입/포트) 순으로 이동찬이 제안하고 소비자가 검토한다. PolicyInput/PolicyDecision/등록·세션 snapshot과 그 전이적 타입만 정의한다. Policy/Gateway의 공개 fake는 C2 병합을 선행조건으로 삼고 순수 내부 로직은 먼저 개발할 수 있다. 원문 Evidence/PoC·Graph/Report 계약은 별도 후속 PR이며 contracts 전체 완성을 기다리지 않는다.
 2. **네 갈래 독립 개발:** 이동찬은 Knowledge 메모리와 app fake 연결, 최민준은 Policy/Gateway와 Judge 순수 판정, 이경준은 WebDiag/Host workflow, 윤재상은 Evidence/Report를 담당한다. 각자의 fake는 자체 tests/fakes에 두고 동일한 필드/상태와 case ID를 사용하며 다른 모듈 구현을 복제하지 않는다.
 3. **항목별 교체:** app의 네트워크 없는 경로에서 먼저 한 사례의 run/request/attempt/policy/evidence/verdict를 연결한 다음 실제 모듈로 하나씩 교체한다. 실제 영속화/HTTP 검증은 integration 환경에서 수행한다.
 
