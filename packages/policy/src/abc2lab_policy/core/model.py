@@ -1,8 +1,10 @@
 """Policy 결정의 내부 도메인 모델.
 
-C2 공개 계약(`PolicyInput`/`PolicyDecision`)이 병합되기 전의 모듈 내부 타입이다. 공개 계약을
-대신하거나 그 사본으로 쓰지 않으며, 공개 포트·fingerprint 입력으로 노출하지 않는다. C2 병합 후
-`adapters`에서 `PolicyInput` → 이 모델, 이 모델의 판정 → `PolicyDecision`으로 잇는다.
+공개 계약(`PolicyInput`/`PolicyDecision`)으로 변환되기 전의 모듈 내부 타입이다. 공개 계약을
+대신하거나 그 사본으로 쓰지 않으며, 공개 포트·fingerprint 입력으로 노출하지 않는다. C2는
+병합됐으며(PR #20), `adapters`가 `PolicyInput` → 이 모델, 이 모델의 판정 → `PolicyDecision`으로
+변환하는 책임을 진다. C2엔 읽기전용 불리언이 없고 목적 allowlist로 표현하므로, adapter에서 쓰기
+차단을 `PURPOSE_NOT_ALLOWED`로 흡수하도록 정렬한다.
 
 시각은 timezone-aware UTC를 가정한다. 가변 예산·permit·실제 전송 상태는 포함하지 않으며, 그
 소비·차감은 전송 직전 Gateway가 담당한다.
@@ -48,6 +50,7 @@ class PolicyReason(StrEnum):
     CONFIGURATION_EXPIRED = "configuration_expired"
     BINDING_EXPIRED = "binding_expired"
     OPERATION_UNREGISTERED = "operation_unregistered"
+    OPERATION_REF_MISMATCH = "operation_ref_mismatch"
     OPERATION_SOURCE_MISMATCH = "operation_source_mismatch"
     ORIGIN_MISMATCH = "origin_mismatch"
     METHOD_MISMATCH = "method_mismatch"

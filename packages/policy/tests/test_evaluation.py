@@ -170,3 +170,30 @@ def test_allows_when_required_cross_confirmation_present() -> None:
     request = replace(_REQUEST, requires_cross_confirmation=True, has_cross_confirmation=True)
     result = evaluate(request, _AUTHORIZATION, _NOW)
     assert result.outcome is Outcome.ALLOW
+
+
+def test_access_compare_requires_cross_confirmation_regardless_of_flag() -> None:
+    request = replace(
+        _REQUEST,
+        purpose=Purpose.ACCESS_COMPARE,
+        requires_cross_confirmation=False,
+        has_cross_confirmation=False,
+    )
+    result = evaluate(request, _AUTHORIZATION, _NOW)
+    assert result.reason_codes == (PolicyReason.CROSS_CONFIRMATION_MISSING,)
+
+
+def test_access_compare_allows_with_cross_confirmation() -> None:
+    request = replace(_REQUEST, purpose=Purpose.ACCESS_COMPARE, has_cross_confirmation=True)
+    result = evaluate(request, _AUTHORIZATION, _NOW)
+    assert result.outcome is Outcome.ALLOW
+
+
+def test_operation_ref_mismatch_rejected() -> None:
+    # 매핑 키는 요청 ref지만 등록 객체의 operation_ref가 다르면 거부한다.
+    mismatched = replace(_OPERATION, operation_ref="other-operation")
+    authorization = replace(
+        _AUTHORIZATION, registered_operations={_REQUEST.operation_ref: mismatched}
+    )
+    result = evaluate(_REQUEST, authorization, _NOW)
+    assert result.reason_codes == (PolicyReason.OPERATION_REF_MISMATCH,)

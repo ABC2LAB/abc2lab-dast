@@ -66,6 +66,9 @@ def _first_denial(
     operation = authorization.registered_operations.get(request.operation_ref)
     if operation is None:
         return PolicyReason.OPERATION_UNREGISTERED
+    if operation.operation_ref != request.operation_ref:
+        # 등록 매핑 키와 등록 객체의 operation_ref가 다르면 신뢰하지 않는다.
+        return PolicyReason.OPERATION_REF_MISMATCH
     if operation.source != request.operation_source:
         return PolicyReason.OPERATION_SOURCE_MISMATCH
     if operation.origin != request.origin:
@@ -82,7 +85,11 @@ def _first_denial(
     needs_verified_identity = request.purpose not in _PREAUTH_PURPOSES
     if needs_verified_identity and request.identity_status is not IdentityStatus.VERIFIED:
         return PolicyReason.IDENTITY_NOT_VERIFIED
-    if request.requires_cross_confirmation and not request.has_cross_confirmation:
+    # 교차 비교(ACCESS_COMPARE)는 호출자 플래그와 무관하게 교차 확인을 요구한다.
+    needs_cross_confirmation = (
+        request.purpose is Purpose.ACCESS_COMPARE or request.requires_cross_confirmation
+    )
+    if needs_cross_confirmation and not request.has_cross_confirmation:
         return PolicyReason.CROSS_CONFIRMATION_MISSING
     return None
 
