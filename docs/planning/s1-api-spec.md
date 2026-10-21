@@ -1,6 +1,6 @@
-# S1 모듈 간 API 설계 v0.5
+# S1 모듈 간 API 설계 v0.6
 
-상태: **초기 설계안 / 팀 리뷰 반영 중**. [초안의 흐름·담당·수용 사례](s1-api-draft.md)를 구현 가능한 입력·반환 규격으로 구체화한다. 아래 선택은 이번 설계의 기준안이며 최종 팀 합의나 구현 완료를 뜻하지 않는다. `contracts`·서비스 코드·의존성은 이번 문서 변경에 포함하지 않는다.
+상태: **초기 설계안 / 팀 리뷰 반영 중**. [초안의 흐름·담당·수용 사례](s1-api-draft.md)를 입력·반환 규격으로 구체화한다. C2 공유 타입·포트·fingerprint는 이번 변경에 구현하며, 서비스·영속 journal·실제 대상 통신의 구현 완료를 뜻하지 않는다. 범위와 검증은 [착수 상태](s1-development-status.md)를 따른다.
 
 목표는 **상대 구현 없이 같은 입력과 실패 사례로 개발·테스트하기**다. Python 직접 호출에서 **I/O 서비스 포트는 비동기, 순수 계산과 제한된 메모리 상태 인계는 동기**로 구분한다. Host는 단일 프로세스의 유한 작업 큐와 S1 worker 1개로 실행한다. REST·MCP·배포 프로토콜은 정의하지 않는다. 상위 [아키텍처](mcp-architecture.md)와 [모듈 설계](module-design-confirmed.md)가 우선한다.
 
@@ -10,14 +10,16 @@ v0.4 변경: [PoC 포함 진단 보고서 계약](poc-report-design.md)을 추�
 
 v0.5 변경: Host의 Knowledge 등록·조회·투영 책임, WebDiag의 논리 요청 ID 발급, Gateway의 identity 축약과 전송 직전 세션 재조회를 고정했다. [공유 fingerprint 계약](fingerprint-contract.md)은 stdlib-only 순수 codec의 위치·payload·고정 벡터를 정의하며 문서 판번호와 `policy_input.v1`을 분리한다. [착수 상태와 계약 PR 순서](s1-development-status.md)는 폐기된 PR #8 대신 새 최소 계약 PR을 선행조건으로 삼는다. §3.1에서 27개 포트를 열거한다.
 
+v0.6 변경: C2 실행 경계에서 감사 영수증의 생성 순서를 명시했다. `PolicyDecisionContent`와 `IdentityContent`는 저장 전 fingerprint용 불변 내용이며, 내용 fingerprint → producer commit → `AuditReceipt` → 최종 결과 순서로 조립한다. 최종 `PolicyDecision`의 영수증과 verified `IdentityResult`의 영수증 필수 조건은 유지한다. C2의 contracts 구현·무전송 예제·검증 테스트 현황은 [착수 상태](s1-development-status.md)에 기록한다.
+
 ## 1. 이번에 선택한 기준
 
-| 결정 | v0.5 선택 | 검토할 담당 |
+| 결정 | 현재 선택 | 검토할 담당 |
 |---|---|---|
 | D1 요청 전달 | WebDiag가 구체 요청을 값으로 전달 → Gateway가 불변 요청과 정책 view를 함께 보관 → Policy가 view를 평가 → Gateway가 재검사·전송. 준비 핸들은 Gateway만 해석 | 최민준·이경준 |
 | D2 기대 권한 | 운영자가 등록한 기대 접근 정책을 `app`이 검증·run에 결합해 불변 값으로 주입. 실행 안전 정책과 별개 | 이동찬·최민준·이경준 |
-| D3 세션/원문 | WebDiag가 세션 상태·generation·주체 확인을 소유. Gateway는 인증 비밀·계정별 통신 context를 소유. 로컬 Evidence만 원문 버퍼·캡처 수명을 소유 | 이경준·최민준·윤재상 |
-| D4 감사 | 생산자별 journal. `verify_committed`로 정책 결정과 전송 intent의 실제 저장을 확인한 뒤 전송. 다른 모듈 DB 직접 조회 없음 | 최민준·윤재상·이동찬 |
+| D3 세션/원문 | WebDiag가 세션 상태·generation·주체 확인을 소유. Gateway는 인증 비밀·계정별 통신 context를 소유. 로컬 Evidence만 원문 버퍼·캡처 수명을 소유 | 이경준·최민준 |
+| D4 감사 | 생산자별 journal. `verify_committed`로 정책 결정과 전송 intent의 실제 저장을 확인한 뒤 전송. 다른 모듈 DB 직접 조회 없음 | 최민준·이경준·이동찬 |
 | D5 타입/호출 | I/O 포트 async + 순수 계산/메모리 인계 sync, Host 유한 큐·S1 worker 1개. 불변 dataclass/enum/Protocol과 결과 완성도·전송 상태·판정을 분리 | 전원 |
 | D6 계약 fingerprint | contracts.fingerprint의 단일 stdlib-only 순수 codec과 타입별 payload 변환을 재사용. 이동찬 구현·소비자 공동 검토 | 전원 |
 | D7 Knowledge 조정 | Host가 단서 등록·후보 snapshot 조회·모든 Projection 제출을 조정. WebDiag에는 Knowledge 포트를 주입하지 않음 | 이동찬·이경준 |
@@ -232,13 +234,18 @@ S1 Host는 같은 사례의 A 기준 요청과 B가 A 객체에 수행하는 교
 | Judge / Report | judge, build_report (2) | — |
 | 생산자 감사 Protocol | verify_committed, read_audit (2) | — |
 
+### 3.2 C2 contracts 포트 범위
+
+C2에서 병렬 모듈 개발에 필요한 최소 contracts 포트는 다음 8개다. Gateway는 `prepare`, `execute`, `open_session_context`, `close_session_context`, Policy는 `evaluate`, Session은 동기 `read_session_binding`, 감사는 `verify_committed`, `read_audit`를 제공한다. 실행·감사 서비스는 모두 `async def`이고 `read_session_binding`만 같은 event loop의 불변 snapshot을 즉시 읽는 `def`다. 이는 S1 전체 27개 구현 완료를 뜻하지 않으며, 실제 journal·HTTP·브라우저·DB 구현과 권한 증명은 후속 단계다.
+
 ## 4. 인증·세션 통제
 
 | Record | 필드 |
 |---|---|
 | `SessionHandle` | `session_ref: Ref`, `run_key`, `account_ref`, `generation: int`, `expires_at: UtcTime` |
 | `SessionResult` | `run_key`, `status`, `session: SessionHandle?`, `session_state: SessionState`, `attempt_summaries`, `reason_codes` |
-| `IdentityResult` | `run_key`, `identity_ref: Ref?`, `status: verified/unknown/expired/mismatch`, `session_ref: Ref`, `account_ref`, `generation: int`, `subject_ref: Ref?`, `evidence_ref: Ref?`, `verified_at: UtcTime?`, `valid_until: UtcTime?`, `audit_receipt: AuditReceipt?`, `attempt_summaries`, `reason_codes` |
+| `IdentityContent` | `run_key`, `identity_ref: Ref?`, `status: verified/unknown/expired/mismatch`, `session_ref: Ref`, `account_ref`, `generation: int`, `subject_ref: Ref?`, `evidence_ref: Ref?`, `verified_at: UtcTime?`, `valid_until: UtcTime?`, `attempt_summaries`, `reason_codes`. 저장 전 fingerprint용이며 verified는 선택 필드가 모두 존재해야 한다 |
+| `IdentityResult` | `run_key`, `identity_ref: Ref?`, `status: verified/unknown/expired/mismatch`, `session_ref: Ref`, `account_ref`, `generation: int`, `subject_ref: Ref?`, `evidence_ref: Ref?`, `verified_at: UtcTime?`, `valid_until: UtcTime?`, `audit_receipt: AuditReceipt?`, `attempt_summaries`, `reason_codes`. 기존 필드 순서를 유지하며 verified는 receipt도 필수다 |
 | `IdentityBindingSummary` | `identity_ref`, `session_ref`, `account_ref`, `subject_ref`, `generation: int`, `verified_at: UtcTime`, `valid_until: UtcTime`. verified 상태만 이 최소 값으로 투영 |
 | `SessionBinding` | `session: SessionHandle`, `state: SessionState`, `identity: IdentityResult?`, `transport_context_ref: Ref`, `cancelled: bool`. 실행 영역에서만 읽음 |
 
@@ -292,10 +299,13 @@ acquire_session은 필요한 로그인과 whoami까지 마쳐 confirmed 세션�
 | `PrepareResult` | `run_key`, `status`, `prepared_handle: PreparedRequestHandle?`, `policy_input: PolicyInput?`, `reason_codes`. 성공 시 두 값이 모두 존재하고 실패 시 모두 None이며, prepare는 전송하지 않음 |
 | `PolicyAttributes` | `registered_path_matches: bool`, `parameter_names: tuple[str]`, `parameters_match_registration: bool`, `resource_ref: Ref?`, `resource_binding_ref: Ref?`, `resource_binding_revision: Revision?`, `resource_owner_subject_ref: Ref?`, `provenance: SourceVersion`. 매개변수의 실제 값은 노출하지 않음 |
 | `PolicyInput` | `schema_version: str` 고정값 `policy_input.v1`, `run_key`, `request_ref`, `binding_id`, `binding_issuer: Ref`, `expires_at: UtcTime`, `origin: str`, `method: str`, `operation_ref`, `operation_revision: Revision`, `purpose`, `policy_attributes: PolicyAttributes`, `account_ref: Ref?`, `session_generation: int?`, `identity_ref: Ref?`, `subject_ref: Ref?`, `identity_status: verified/unknown/anonymous`, `owner_identity: IdentityBindingSummary?`, `scope: ScopeSnapshot`, `profile: ExecutionProfileSnapshot`, `budget: BudgetSnapshot`, `expected_policy: ExpectedAccessPolicySnapshot?`, `cross_confirmation: CrossExecutionConfirmation?` |
-| `PolicyDecision` | `run_key`, `decision_ref`, `binding_id`, `evaluated_view_fingerprint: str`, `outcome: allow/block`, `policy_version: SourceVersion`, `issued_at`, `expires_at`, `audit_receipt: AuditReceipt`, `reason_codes` |
+| `PolicyDecisionContent` | `run_key`, `decision_ref`, `binding_id`, `evaluated_view_fingerprint: str`, `outcome: allow/block`, `policy_version: SourceVersion`, `issued_at`, `expires_at`, `reason_codes`. 9개 업무 필드의 저장 전 불변 내용 |
+| `PolicyDecision` | `run_key`, `decision_ref`, `binding_id`, `evaluated_view_fingerprint: str`, `outcome: allow/block`, `policy_version: SourceVersion`, `issued_at`, `expires_at`, `audit_receipt: AuditReceipt`, `reason_codes`. 기존 최종 필드 순서를 유지하며 영수증은 필수다 |
 | `PolicyDecisionResult` | `run_key`, `status`, `decision: PolicyDecision?`, `reason_codes`. 감사 기록에 실패하면 failed/None이며 실행 가능한 allow를 발급하지 않음 |
 | `ExecuteRequest` | `run_key`, `request_ref`, `prepared_handle`, `decision: PolicyDecision?`. 유효 핸들의 request_ref와 반드시 일치. None 또는 block은 감사 가능한 not_sent를 생성하고 transport로 진입하지 않음 |
 | `AttemptResult` | `run_key`, `request_ref`, `attempt_ref`, `decision_ref: Ref?`, `binding_id: Ref?`, `send_status`, `capture_status`, `capture_ref: Ref?`, `auth_signal: AuthSignal?`, `audit_links: tuple[AuditLink]`, `reason_codes` |
+
+`PolicyDecisionContent`와 `IdentityContent`는 저장 전 fingerprint를 계산하는 공개 불변 내용 타입이다. 조립 순서는 **내용 생성 → contracts의 typed content fingerprint → 해당 producer가 실제 내용을 commit → producer가 `AuditReceipt` 발급 → `from_content(content, receipt)`로 최종 결과 구성**이다. `from_content`는 필드와 영수증을 구조적으로 결합할 뿐 저장 성공이나 내구성을 증명하지 않는다. 소비자는 최종 결과의 영수증을 복사해 신뢰하지 않고 같은 업무 필드에서 fingerprint를 재계산한 뒤 `verify_committed`로 producer journal의 실제 기록을 확인한다. Policy에 nullable/pending 영수증이나 가짜 placeholder를 도입하지 않는다.
 
 S1은 임의 요청 헤더·스크립트·자격 증명 필드의 전달을 지원하지 않는다. 인증 필드/CSRF/secret은 등록된 인증 어댑터가 Gateway 내부에서 결합한다. 실제 전송할 method·URL·인코딩된 매개변수/본문·인증 context/generation·전송 옵션은 준비 snapshot에 고정하며, 변경 가능한 dict/객체가 prepare 이후 이에 영향을 줄 수 없다. 전송 전에 비밀 세대나 일회성 값을 바꿔야 하면 이전 준비 결과를 폐기하고 다시 prepare/evaluate한다.
 
@@ -519,9 +529,9 @@ v0.5의 후속 검증 요구사항은 다음과 같다. 실제 테스트가 이�
 ## 12. 계약 PR과 팀 검토
 
 1. **폐기된 PR #8 대신 단계별 실행 경계 계약 PR:** [착수 상태](s1-development-status.md)에 따라 C1(codec+`primitive-v1` 저수준 검증)은 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)로 병합됐다. 다음 C2(최소 실행 타입/포트·운영 fingerprint adapter)는 이동찬이 제안하고 소비자가 검토한다. PolicyInput/PolicyDecision/등록·세션 snapshot과 그 전이적 타입만 정의한다. Policy/Gateway의 공개 fake는 C2 병합을 선행조건으로 삼고 순수 내부 로직은 먼저 개발할 수 있다. 원문 Evidence/PoC·Graph/Report 계약은 별도 후속 PR이며 contracts 전체 완성을 기다리지 않는다.
-2. **네 갈래 독립 개발:** 이동찬은 Knowledge 메모리와 app fake 연결, 최민준은 Policy/Gateway와 Judge 순수 판정, 이경준은 WebDiag/Host workflow, 윤재상은 Evidence/Report를 담당한다. 각자의 fake는 자체 tests/fakes에 두고 동일한 필드/상태와 case ID를 사용하며 다른 모듈 구현을 복제하지 않는다.
+2. **모듈별 독립 개발:** 이동찬은 contracts/app/Knowledge와 eval, 최민준은 Policy/Gateway/Judge/Report, 이경준은 WebDiag/Host/Evidence와 P2 reasoner를 담당한다. 각자의 fake는 자체 tests/fakes에 두고 동일한 필드/상태와 case ID를 사용하며 다른 모듈 구현을 복제하지 않는다.
 3. **항목별 교체:** app의 네트워크 없는 경로에서 먼저 한 사례의 run/request/attempt/policy/evidence/verdict를 연결한 다음 실제 모듈로 하나씩 교체한다. 실제 영속화/HTTP 검증은 integration 환경에서 수행한다.
 
 팀 double check에서는 먼저 세 가지만 확인하면 된다. **내 입력이 충분한가? 내 출력은 독립적으로 만들 수 있는가? 나열한 실패를 fake로 재현할 수 있는가?** 필드/상태 수정은 이 문서와 해당 소계약 PR에 기록하고 영향을 받는 소비자도 함께 검토한다. 실제 대상 통신은 여전히 [교차 실행 단일 관문 D-0](module-design-confirmed.md#13-열린-결정-착수-전중-팀이-잠글-것)의 제약을 받는다.
 
-현재 S1 API·서비스 fake·영속 journal과 해당 실행 수용 사례는 **검토 가능한 설계 사양** 단계다. 단, C1 저수준 codec과 `primitive-v1` 벡터·거부 경계 테스트는 PR #15에서 구현됐다. [C1 공개 API](fingerprint-contract.md#22-c1-공개-api와-사용)와 [재검증 범위](s1-development-status.md#3-c1-구현-확인과-재검증)를 참조한다. 이 부분의 테스트 통과가 나머지 실행 경계나 보안 검증 완료를 의미하지 않는다.
+현재 S1 API·서비스 fake·영속 journal과 해당 실행 수용 사례는 **검토 가능한 설계 사양** 단계다. C1 저수준 codec은 PR #15에서 구현됐고 C2 contracts는 로컬 브랜치에서 구현·검증을 완료했고 PR 병합 전이다. [C1 공개 API](fingerprint-contract.md#22-c1-공개-api와-사용), [C2 lifecycle](fingerprint-contract.md#31-c2-precommit-내용과-최종-결과의-lifecycle), [재검증 범위](s1-development-status.md#3-c1-구현-확인과-재검증)를 참조한다. 이 부분의 테스트 통과가 나머지 실행 경계나 보안 검증 완료를 의미하지 않는다.

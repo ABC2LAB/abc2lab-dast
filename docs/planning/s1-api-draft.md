@@ -258,12 +258,11 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 
 | 담당 | 첫 구현 범위 | 자기 테스트에 둘 fake | API 검토 상대 |
 |---|---|---|---|
-| 이동찬 | C1 공유 codec → C2 최소 실행 계약 PR. Knowledge 메모리와 app 조립은 필요한 경계별 별도 PR | Evidence 읽기/저장 receipt, WebDiag 결과, Judge 판정, producer 감사 페이지 | 이경준·윤재상·최민준 |
-| 최민준 | Policy 기본 거부·Gateway prepare/execute 경계와 무전송 transport. Judge 순수 오라클은 같은 담당의 별도 작은 PR | 설정/취소 provider, 감사 journal, 세션, 로컬 Evidence. Judge에는 저장된 비교·정책·주체 fixture | 이경준·윤재상·이동찬 |
-| 이경준 | WebDiag 단일 seed/HTTP 관찰·A/B 주체 확인·비교 조정. Host 작업 계획/중지는 별도 작은 PR | WebDiag에는 Gateway/Policy/로컬 Evidence. Host에는 WebDiag/Knowledge/Judge/Report fake | 최민준·윤재상·이동찬 |
-| 윤재상 | Evidence 로컬 캡처/비교·공개 저장의 실패 주입. Report 집계·eval 평가기는 각각 별도 작은 PR | 공개 저장 실패, 주입 정규화 규칙/canary, 생산자 감사·판정·관찰 요약 | 최민준·이경준·이동찬 |
+| 이동찬 | C1 공유 codec → C2 최소 실행 계약 PR. Knowledge 메모리·app 조립·eval 평가기는 필요한 경계별 별도 PR | Evidence 읽기/저장 receipt, WebDiag 결과, Judge 판정, producer 감사 페이지 | 이경준·최민준 |
+| 최민준 | Policy 기본 거부·Gateway prepare/execute 경계와 무전송 transport. Judge 순수 오라클·Report 집계는 별도 작은 PR | 설정/취소 provider, 감사 journal, 세션, 로컬 Evidence. Judge에는 저장된 비교·정책·주체 fixture | 이경준·이동찬 |
+| 이경준 | WebDiag 단일 seed/HTTP 관찰·A/B 주체 확인·비교 조정. Host 작업 계획/중지와 Evidence 로컬 캡처·저장은 별도 작은 PR | WebDiag에는 Gateway/Policy/로컬 Evidence. Host에는 WebDiag/Knowledge/Judge/Report, Evidence에는 저장 실패·등록 규칙 fake | 최민준·이동찬 |
 
-한 사람의 전체 담당 패키지를 한 PR에 넣지 않는다. 정규화 규칙·canary 초안은 최민준이 정의하고 윤재상이 그 입력으로 Evidence를 테스트한다. 이경준은 최민준의 실제 Gateway를 기다리지 않고 같은 결과 의미의 fake를 사용한다. 이동찬은 각 fake를 조립해 호출 연결을 먼저 확인한다. 일정과 실제 착수 지시는 PM이 팀과 조율한다.
+한 사람의 전체 담당 패키지를 한 PR에 넣지 않는다. 정규화 규칙·canary 초안은 최민준이 정의하고 이경준이 그 입력으로 Evidence를 테스트한다. 이경준은 최민준의 실제 Gateway를 기다리지 않고 같은 결과 의미의 fake를 사용한다. 이동찬은 각 fake를 조립해 호출 연결을 먼저 확인한다. 담당 배정의 정본은 [모듈 개발 가이드](../module-development.md#담당-배정)다. 일정과 실제 착수 지시는 PM이 팀과 조율한다.
 
 `eval/`의 정답은 평가기만 읽는다. 모듈의 로컬 테스트 fixture와 예시 응답은 허구의 입력/예상 출력이며 제품 입력에 `expected_verdict`나 평가 label을 넣지 않는다. `eval/` 하네스 추가 시 별도 실행 명령·CI 수집을 정의한다. 현재 `check eval`은 없다. ([평가 영역](../../eval/README.md))
 
@@ -318,4 +317,4 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 
 주요 위험과 대응: opaque 참조의 숨은 저장 구조 결합은 §5.3의 Gateway 소유/값 전달로 줄인다. 공용 타입 비대화는 경계별 최소 PR과 모듈 내부 소유로 제한한다. fake/실제 의미 불일치는 동일 case ID의 전송 기록·상태·근거/감사 연결 비교로 검증한다. 실제 내구성/인가를 fake 통과로 오인하지 않는다.
 
-현재 저장소에는 패키지 골격·환경 검사와 [C1 저수준 fingerprint codec](fingerprint-contract.md#22-c1-공개-api와-사용)이 구현돼 있다. C1은 불변 snapshot·정규 바이트·`primitive-v1` 벡터와 빈 운영 registry의 거부 경계를 검증한다. 이 초안의 실행 API·fake·S1 수용 테스트와 업무별 운영 fingerprint adapter는 후속 구현 대상이다. 문서 초안의 링크·JSON 예시·경계/담당/사례 검사는 실행 수용 테스트를 대신하지 않는다.
+현재 저장소에는 패키지 골격·환경 검사와 [C1 저수준 fingerprint codec](fingerprint-contract.md#22-c1-공개-api와-사용)이 구현돼 있다. 이 C2 변경은 최소 실행 타입·8개 포트, 운영 fingerprint adapter와 무전송 소비자 예제를 추가한다. 저장 전 내용과 최종 결과의 생성 순서는 [C2 lifecycle](fingerprint-contract.md#31-c2-precommit-내용과-최종-결과의-lifecycle), 검증·병합 상태는 [착수 상태](s1-development-status.md)를 따른다. 실제 서비스·영속 journal과 S1 전체 수용 사례는 후속 구현 대상이다. 문서 초안의 링크·JSON 예시 검사는 실행 수용 테스트를 대신하지 않는다.

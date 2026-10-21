@@ -101,11 +101,11 @@ S1 병렬 개발은 [API 흐름·담당·로컬 fake 사례](planning/s1-api-dra
 
 [PoC 보고서 계약](planning/poc-report-design.md)은 Gateway의 실제 요청 최소 view → 로컬 Evidence의 등록 레시피/근거 저장 → Report의 재현 절차로 연결한다. S1-29~36에서 민감값 치환·요청 바인딩·무전송 보고·부분/취소 상태를 검증한다. [예시 보고서](examples/s1-poc-report.example.md)는 미실행 가상 문서이며 제품 입력이나 실제 진단 근거가 아니다. Report는 다른 모듈 DB나 Gateway 실행 포트를 직접 사용하지 않는다.
 
-`contracts`에는 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)로 C1의 `canonical-json.v1` codec과 불변 스냅샷·저수준 벡터 테스트가 구현됐다. 공통 실행 타입·Protocol과 업무별 fingerprint adapter는 아직 C2 구현 대상이다. 의존 모듈에서 임의 schema나 `Any` placeholder, 서비스별 codec 사본을 만들지 말고 필요한 최소 공개 계약을 PR로 제안한다. 구현 모듈의 독립 테스트는 확정된 공개 포트를 구현하는 로컬 fake를 사용한다.
+`contracts`에는 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)로 C1의 `canonical-json.v1` codec이 구현됐고, 이 C2 변경은 공통·등록·세션·감사·실행 타입과 최소 Protocol, 업무별 fingerprint adapter를 제공한다. 공유 선행조건은 아래의 C2 PR 병합이다. 의존 모듈에서 임의 schema나 `Any` placeholder, 서비스별 codec 사본을 만들지 말고 필요한 최소 공개 계약을 PR로 제안한다. 구현 모듈의 독립 테스트는 확정된 공개 포트를 구현하는 로컬 fake를 사용한다.
 
 C1의 import 경로와 snapshot 생성 예시는 [공개 API와 사용](planning/fingerprint-contract.md#22-c1-공개-api와-사용), 구현과 테스트의 확인 범위는 [C1 재검증](planning/s1-development-status.md#3-c1-구현-확인과-재검증)을 따른다. C1 통과를 업무 record의 운영 fingerprint 검증이나 S1 실행 수용 사례 통과로 집계하지 않는다.
 
-[착수 상태·선행조건](planning/s1-development-status.md)에 따라 CLOSED/unmerged PR #8 대신 **C1 병합 완료 → C2 실행 경계 계약 구현·병합 대기** 상태로 진행한다. Policy/Gateway 공개 fake는 C2 병합 뒤 연결하며 내부 순수 로직은 먼저 시험할 수 있다. [공유 codec](planning/fingerprint-contract.md)은 모든 모듈이 같은 C1 구현을 재사용한다. 문서 판번호와 policy_input.v1은 별개다. RunRegistration은 app 내부 집계이며 각 서비스에는 필요한 snapshot만 주입한다.
+[착수 상태·선행조건](planning/s1-development-status.md)에 따라 CLOSED/unmerged PR #8 대신 **C1 병합 완료 → C2 실행 경계 계약 검증·리뷰·병합** 순서로 진행한다. Policy/Gateway 공개 fake는 C2 병합 뒤 연결하며 내부 순수 로직은 먼저 시험할 수 있다. [공유 fingerprint API](planning/fingerprint-contract.md)는 모든 모듈이 같은 구현을 재사용한다. 저장 전에는 `PolicyDecisionContent`/`IdentityContent`의 fingerprint를 계산하고, 실제 감사 저장 후 받은 영수증을 `from_content()`로 붙인다. 최종 결과를 받는 포트와 영수증 검증 의무는 유지한다. 문서 판번호와 policy_input.v1은 별개다. RunRegistration은 app 내부 집계이며 각 서비스에는 필요한 snapshot만 주입한다.
 
 Host는 Knowledge 등록/조회/투영과 run/task/case ID를, WebDiag는 인증·whoami·복구·기준/교차 request_ref 발급을 맡는다. WebDiag에는 Knowledge 포트를 주입하지 않고 Host가 조회한 Candidate 값을 전달한다. 추가 수용 사례 S1-37~42는 codec·identity 매핑·투영 호출자·ID·등록 재검증·전송 직전 세션/예산 검사를 다룬다. 팀원의 개인 status.md/plan.md에도 새 계약 PR 선행조건을 적용한다.
 
