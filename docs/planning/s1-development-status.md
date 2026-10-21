@@ -17,8 +17,8 @@ Policy/Gateway 공개 포트와 그 fake의 선행조건은 **새 C1·C2 계약 
 
 | 단계 | 이동찬의 제안 범위 | 병합 후 가능한 작업 | 관련 리뷰 |
 |---|---|---|---|
-| C1 fingerprint codec | [정규 바이트·envelope·버전 규칙](fingerprint-contract.md), stdlib-only 순수 codec과 고정 벡터 테스트. 타입별 adapter는 해당 타입 PR에서 추가 | 모든 모듈이 같은 codec을 재사용. fake codec/모듈별 직렬화 제거 | 최민준·윤재상·이경준 |
-| C2 실행 경계 | 공통 Ref/RunKey/SourceVersion/상태, PolicyInput/Decision 및 필요한 등록·세션 snapshot, prepare/evaluate/execute·세션 읽기·commit 검증의 최소 Protocol. 비밀 없는 identity/request_intent/attempt 감사 payload·adapter·고정 벡터 포함 | Policy/Gateway가 실제 contracts를 사용하는 무전송 fake로 개발·검증 | 최민준·이경준·윤재상 |
+| C1 fingerprint codec | [정규 바이트·검증 경로](fingerprint-contract.md#21-정규-바이트와-운영-계약-검증의-분리), stdlib-only canonical codec·demo 저수준 벡터·빈 운영 registry의 거부 검사 | 공통 canonical codec 사용 가능. 운영 record fingerprint 발행은 C2의 정확한 타입/adapter 등록 전까지 거부 | 최민준·윤재상·이경준 |
+| C2 실행 경계 | 공통 Ref/RunKey/SourceVersion/상태, PolicyInput/Decision 및 필요한 등록·세션 snapshot, prepare/evaluate/execute·세션 읽기·commit 검증의 최소 Protocol. 비밀 없는 identity/request_intent/attempt payload·typed wrapper·adapter·정적 registry 항목·운영 벡터 포함 | Policy/Gateway가 등록된 타입별 fingerprint와 실제 contracts를 사용하는 무전송 fake로 개발·검증 | 최민준·이경준·윤재상 |
 | C3 로컬 Evidence | capture/seal/compare·캡처 수명·민감값 제거 근거·ComparisonProjected와 저장 receipt, PoC 요청 레시피 | Gateway의 캡처 인계, WebDiag 비교, Evidence 독립 테스트 연결 | 윤재상·최민준·이경준 |
 | C4 발견·투영·보고 | Host/WebDiag의 hints/Candidate 전달과 이벤트·조회, Judge/Report 경계. 실제 소비 경계마다 별도 PR로 분할 | Host/Knowledge와 Judge/Report fake 연결, app에서 한 경계씩 교체 | 각 제공자·소비자 |
 
