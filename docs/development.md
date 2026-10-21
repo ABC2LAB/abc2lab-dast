@@ -84,7 +84,7 @@ uv add --dev pytest
 
 변경한 `pyproject.toml`과 `uv.lock`을 같은 PR로 올린다. 의도적인 업그레이드에만 `uv lock --upgrade-package <이름>`을 사용한다. 팀원별 `pip install`로 환경을 따로 수정하지 않는다.
 
-모듈별 작업 절차와 담당자는 [모듈 개발 가이드](module-development.md)를 따른다. 관리자·PM은 이동찬이다. 리뷰 요청 대상은 `.github/CODEOWNERS`의 팀원 전체이며, 작성자 외 1명 승인과 필수 CI 통과를 병합 기준으로 한다.
+모듈별 작업 절차와 담당자는 [모듈 개발 가이드](module-development.md)를 따른다. 관리자·PM은 이동찬이다. 리뷰 요청 대상은 `.github/CODEOWNERS`의 팀원 전체다. 병합 시 승인 기준과 지정 계정의 승인 Bypass 예외는 [기여 안내](../CONTRIBUTING.md#pr-작성과-검증)를 따르며, PR 생성·필수 CI 통과·미해결 리뷰 대화 해결은 모두에게 적용한다. GitHub 수동 설정과 적용 후 확인은 [Ruleset 설정 가이드](github-rulesets.md)를 따른다.
 
 ## 공식 근거
 
