@@ -8,7 +8,7 @@
 |---|---|---|
 | [PR #8](https://github.com/ABC2LAB/abc2lab-dast/pull/8) | CLOSED, 병합되지 않음 | 기존 실행 관문 타입은 제공되지 않는다. #8 병합을 대기하거나 해당 브랜치를 복원하지 않는다 |
 | [PR #9](https://github.com/ABC2LAB/abc2lab-dast/pull/9) | MERGED, 문서 변경 | v0.3 설계가 main에 들어갔으며 타입·Protocol·fake 구현은 없음 |
-| [PR #10](https://github.com/ABC2LAB/abc2lab-dast/pull/10) | Draft, PoC·팀 리뷰 설계 보완 | 현재 v0.5 제안과 미실행 예시. 자동 생성기·공유 codec 구현 완료가 아님 |
+| [PR #10](https://github.com/ABC2LAB/abc2lab-dast/pull/10) | MERGED, PoC·팀 리뷰 설계 보완 | v0.5 문서·미실행 예시·정적 벡터가 main에 반영됨. 자동 생성기·공유 codec 구현 완료가 아님 |
 | contracts 패키지 | 구현 대기 scaffold | 새 계약 PR의 병합 전에는 공개 타입이 있다고 가정하지 않음 |
 
 Policy/Gateway 공개 포트와 그 fake의 선행조건은 **새 C1·C2 계약 PR의 병합**이다. “PR #8 병합 선행”이라는 개인 계획은 이 조건으로 교체한다. 조건/정규화/예산 등 모듈 내부 순수 로직은 먼저 구현·시험할 수 있다. 공개 계약 대신 임의 Any·dict·서비스별 타입 사본을 만들지 않는다.

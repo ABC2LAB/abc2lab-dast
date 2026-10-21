@@ -52,6 +52,8 @@ flowchart TD
 
 documented에는 verify_owner/verify_evaluated/read_owner/read_cross 네 action이 각각 한 단계씩 있어야 한다. read_owner/read_cross에는 둘 다 유효한 GET request_recipe와 저장 완료 evidence_ref가 필수다. verify_owner/verify_evaluated는 각각 대응하는 유효 identity_ref·주체 확인 근거·감사를 참조하며 request_recipe=None을 허용한다. 정상 로그인 POST가 레시피 미지원이라는 이유로 identity 근거를 버리거나 documented를 막지 않는다. 검증 단계를 객체 GET 레시피로 대신하지 않는다.
 
+whoami는 subject 일치 플래그만 반환하지 않고, 실행 로컬 Evidence의 seal과 identity journal의 commit을 확인한 뒤에만 verified/confirmed를 발행한다. A/B identity 근거와 감사가 누락되면 Report는 documented를 만들지 않는다. Host는 기존 IdentityResult와 비교·판정 참조를 전달하며 ReportInput에 원문·인증 값·PoC 명령을 추가하지 않는다. 상세 세션 발행 조건은 [S1 규격 §4](s1-api-spec.md#4-인증세션-통제)를 따른다.
+
 RegisteredRequestRecipe는 대상·입력 값을 새로 선택하는 실행 API가 아니다. 실제 실행의 등록 동작·자원 바인딩을 설명하는 자료다. `${REGISTERED_ORIGIN}`, `${RESOURCE_ID}`, `${SESSION_A}`, `${SESSION_B}` 등 고정 슬롯은 운영자가 허용된 로컬 설정·새 인증으로 채운다. 레시피에 포함된 임의 URL이나 인증 값을 실행기가 받아들이는 경로를 추가하지 않는다.
 
 인증 단계와 객체 요청의 account/generation/identity 연결은 저장된 원 실행을 설명한다. 사람이 다시 검사할 때에는 현재 허가·기대 정책·프로필·기존 객체의 유효성부터 확인하고 새 로그인으로 주체를 검증한다. 과거 cookie/token·PolicyDecision·prepared handle·generation을 재사용하지 않는다. 실제 재검사는 기존 Host → WebDiag → Policy/Gateway 경로로 새로운 run/attempt/evidence를 남긴다.

@@ -30,9 +30,11 @@ uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
 
 `knowledge`는 예시입니다. 모듈별 경로와 명령은 [모듈 개발 가이드](docs/module-development.md)를 사용합니다. 작업 범위, 브랜치·PR, 공통 코딩 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)를 읽고 시작하세요. 개인 AI 하네스인 루트 `AGENTS.md`는 각자 로컬에서 관리하며 Git 추적에서 제외합니다.
 
+팀 공유 결정과 지침은 docs/ 또는 루트 Markdown 문서에 기록합니다. 내용별 기록 위치는 [공유 문서 작성 기준](CONTRIBUTING.md#공유-문서-작성)을 따릅니다.
+
 팀 공지 예시:
 
-> ABC2LAB DAST 저장소에서 배정된 모듈을 개발합니다. Git과 uv 0.12.23을 준비하고 `uv run --no-project --python 3.13.15 scripts/dev.py setup all`을 한 번 실행하세요. 작업 중에는 같은 명령의 `check <모듈>`로 본인 패키지만 검사합니다. 담당자별 범위와 검사 명령은 [모듈 개발 가이드](docs/module-development.md), PR 절차는 [기여 안내](CONTRIBUTING.md)를 따릅니다. 리뷰는 작성자를 제외한 팀원 모두에게 요청되며, 1명 승인과 필수 CI 통과 후 병합합니다.
+> ABC2LAB DAST 저장소에서 배정된 모듈을 개발합니다. Git과 uv 0.12.23을 준비하고 `uv run --no-project --python 3.13.15 scripts/dev.py setup all`을 한 번 실행하세요. 작업 중에는 같은 명령의 `check <모듈>`로 본인 패키지만 검사합니다. 담당자별 범위와 검사 명령은 [모듈 개발 가이드](docs/module-development.md), PR 절차는 [기여 안내](CONTRIBUTING.md)를 따릅니다. 리뷰는 작성자를 제외한 팀원 모두에게 요청합니다. 일반 PR은 1명 승인과 필수 CI 통과, 스키마·공통 규칙 변경은 기여 안내의 추가 승인 기준을 적용합니다.
 
 ## 설계 기준
 
