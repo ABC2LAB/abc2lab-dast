@@ -303,7 +303,7 @@ S1은 임의 요청 헤더·스크립트·자격 증명 필드의 전달을 지�
 
 핸들을 해석하지 못한 거부도 입력의 request_ref에 새 attempt_ref를 연결해 기록한다. 이때 decision_ref/binding_id는 검증된 값이 없으면 None이다. 입력 ref만으로 다른 run의 저장된 요청 정보를 노출하지 않는다.
 
-**view 일관성:** Policy와 Gateway는 [공유 fingerprint 계약](fingerprint-contract.md)의 contracts 순수 codec으로 전체 PolicyInput과 버전/kind envelope의 SHA-256을 각각 계산한다. 중첩 필드·SourceVersion·tuple·None·UTC 시각도 같은 코드와 고정 벡터를 사용하며 모듈별 재구현/fake codec을 허용하지 않는다. PolicyInput에는 자체 digest 필드가 없고 모든 필드를 포함한다. Gateway는 자체 저장한 view로 재계산하고 실제 요청 snapshot·구성·현재 세션도 검사한다. fingerprint는 값의 일관성에만 사용하며 출처는 주입된 Policy 인스턴스와 §10 journal 검증에 의존한다. 서명이나 bearer permit이 아니다. 문서 v0.x를 올려도 wire 의미가 같으면 policy_input.v1을 유지하며 허용하지 않는 schema_version은 평가/전송 전에 거부한다.
+**view 일관성:** Policy와 Gateway는 [공유 fingerprint 계약](fingerprint-contract.md)의 contracts 순수 codec과 정확한 PolicyInput typed wrapper로 전체 값과 버전/kind envelope의 SHA-256을 각각 계산한다. 공통 바이트 인코딩과 운영 registry 검증은 [별도 경로](fingerprint-contract.md#21-정규-바이트와-운영-계약-검증의-분리)이며 demo/미등록 kind/version은 운영 경로에서 거부한다. 중첩 필드·SourceVersion·tuple·None·UTC 시각도 같은 코드와 고정 벡터를 사용하며 모듈별 재구현/fake codec을 허용하지 않는다. PolicyInput에는 자체 digest 필드가 없고 schema_version을 포함한 모든 필드를 hash한다. Gateway는 자체 저장한 view로 재계산하고 실제 요청 snapshot·구성·현재 세션도 검사한다. fingerprint는 값의 일관성에만 사용하며 출처는 주입된 Policy 인스턴스와 §10 journal 검증에 의존한다. 서명이나 bearer permit이 아니다. 문서 v0.x를 올려도 wire 의미가 같으면 policy_input.v1을 유지하며 허용하지 않는 schema_version은 평가/전송 전에 거부한다.
 
 Policy의 기본값은 block이다. 등록되지 않은 origin/operation/매개변수 구조, 만료된 구성, 불일치하는 신원, 누락된 교차 확인, 취소 또는 판정 불가는 모두 거부한다. Policy는 view의 ‘검사 통과’ 선언으로 주입된 등록 규칙을 대체하지 않으며 출처/revision과 등록 allowed_purposes/auth_profile이 일치해야 한다. Gateway는 등록된 resource_binding의 정확한 실제 값과 인코딩된 요청을 대조하며, Policy는 바인딩 ref/revision과 등록 소유자·현재 subject의 관계를 재검사한다. raw 값이나 민감값의 단순 hash를 정책 view로 내보내지 않는다.
 
@@ -509,7 +509,7 @@ v0.5의 후속 검증 요구사항은 다음과 같다. 실제 테스트가 이�
 
 | ID | 입력/장애 | 관찰 가능한 결과 |
 |---|---|---|
-| S1-37 | 중첩 key/SourceVersion 선언 순서·enum·tuple·None·offset 시각·float/미지원 타입 | 공유 codec의 고정 canonical bytes/digest 일치, tuple 순서/업무 필드 변경은 다른 digest, float/naive/비문자열 key 거부 |
+| S1-37 | 중첩 key/SourceVersion 선언 순서·enum·tuple·None·offset 시각·float/미지원 타입·demo/미등록 버전·record 재라벨·payload 필드/버전 불일치 | 공유 codec 고정 bytes/digest 일치, tuple 순서/업무 필드 변경은 다른 digest. demo는 저수준 벡터만 통과하고 운영 registry에서 거부, 정확한 등록 타입/버전/필드만 운영 fingerprint 생성 |
 | S1-38 | verified/unknown/expired/mismatch·identity 부재·session 부재/조회 실패 | §4의 Gateway 매핑 일치. expired/mismatch를 anonymous로 바꾸지 않고 상세 사유 보존 |
 | S1-39 | 발견 단서와 각 producer의 저장 이벤트, stale candidate revision·deferred projection | Host만 register/get_case/project 호출. WebDiag의 Knowledge 의존 0개, 원본 producer/receipt 유지, stale 후보는 실행 0건, 재투영에 대상 재전송 0건 |
 | S1-40 | 인증·whoami·기준/교차·복구·저장 멱등 재확인 | WebDiag가 동작별 request_ref를 한 번 발급·보존하고 Gateway가 attempt에 그대로 연결. identity 재사용은 새 시도 0개, unknown 재전송 0건 |

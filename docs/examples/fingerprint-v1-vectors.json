@@ -3,6 +3,7 @@
   "vectors": [
     {
       "id": "primitive-v1",
+      "validation_path": "canonical_bytes_only",
       "record_kind": "demo.record",
       "schema_version": "demo.v1",
       "payload": {
@@ -26,6 +27,7 @@
     },
     {
       "id": "policy-input-v1",
+      "validation_path": "production_adapter",
       "record_kind": "policy_input",
       "schema_version": "policy_input.v1",
       "payload": {
@@ -105,6 +107,7 @@
     },
     {
       "id": "policy-decision-v1",
+      "validation_path": "production_adapter",
       "record_kind": "policy_decision",
       "schema_version": "policy_decision.v1",
       "payload": {
@@ -132,6 +135,7 @@
     },
     {
       "id": "identity-v1",
+      "validation_path": "production_adapter",
       "record_kind": "identity",
       "schema_version": "identity.v1",
       "payload": {
@@ -153,6 +157,7 @@
     },
     {
       "id": "request-intent-v1",
+      "validation_path": "production_adapter",
       "record_kind": "request_intent",
       "schema_version": "request_intent.v1",
       "payload": {
@@ -174,6 +179,7 @@
     },
     {
       "id": "attempt-v1",
+      "validation_path": "production_adapter",
       "record_kind": "attempt",
       "schema_version": "attempt.v1",
       "payload": {
