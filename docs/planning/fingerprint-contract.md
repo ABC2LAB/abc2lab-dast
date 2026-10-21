@@ -1,6 +1,6 @@
 # 결정적 fingerprint 계약 v1
 
-상태: 팀 검토용 제안. 이번 문서는 구현을 추가하지 않는다. `contracts`의 첫 실행 경계 PR에서 이 규칙과 테스트 벡터를 함께 구현한다.
+상태: **C1 codec 구현·병합 완료** ([PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)). `canonical_json_bytes()`·`CanonicalObject`·`freeze_object()`와 `primitive-v1` 저수준 벡터 검증이 구현됐다. C2 운영 record별 typed wrapper·adapter 및 실행 경계 계약은 아직 미구현이다.
 
 ## 1. 소유권과 경계
 
@@ -8,7 +8,7 @@
 
 `contracts`의 범위를 순수 데이터 타입으로만 한정하던 문구는 이 작은 결정적 계약 함수까지 허용하도록 바꾼다. 이는 서비스 구현을 contracts로 옮기는 예외가 아니다. 계약 PR은 한 번에 모든 record를 구현하지 않는다. C1은 codec과 primitive vector만, C2는 typed `PolicyInput`/`PolicyDecision`/`IdentityResult`/`RequestIntentRecord`/`AttemptRecord` adapter와 전체 vector를 다룬다. 이후 record는 각 소비자와 필요한 시점에 별도 typed projection·vector를 추가한다.
 
-제안하는 공개 순수 함수는 C1의 `canonical_json_bytes(value: CanonicalValue) -> bytes`와 C2 이후의 `policy_input_fingerprint(value: PolicyInput) -> Fingerprint` 같은 **record별 typed wrapper**다. 기존 `sha256_fingerprint(kind, version, payload)` 제안은 공개하지 않는다. 호출자가 운영 kind/version과 임의 payload를 따로 조합하는 경로를 만들지 않는다. 이 함수들은 27개 S1 서비스 포트에 포함되지 않으며 아직 구현되지 않았다. CanonicalValue는 아래 폐쇄형 union이며 Any가 아니다.
+C1에서 구현된 공개 순수 함수는 `canonical_json_bytes(value: CanonicalValue) -> bytes`다. C2 이후에는 `policy_input_fingerprint(value: PolicyInput) -> Fingerprint` 같은 **record별 typed wrapper**를 추가한다. 기존 `sha256_fingerprint(kind, version, payload)` 제안은 공개하지 않는다. 호출자가 운영 kind/version과 임의 payload를 따로 조합하는 경로를 만들지 않는다. 이 순수 함수들과 후속 wrapper는 27개 S1 서비스 포트에 포함되지 않는다. `CanonicalValue`는 폐쇄형 union이며 `Any`가 아니다.
 
 fingerprint 입력은 호출자가 만든 임의 dict가 아니라 타입별로 허용된 불변 payload다. codec은 원문 HTTP, 쿠키, 토큰, 비밀번호, 캡처 핸들, HMAC 키를 받지 않는다. 원문을 받은 호출자는 먼저 민감값 제거와 typed allowlist를 적용하고, 그 결과를 frozen dataclass나 허용된 snapshot으로 만든다.
 
@@ -32,7 +32,9 @@ envelope의 codec_version/record_kind/schema_version은 필수 문자열이다. 
 
 운영 registry는 계약 코드에 고정된 immutable tuple 같은 상수다. 상수 조회는 가변 런타임 상태를 만들지 않으므로 무상태 순수 함수 원칙과 양립한다. 런타임 등록 API, 환경 변수, 주입 가능한 registry, 테스트용 override/허용 flag, 미등록 값의 기본 adapter fallback은 제공하지 않는다. 테스트도 운영 registry를 바꾸지 않는다.
 
-C1에는 운영 record 등록 항목이 없다. 공통 canonical codec과 등록 거부 검사를 준비하며, 운영 fingerprint를 발행하거나 Policy/Gateway fake가 완성됐다고 표시하지 않는다. C2에서 실제 타입·typed wrapper·payload adapter·고정 벡터와 함께 해당 지원 항목만 추가한다. 아래 표에 이름이 있다는 이유로 구현 전 record를 허용 목록에 먼저 넣지 않는다. 이후 record도 각 계약 PR에서 같은 절차를 따른다.
+C1에서 병합된 운영 registry는 **빈 tuple**이며, 미등록 record는 `_registered_record_fingerprint()`에서 거부한다. 따라서 C1은 운영 fingerprint를 발행하지 않고 Policy/Gateway fake도 제공하지 않는다. C2에서 실제 타입·typed wrapper·payload adapter·고정 벡터와 함께 해당 지원 항목만 추가한다. 아래 표에 이름이 있다는 이유로 구현 전 record를 허용 목록에 먼저 넣지 않는다. 이후 record도 각 계약 PR에서 같은 절차를 따른다.
+
+C2에서는 빈 registry에 항목을 추가하는 것만으로 완료 처리하지 않는다. 현재 내부 골격은 정확한 record 타입과 codec 버전을 확인하고 adapter를 호출하므로, 업무 schema version·필드 집합·PolicyInput 안팎 버전 일치는 typed wrapper/adapter가 명시적으로 검사해야 한다. 누락/추가 필드·subclass·다른 record 재라벨을 거부하는 테스트와 운영 벡터 5개가 함께 통과한 뒤 등록한다. 저수준 bytes를 직접 SHA-256해서 만든 문자열만으로 운영 등록 경로를 통과했다고 판단하지 않는다. 소비자는 typed record에서 다시 계산하고 원본 producer의 receipt도 검증한다.
 
 문서의 설명·절 번호만 바꾸면 schema version은 유지한다. 필드 구성·의미·타입별 payload 변환의 호환성을 깨는 변경은 해당 schema version을 올리고, 공통 정규 바이트 규칙을 바꾸면 codec_version도 올린다. 지원 버전은 계약 코드에서 명시하며 상대 버전을 추측하거나 다른 버전으로 조용히 재인코딩하지 않는다.
 
@@ -49,6 +51,30 @@ C1에는 운영 record 등록 항목이 없다. 공통 canonical codec과 등록
 - timezone-aware `datetime`은 UTC로 변환해 항상 `YYYY-MM-DDTHH:MM:SS.ffffffZ`로 쓴다. naive datetime은 거부한다.
 
 float(유한값 포함), NaN, Infinity, list, set, bytes, Decimal, naive datetime, 비문자열 mapping key, 미등록 dataclass/enum, 임의 객체, `Any` catch-all은 거부한다. 문자열은 Unicode 정규화하지 않고 입력 code point를 보존하며 lone surrogate는 거부한다. 업무상 정규화가 필요하면 fingerprint 전에 별도 버전 규칙으로 처리한다.
+
+### 2.2 C1 공개 API와 사용
+
+구현은 [fingerprint.py](../../packages/contracts/src/abc2lab_contracts/fingerprint.py), 검증은 [test_fingerprint.py](../../packages/contracts/tests/test_fingerprint.py)에 있다. 현재 공개 심볼은 `abc2lab_contracts.fingerprint`에서 직접 import한다.
+
+| 심볼 | 현재 동작 |
+|---|---|
+| `CODEC_VERSION` | `canonical-json.v1` 고정 상수 |
+| `CanonicalValue` | `str`, `bool`, `None`, signed 64-bit `int`, aware `datetime`, 재귀 tuple, `CanonicalObject`의 폐쇄형 union |
+| `CanonicalObject(entries)` | 정확한 tuple 쌍으로 object를 구성하고 문자열 키·중복 없음·불변 값을 검사. 키 순서도 정규화 |
+| `freeze_object(source)` | 정확한 dict 또는 mapping proxy를 재귀 복사해 `CanonicalObject` 반환. 중첩 dict는 snapshot으로, tuple은 순서를 보존해 고정 |
+| `canonical_json_bytes(value)` | 고정된 `CanonicalValue`를 검증하고 정규 UTF-8 bytes 반환. 원본 dict·list·임의 업무 dataclass/enum·지원 타입의 subclass는 거부 |
+
+```python
+from abc2lab_contracts.fingerprint import canonical_json_bytes, freeze_object
+
+snapshot = freeze_object({"labels": ("가", "A"), "optional": None})
+encoded = canonical_json_bytes(snapshot)
+assert encoded == '{"labels":["가","A"],"optional":null}'.encode("utf-8")
+```
+
+`freeze_object()` 완료 후 원본 dict나 mapping proxy의 원본을 수정해도 snapshot은 바뀌지 않는다. 입력에 순환 참조가 있으면 `ValueError`로 거부한다. 허용 타입 밖의 값은 `TypeError`, 중복 키·정수 범위·naive datetime 오류는 `ValueError`, lone surrogate는 `UnicodeEncodeError`로 드러난다. 결과 bytes는 C1 저수준 직렬화 결과이며 운영 record fingerprint로 발행된 값이 아니다. `_registered_record_fingerprint()`는 내부 함수이며 서비스가 직접 호출할 공개 API가 아니다.
+
+**시각 경계의 현재 한계:** aware datetime이라도 UTC로 변환한 시각이 Python의 1~9999년 범위를 벗어나면 `OverflowError`가 발생한다. 예를 들어 `datetime.min`에 양의 UTC offset을 붙인 값이 해당한다. 정상 업무 시각의 정규 바이트에는 영향이 없으며, C2의 시각 타입·adapter에서 허용 범위와 오류 처리를 검토한다. 현재 C1이 이 오류를 `ValueError`로 통일했다고 가정하지 않는다.
 
 ## 3. record별 payload
 
@@ -75,12 +101,12 @@ receipt·자체 fingerprint를 제외하는 규칙을 필드명으로 재귀 검
 
 ## 4. 고정 벡터와 후속 테스트
 
-정적 벡터는 [fingerprint-v1-vectors.json](../examples/fingerprint-v1-vectors.json)에 있다. 각 항목은 `canonical_utf8`의 정확한 문자열과 SHA-256을 함께 보존한다. 벡터는 synthetic type encoding만 고정하며, contracts 구현·commit·실행 관문 통과·보안 증명을 의미하지 않는다.
+정적 벡터는 [fingerprint-v1-vectors.json](../examples/fingerprint-v1-vectors.json)에 있다. 각 항목은 `canonical_utf8`의 정확한 문자열과 SHA-256을 함께 보존한다. C1에서 `primitive-v1` 벡터의 바이트·digest 일치를 실제 테스트로 검증했다. 나머지 운영 벡터는 C2에서 검증할 대상으로 남으며, 벡터 자체는 실행 관문 통과나 보안 증명을 의미하지 않는다.
 
 각 벡터의 validation_path는 다음 경로를 구분하며 fingerprint envelope/payload에 포함하지 않는 시험 metadata다.
 
-- canonical_bytes_only: C1의 demo.record/demo.v1. 시험 fixture를 tuple·허용된 불변 mapping으로 구성하고 canonical_json_bytes로 정확한 bytes를 확인한 뒤, **테스트 안의 stdlib hashlib.sha256**으로 기대 digest를 확인한다. 운영 등록 검증기에는 같은 demo를 넣어 거부를 확인한다. 테스트용 운영 등록은 하지 않는다.
-- production_adapter: C2 이후 해당 record의 typed wrapper로 확인한다. C1에서 저수준 serializer가 이 JSON을 인코딩할 수 있어도 운영 타입/adapter 검증 통과로 집계하지 않는다.
+- canonical_bytes_only: C1의 demo.record/demo.v1. 구현된 테스트는 tuple·허용된 불변 mapping으로 fixture를 구성하고 `canonical_json_bytes()`의 정확한 bytes와 **테스트 안의 stdlib hashlib.sha256** digest를 검증한다. 같은 demo는 운영 등록 검증기에서 거부되며 테스트용 운영 등록은 하지 않는다.
+- production_adapter: C2 이후 해당 record의 typed wrapper로 검증한다. C1에서 저수준 serializer가 이 JSON을 인코딩할 수 있어도 운영 타입/adapter 검증 통과로 집계하지 않는다.
 
 파일의 JSON array와 시간 문자열은 정규화 후 형태를 보여 준다. 실제 Python adapter는 선언된 필드에 따라 tuple·aware datetime 등으로 검증·변환한 뒤 codec에 넘기며 원본 JSON의 list나 임의 문자열을 타입 검증 없이 통과시키지 않는다. json.loads의 결과를 그대로 운영 typed wrapper에 넘기는 시험은 성공 사례가 아니다. 기존 canonical_utf8/SHA-256 값은 유지한다.
 
@@ -95,4 +121,4 @@ receipt·자체 fingerprint를 제외하는 규칙을 필드명으로 재귀 검
 - Policy의 전체 PolicyInput과 Gateway의 같은 snapshot이 같은 golden digest를 사용
 - receipt의 outcome·binding·record fingerprint 변조는 producer 조회/verify에서 거부
 
-이 문서와 벡터는 런타임 codec 구현이나 보안 검증 완료를 의미하지 않는다.
+C1의 저수준 codec과 `primitive-v1` 벡터·거부 경계 검증은 PR #15에 구현됐다. 이 사실만으로 C2 운영 adapter, 서비스 실행 경계, 실제 대상 전송 안전성이나 취약점 검증이 완료됐다고 보지 않는다.
