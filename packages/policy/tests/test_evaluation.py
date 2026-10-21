@@ -22,13 +22,11 @@ _OPERATION = RegisteredOperation(
     origin="https://app.test",
     method="GET",
     allowed_purposes=(Purpose.OBSERVE, Purpose.ACCESS_COMPARE),
-    is_business_write=False,
 )
 
 _AUTHORIZATION = AuthorizationContext(
     registered_operations={_OPERATION.operation_ref: _OPERATION},
     in_scope_operation_refs=frozenset({_OPERATION.operation_ref}),
-    read_only_profile=True,
     is_revoked=False,
     configuration_expires_at=_NOW + timedelta(hours=1),
 )
@@ -130,19 +128,6 @@ def test_blocks_purpose_not_in_allowed_purposes() -> None:
     request = replace(_REQUEST, purpose=Purpose.IDENTIFY)
     result = evaluate(request, _AUTHORIZATION, _NOW)
     assert result.reason_codes == (PolicyReason.PURPOSE_NOT_ALLOWED,)
-
-
-def test_blocks_business_write_under_read_only_profile() -> None:
-    authorization = _with_operation(replace(_OPERATION, is_business_write=True))
-    result = evaluate(_REQUEST, authorization, _NOW)
-    assert result.reason_codes == (PolicyReason.BUSINESS_WRITE_BLOCKED,)
-
-
-def test_business_write_not_blocked_when_profile_not_read_only() -> None:
-    authorization = _with_operation(replace(_OPERATION, is_business_write=True))
-    authorization = replace(authorization, read_only_profile=False)
-    result = evaluate(_REQUEST, authorization, _NOW)
-    assert result.outcome is Outcome.ALLOW
 
 
 def test_allows_authenticate_purpose_without_verified_identity() -> None:
