@@ -3,8 +3,9 @@
 공개 계약(`PolicyInput`/`PolicyDecision`)으로 변환되기 전의 모듈 내부 타입이다. 공개 계약을
 대신하거나 그 사본으로 쓰지 않으며, 공개 포트·fingerprint 입력으로 노출하지 않는다. C2는
 병합됐으며(PR #20), `adapters`가 `PolicyInput` → 이 모델, 이 모델의 판정 → `PolicyDecision`으로
-변환하는 책임을 진다. C2엔 읽기전용 불리언이 없고 목적 allowlist로 표현하므로, adapter에서 쓰기
-차단을 `PURPOSE_NOT_ALLOWED`로 흡수하도록 정렬한다.
+변환하는 책임을 진다. C2엔 읽기전용 불리언이 없어 읽기전용은 목적 allowlist로 표현한다. `adapters`가
+동작·프로필의 `allowed_purposes`를 교집합해 `RegisteredOperation.allowed_purposes`를 만들며, 범위를
+벗어난 쓰기 목적은 `PURPOSE_NOT_ALLOWED`로 거부된다.
 
 시각은 timezone-aware UTC를 가정한다. 가변 예산·permit·실제 전송 상태는 포함하지 않으며, 그
 소비·차감은 전송 직전 Gateway가 담당한다.
@@ -56,21 +57,23 @@ class PolicyReason(StrEnum):
     METHOD_MISMATCH = "method_mismatch"
     OUT_OF_SCOPE = "out_of_scope"
     PURPOSE_NOT_ALLOWED = "purpose_not_allowed"
-    BUSINESS_WRITE_BLOCKED = "business_write_blocked"
     IDENTITY_NOT_VERIFIED = "identity_not_verified"
     CROSS_CONFIRMATION_MISSING = "cross_confirmation_missing"
 
 
 @dataclass(frozen=True, slots=True)
 class RegisteredOperation:
-    """등록 동작의 정책 판정용 축약. app이 주입한 등록에서 파생한다."""
+    """등록 동작의 정책 판정용 축약. app이 주입한 등록에서 파생한다.
+
+    `allowed_purposes`는 동작 등록과 실행 프로필의 허용 목적을 교집합한 값이다. 읽기전용은 이
+    목적 집합으로 표현하며, 쓰기 목적이 빠지면 `PURPOSE_NOT_ALLOWED`로 거부된다.
+    """
 
     operation_ref: str
     source: str
     origin: str
     method: str
     allowed_purposes: tuple[Purpose, ...]
-    is_business_write: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,7 +82,6 @@ class AuthorizationContext:
 
     registered_operations: Mapping[str, RegisteredOperation]
     in_scope_operation_refs: frozenset[str]
-    read_only_profile: bool
     is_revoked: bool
     configuration_expires_at: datetime | None = None
 
