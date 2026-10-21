@@ -1,6 +1,6 @@
 # 결정적 fingerprint 계약 v1
 
-상태: **C1 codec 구현·병합 완료** ([PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)). `canonical_json_bytes()`·`CanonicalObject`·`freeze_object()`와 `primitive-v1` 저수준 벡터 검증이 구현됐다. C2 운영 record별 typed wrapper·adapter 및 실행 경계 계약은 아직 미구현이다.
+상태: **C1·C2 구현·병합 완료** ([PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15), [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)). C2의 typed wrapper·adapter와 실행 경계 계약 검증 결과·공유 착수 조건은 [착수 상태](s1-development-status.md#4-c2-구현과-검증)를 따른다.
 
 ## 1. 소유권과 경계
 
@@ -8,7 +8,7 @@
 
 `contracts`의 범위를 순수 데이터 타입으로만 한정하던 문구는 이 작은 결정적 계약 함수까지 허용하도록 바꾼다. 이는 서비스 구현을 contracts로 옮기는 예외가 아니다. 계약 PR은 한 번에 모든 record를 구현하지 않는다. C1은 codec과 primitive vector만, C2는 typed `PolicyInput`/`PolicyDecision`/`IdentityResult`/`RequestIntentRecord`/`AttemptRecord` adapter와 전체 vector를 다룬다. 이후 record는 각 소비자와 필요한 시점에 별도 typed projection·vector를 추가한다.
 
-C1에서 구현된 공개 순수 함수는 `canonical_json_bytes(value: CanonicalValue) -> bytes`다. C2 이후에는 `policy_input_fingerprint(value: PolicyInput) -> Fingerprint` 같은 **record별 typed wrapper**를 추가한다. 기존 `sha256_fingerprint(kind, version, payload)` 제안은 공개하지 않는다. 호출자가 운영 kind/version과 임의 payload를 따로 조합하는 경로를 만들지 않는다. 이 순수 함수들과 후속 wrapper는 27개 S1 서비스 포트에 포함되지 않는다. `CanonicalValue`는 폐쇄형 union이며 `Any`가 아니다.
+C1에서 구현된 공개 순수 함수는 `canonical_json_bytes(value: CanonicalValue) -> bytes`다. C2는 `policy_input_fingerprint`, `policy_decision_content_fingerprint`, `policy_decision_fingerprint`, `identity_content_fingerprint`, `identity_fingerprint`, `request_intent_fingerprint`, `attempt_fingerprint`처럼 **정확한 typed wrapper**를 추가한다. 기존 `sha256_fingerprint(kind, version, payload)` 제안은 공개하지 않는다. 이 함수들은 27개 S1 서비스 포트에 포함되지 않는다. `CanonicalValue`는 폐쇄형 union이며 `Any`가 아니다.
 
 fingerprint 입력은 호출자가 만든 임의 dict가 아니라 타입별로 허용된 불변 payload다. codec은 원문 HTTP, 쿠키, 토큰, 비밀번호, 캡처 핸들, HMAC 키를 받지 않는다. 원문을 받은 호출자는 먼저 민감값 제거와 typed allowlist를 적용하고, 그 결과를 frozen dataclass나 허용된 snapshot으로 만든다.
 
@@ -32,7 +32,7 @@ envelope의 codec_version/record_kind/schema_version은 필수 문자열이다. 
 
 운영 registry는 계약 코드에 고정된 immutable tuple 같은 상수다. 상수 조회는 가변 런타임 상태를 만들지 않으므로 무상태 순수 함수 원칙과 양립한다. 런타임 등록 API, 환경 변수, 주입 가능한 registry, 테스트용 override/허용 flag, 미등록 값의 기본 adapter fallback은 제공하지 않는다. 테스트도 운영 registry를 바꾸지 않는다.
 
-C1에서 병합된 운영 registry는 **빈 tuple**이며, 미등록 record는 `_registered_record_fingerprint()`에서 거부한다. 따라서 C1은 운영 fingerprint를 발행하지 않고 Policy/Gateway fake도 제공하지 않는다. C2에서 실제 타입·typed wrapper·payload adapter·고정 벡터와 함께 해당 지원 항목만 추가한다. 아래 표에 이름이 있다는 이유로 구현 전 record를 허용 목록에 먼저 넣지 않는다. 이후 record도 각 계약 PR에서 같은 절차를 따른다.
+C1의 병합 시점 운영 registry는 빈 tuple이었고, 미등록 record는 `_registered_record_fingerprint()`에서 거부됐다. 병합된 C2는 정확한 5개 운영 record kind와 7개 exact Python class(content/final 포함)을 typed adapter·고정 벡터와 함께 등록한다. 아래 표에 이름이 있다는 이유로 구현 전 record를 허용하지 않으며, 이후 record도 각 계약 PR에서 같은 절차를 따른다.
 
 C2에서는 빈 registry에 항목을 추가하는 것만으로 완료 처리하지 않는다. 현재 내부 골격은 정확한 record 타입과 codec 버전을 확인하고 adapter를 호출하므로, 업무 schema version·필드 집합·PolicyInput 안팎 버전 일치는 typed wrapper/adapter가 명시적으로 검사해야 한다. 누락/추가 필드·subclass·다른 record 재라벨을 거부하는 테스트와 운영 벡터 5개가 함께 통과한 뒤 등록한다. 저수준 bytes를 직접 SHA-256해서 만든 문자열만으로 운영 등록 경로를 통과했다고 판단하지 않는다. 소비자는 typed record에서 다시 계산하고 원본 producer의 receipt도 검증한다.
 
@@ -99,14 +99,42 @@ receipt·자체 fingerprint를 제외하는 규칙을 필드명으로 재귀 검
 
 업무 record에 새 필드가 생기면 해당 변환자와 golden vector를 같은 계약 PR에서 갱신한다. 알 수 없는 record kind/version이나 필드 누락은 성공 fingerprint로 바꾸지 않는다.
 
+### 3.1 C2 precommit 내용과 최종 결과의 lifecycle
+
+`PolicyDecisionContent`는 최종 결정과 동일한 9개 업무 필드를, `IdentityContent`는 `IdentityResult`의 12개 감사 제외 필드를 보유한다. 두 타입은 producer가 저장하기 전 fingerprint를 계산하는 불변 값이다. 정상 경로는 `content → typed fingerprint → producer commit → AuditReceipt → from_content(content, receipt) → consumer recompute/verify` 순서다. `from_content`는 구조적으로 receipt를 붙일 뿐 실제 journal 내구성이나 commit 성공을 증명하지 않는다.
+
+`policy_decision_content_fingerprint`와 `identity_content_fingerprint`는 precommit 단계에서만 사용하고, 최종 결과에는 `policy_decision_fingerprint`와 `identity_fingerprint`를 사용한다. 두 경로는 같은 contracts 소유 payload 변환을 공유해 receipt 하나만 제외한다. verified IdentityContent는 identity/evidence/time 필드를 모두 가져야 하며, 실패 상태의 nullable 필드와 최종 `IdentityResult.audit_receipt: None` 의미는 유지한다. 모든 `PolicyDecision`과 verified `IdentityResult`에는 receipt가 필수다. nullable pending PolicyDecision, 가짜 receipt, 서비스별 codec 복제는 허용하지 않는다.
+
+### 3.2 C2 모듈과 공개 API
+
+타입은 `abc2lab_contracts.primitives`·`registration`·`audit`·`session`·`execution`에서 경계별로 import한다. 서비스 포트는 `abc2lab_contracts.ports`의 `GatewayPort`, `PolicyPort`, `SessionBindingReader`, `SessionContextPort`, `AuditVerifier`, `AuditReader`다. 타입 검증은 저장·권한 증명을 대신하지 않으며, 원문 요청 값은 실행 영역의 `PrivateHttpRequest`에만 남긴다.
+
+아래 순수 함수는 모두 `abc2lab_contracts.fingerprint`에서 import하며 소문자 64자리 SHA-256 `str`을 반환한다. 정확한 타입·필수 필드·중첩 enum/tuple·지원 버전을 hash 전에 검증한다. 임의 dict나 다른 record로 대체하지 않는다.
+
+| 함수 | 정확한 입력 타입 | 사용 시점 |
+|---|---|---|
+| `policy_input_fingerprint` | `execution.PolicyInput` | Policy와 Gateway의 전체 view 대조 |
+| `policy_decision_content_fingerprint` | `execution.PolicyDecisionContent` | Policy 감사 저장 전 |
+| `policy_decision_fingerprint` | `execution.PolicyDecision` | 영수증을 포함한 최종 결과의 내용 재계산 |
+| `identity_content_fingerprint` | `session.IdentityContent` | WebDiag identity 감사 저장 전 |
+| `identity_fingerprint` | `session.IdentityResult` | 최종 신원 결과의 내용 재계산 |
+| `request_intent_fingerprint` | `audit.RequestIntentRecord` | Gateway 전송 intent 저장·검증 |
+| `attempt_fingerprint` | `audit.AttemptRecord` | Gateway 전송 상태 기록 저장·검증 |
+
+실제 저장 전·후 객체 생성과 포트 소비 예제는 [무전송 테스트](../../packages/contracts/tests/test_no_io_pipeline.py)에 있다. 고정된 메모리 결과를 재생하는 학습·검증 예제이며 서비스의 실제 정책·세션·예산·intent 내구성 구현은 포함하지 않는다.
+
+```bash
+uv run --no-project --python 3.13.15 scripts/dev.py check contracts
+```
+
 ## 4. 고정 벡터와 후속 테스트
 
-정적 벡터는 [fingerprint-v1-vectors.json](../examples/fingerprint-v1-vectors.json)에 있다. 각 항목은 `canonical_utf8`의 정확한 문자열과 SHA-256을 함께 보존한다. C1에서 `primitive-v1` 벡터의 바이트·digest 일치를 실제 테스트로 검증했다. 나머지 운영 벡터는 C2에서 검증할 대상으로 남으며, 벡터 자체는 실행 관문 통과나 보안 증명을 의미하지 않는다.
+정적 벡터는 [fingerprint-v1-vectors.json](../examples/fingerprint-v1-vectors.json)에 있다. C1의 `primitive-v1`과 C2 운영 벡터 5개 모두 정확한 `canonical_utf8`·SHA-256 일치를 테스트로 검증했다. 벡터 파일의 기존 내용은 유지하며, 이 일치가 실행 관문 통과나 실제 감사 내구성을 증명하지는 않는다.
 
 각 벡터의 validation_path는 다음 경로를 구분하며 fingerprint envelope/payload에 포함하지 않는 시험 metadata다.
 
 - canonical_bytes_only: C1의 demo.record/demo.v1. 구현된 테스트는 tuple·허용된 불변 mapping으로 fixture를 구성하고 `canonical_json_bytes()`의 정확한 bytes와 **테스트 안의 stdlib hashlib.sha256** digest를 검증한다. 같은 demo는 운영 등록 검증기에서 거부되며 테스트용 운영 등록은 하지 않는다.
-- production_adapter: C2 이후 해당 record의 typed wrapper로 검증한다. C1에서 저수준 serializer가 이 JSON을 인코딩할 수 있어도 운영 타입/adapter 검증 통과로 집계하지 않는다.
+- production_adapter: C2 typed wrapper와 명시적 adapter로 검증한다. C1에서 저수준 serializer가 이 JSON을 인코딩할 수 있어도 운영 타입/adapter 검증 통과로 집계하지 않는다.
 
 파일의 JSON array와 시간 문자열은 정규화 후 형태를 보여 준다. 실제 Python adapter는 선언된 필드에 따라 tuple·aware datetime 등으로 검증·변환한 뒤 codec에 넘기며 원본 JSON의 list나 임의 문자열을 타입 검증 없이 통과시키지 않는다. json.loads의 결과를 그대로 운영 typed wrapper에 넘기는 시험은 성공 사례가 아니다. 기존 canonical_utf8/SHA-256 값은 유지한다.
 
