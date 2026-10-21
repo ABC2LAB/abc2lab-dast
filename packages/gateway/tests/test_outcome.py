@@ -118,9 +118,27 @@ def test_attempt_unknown_is_preserved_through_gate() -> None:
     assert out.send_status is SendStatus.UNKNOWN
 
 
-def test_attempt_gate_block_ignores_transport_observation() -> None:
+def test_gate_block_does_not_override_real_sent() -> None:
+    # 게이트가 막아도 실제 전송 관찰(SENT_CAPTURED)이면 sent를 보존하고 모순을 드러낸다.
     gate = replace(_PROCEED_GATE, decision=DecisionOutcome.BLOCK)
     out = classify_attempt(gate, TransportObservation.SENT_CAPTURED)
+    assert out.send_status is SendStatus.SENT
+    assert out.capture_status is CaptureStatus.CAPTURED
+    assert GatewayReason.POLICY_BLOCKED in out.reason_codes
+    assert GatewayReason.GATE_CONTRADICTION in out.reason_codes
+
+
+def test_gate_block_does_not_override_unknown() -> None:
+    gate = replace(_PROCEED_GATE, decision=DecisionOutcome.BLOCK)
+    out = classify_attempt(gate, TransportObservation.SEND_UNCONFIRMED)
+    assert out.send_status is SendStatus.UNKNOWN
+    assert GatewayReason.GATE_CONTRADICTION in out.reason_codes
+
+
+def test_gate_block_with_not_entered_uses_gate_reason() -> None:
+    # 전송 미진입이 입증된 경우에만 게이트 사유로 not_sent.
+    gate = replace(_PROCEED_GATE, decision=DecisionOutcome.BLOCK)
+    out = classify_attempt(gate, TransportObservation.NOT_ENTERED)
     assert out.send_status is SendStatus.NOT_SENT
     assert out.reason_codes == (GatewayReason.POLICY_BLOCKED,)
 
@@ -143,3 +161,8 @@ def test_failed_recheck_requires_reason() -> None:
 def test_recheck_reason_must_be_a_recheck_reason() -> None:
     with pytest.raises(ValueError):
         RecheckResult(passed=False, reason=GatewayReason.POLICY_BLOCKED)
+
+
+def test_passed_recheck_with_reason_rejected() -> None:
+    with pytest.raises(ValueError):
+        RecheckResult(passed=True, reason=GatewayReason.CANCELLED)

@@ -1,9 +1,9 @@
 """Gateway 전송 결과 상태 머신의 내부 도메인 모델.
 
 C2 실행 경계 타입(`ExecutionRequest`·`PolicyDecision`·`AttemptResult`·`SendStatus`·
-`CaptureStatus`)이 병합되기 전의 모듈 내부 타입이다. 공개 계약을 대신하거나 사본으로 쓰지
-않으며, 원문·자격 증명·캡처 핸들을 담지 않는다. C2 병합 후 `adapters`에서 실제 실행 관찰을 이
-모델로 distill하고, `AttemptOutcome`을 `AttemptResult`로 발행한다.
+`CaptureStatus`)으로 변환되기 전의 모듈 내부 타입이다. 공개 계약을 대신하거나 사본으로 쓰지
+않으며, 원문·자격 증명·캡처 핸들을 담지 않는다. C2는 병합됐으며(PR #20), `adapters`가 실제 실행
+관찰을 이 모델로 distill하고 `AttemptOutcome`을 `AttemptResult`로 발행할 책임을 진다.
 
 전송 전 미진입이 입증된 시도만 `not_sent`다. transport 진입 후 미확정은 `unknown`이며, `unknown`은
 자동 재전송하지 않는다. 허용 조합은 S1 §6의 네 가지뿐이다.
@@ -67,6 +67,7 @@ class GatewayReason(StrEnum):
     CAPTURE_UNAVAILABLE = "capture_unavailable"
     RESPONSE_LIMIT_EXCEEDED = "response_limit_exceeded"
     SEND_ACKNOWLEDGEMENT_LOST = "send_acknowledgement_lost"
+    GATE_CONTRADICTION = "gate_contradiction"
 
 
 # recheck 실패 시 쓸 수 있는 사유. 전송 직전 임계 구역 재검사에서 나온다.
@@ -99,6 +100,8 @@ class RecheckResult:
     reason: GatewayReason | None = None
 
     def __post_init__(self) -> None:
+        if self.passed and self.reason is not None:
+            raise ValueError("통과한 재검사는 사유가 없어야 한다")
         if not self.passed and self.reason is None:
             raise ValueError("실패한 재검사는 사유가 있어야 한다")
         if self.reason is not None and self.reason not in _RECHECK_REASONS:
