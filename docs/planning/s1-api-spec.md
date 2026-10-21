@@ -246,6 +246,8 @@ S1 Host는 같은 사례의 A 기준 요청과 B가 A 객체에 수행하는 교
 
 세션은 호출자가 상태를 위조할 수 있는 증명이 아니다. WebDiag가 상태 머신/generation/주체 검증의 유일한 기록자이다. Gateway는 계정별 독립 cookie jar와 인증 비밀을 보유하고, 주입된 읽기 전용 `SessionBindingReader`의 `def read_session_binding(run_key: RunKey, session_ref: Ref) -> SessionBindingResult`로 현재 상태를 얻는다. `SessionBindingResult` 필드는 `run_key, status, binding: SessionBinding?, reason_codes`이다. 이는 네트워크나 로그인 부작용 없이 이미 존재하는 상태를 읽는 포트이며, Gateway 콜백에서 WebDiag workflow를 진행하지 않는다.
 
+**일관 읽기 구현 제약:** 이 sync 포트는 Gateway와 WebDiag가 소유한 **같은 event loop·같은 스레드에서 락 없이 일관된 불변 snapshot 하나를 즉시 읽는 포트**다. WebDiag는 공개한 SessionBinding과 그 중첩 값을 제자리에서 변경하지 않고, generation 교체·close·취소 시 이전 세대 무효화와 새 상태 발행을 await 없는 구간의 snapshot 교체로 완료한 뒤 I/O를 기다린다. 교체 후 첫 읽기부터 새 상태를 보며 이전 generation의 identity/context와 새 state/cancelled가 섞인 torn read를 허용하지 않는다. 다른 스레드는 이 저장소를 직접 갱신하지 않고 소유 loop에 상태 변경을 전달한다. 이 제약을 제공하지 못하는 원격/DB 어댑터로 sync 포트를 대체하지 않는다. Gateway의 A/B 최종 연속 읽기와 검사는 §10 ③의 같은 await 없는 구간에서 수행한다.
+
 **Gateway.prepare의 identity 축약:** IdentityResult.status와 PolicyInput.identity_status는 역할이 다른 enum이며 다음과 같이 매핑한다. 상세 상태·사유는 세션 결과와 감사에 보존한다.
 
 | 현재 바인딩 | PolicyInput.identity_status | 조건/효과 |
@@ -398,7 +400,7 @@ at_revision=None이면 현재 일관된 snapshot을 가져온다. 지정한 revi
 | Record | 필드 |
 |---|---|
 | `Verdict` | `run_key, verdict_ref, revision, case_ref, value: CONFIRMED/SUSPECTED/UNDECIDABLE, policy_check: CheckState, identity_check: CheckState, data_check: CheckState, expected_policy_source: SourceVersion?, comparison_ref: Ref?, evidence_refs, oracle_version: SourceVersion, source_event: AuditLink, reason_codes` |
-| `AuditExpectation` | `producer, first_sequence: int, last_sequence: int?, expected_event_refs: tuple[Ref], request_refs: tuple[Ref], attempt_refs: tuple[Ref]`. 종료 수위가 없으면 완전하다고 선언할 수 없음 |
+| `AuditExpectation` | `producer, first_sequence: int, last_sequence: int?, expected_event_refs: tuple[Ref], request_refs: tuple[Ref], attempt_refs: tuple[Ref]`. Host가 조립. first_sequence=1은 독립 기대 시작 경계, last_sequence는 확인한 봉인 수위이며 미확인이면 None. 기대 refs가 없고 봉인된 빈 journal만 last_sequence=0을 허용 |
 | `AuditGap` | `producer, request_ref: Ref?, attempt_ref: Ref?, event_ref: Ref?, reason_code` |
 | `DiagnosisReport` | `run_key, report_ref, verdicts, send_counts: SendCounts, incomplete_task_refs: tuple[Ref], audit_completeness: complete/unknown, audit_gaps: tuple[AuditGap], evidence_refs: tuple[Ref], comparison_refs: tuple[Ref], comparison_limits: tuple[CaseLimit], pocs: tuple[PocReport], reason_codes` |
 | `CaseLimit` | `case_ref`, `status: ResultStatus`, `stored_evidence_refs: tuple[Ref]`, `comparison_ref: Ref?`, `reason_codes`. 판정 전 실패/partial 사례도 보존 |
@@ -408,6 +410,10 @@ Judge는 Evidence 읽기 포트로 저장된 comparison과 모든 receipt를 가
 다음 세 항목이 모두 yes일 때만 CONFIRMED다. (a) 신뢰할 수 있는 정책이 B를 명시적으로 금지하고 공유/위임 예외가 해결됨, (b) A/B가 유효하고 서로 다른 검증된 subject임, (c) 같은 A 객체의 정상적이고 비자명한 실제 데이터가 B의 교차 응답에 나타나며 반사/템플릿이 제외됨. 신호가 부족하지만 구체적인 이상 징후가 있을 때만 SUSPECTED이며, 200/HMAC/ID echo/owner_id만으로 승격할 수 없다. 기대 정책이 허용하거나 유효성이 불명확하거나 증거가 부족한 사례는 취약점으로 확정할 수 없다. 보고서에는 그 이유를 보존하고 ‘안전’ 결론을 꾸며내지 않는다.
 
 Report는 각 생산자의 감사 페이지와 공개 Evidence를 읽고 다른 모듈의 DB는 읽지 않는다. 모든 기대 이벤트/요청 연관, 생산자의 시작·종료 수위와 필요한 저장 기록이 일치할 때만 audit complete이다. A/A 두 건은 기대한 A/B를 충족하지 못한다. 읽기에 실패해도 gap과 unknown을 붙인 partial 보고서를 생성할 수 있으며, 알려진 sent와 unknown을 보존하고 not_sent로 보완하지 않는다.
+
+**Host의 AuditExpectation 조립 책임:** app이 Host와 Report에 주입한 producer별 감사 reader registry로 run의 기대 생산자 집합을 먼저 고정한다. Host는 모든 Discovery/Session/Identity/Observe/AccessCompare 결과와 TaskSummary의 attempt_summaries, 성공·부분·실패 결과에 보존된 정상 commit receipt·event refs를 producer 책임과 확인된 감사 link별로 모아 request/attempt/event 집합을 중복 제거한다. 같은 ref의 충돌·반환 유실은 감사 공백으로 보존한다. 기대 목록은 감사 조회 전에 고정하며 read_audit의 실제 행에서 역산하거나, 조회에 실패한 생산자를 목록에서 제외하지 않는다.
+
+모든 진단 작업과 생산자 소유 정리를 끝낸 뒤 Host가 각 reader의 read_audit로 봉인된 snapshot을 조회한다. §10의 독립 기대 시작값 1과 확인한 terminal_sequence를 AuditExpectation.first_sequence/last_sequence에 넣고 기존 기대 refs와 함께 build_report에 전달한다. 조회 실패·snapshot 만료·미봉인은 생산자와 기대 refs를 유지한 last_sequence=None 및 audit_gap/unknown으로 전달한다. Report는 주입된 동일 registry와 대조해 생산자 누락도 gap으로 처리하고, 자체 감사 읽기로 수위·연관·근거를 검증한다. ReportInput의 필드나 PoC 원문 입력을 추가하지 않는다.
 
 PocReport는 [PoC 보고서 계약](poc-report-design.md)의 실제 참조·등록 요청 레시피에서 생성한다. 원 실행의 저장된 CONFIRMED와 필요한 근거·레시피·감사를 확인하면 documented, 자료가 부족하면 incomplete, 형식/공개가 불가하면 unavailable다. S1 replay_status는 not_run이고 Report는 재전송하지 않는다. CONFIRMED 사례의 필수 PoC가 미완료면 report를 보존한 partial 결과로 반환한다. 미확정 판정을 정확히 설명하는 보고는 PoC를 확정하지 않았다는 이유만으로 생성 실패가 되지 않는다. PoC 가용성과 Judge 판정은 별개다.
 
@@ -434,6 +440,8 @@ RequestIntentRecord는 전송 전 불변 준비 snapshot과 결정을 연결하�
 
 elapsed_ms는 해당 producer_instance의 단조 시계 시작점 이후 경과 시간이고, sequence는 run/producer의 영속 순번이다. 재시작 시 instance_ref를 새로 만들고 sequence는 이어간다. 생산자 간 인과는 causal_links로 연결하며 시각만으로 순서를 합성하지 않는다. event binding의 request/attempt와 evidence/verdict/task 연결을 함께 대조한다.
 
+각 run/producer의 진단 journal은 sequence를 1에서 시작해 1씩 증가시킨다. AuditExpectation.first_sequence=1은 이 계약에서 정한 기대값이며 실제 페이지의 첫 값을 복사하지 않는다. AuditPage.first_sequence는 페이지 첫 행이 아니라 해당 snapshot이 보유한 run/producer의 최초 sequence다. 이 값이 2 이상이거나 중간 sequence가 빠지면 prefix/중간 누락으로 처리하며 기대 시작 경계를 올려 누락을 숨기지 않는다. 진단 이벤트가 0개임을 생산자가 봉인해 확인한 경우만 complete 페이지의 first_sequence=None, committed_through=0, terminal_sequence=0으로 표현한다. Host는 이에 대응하는 기대 범위를 first_sequence=1, last_sequence=0인 빈 구간으로 만들며, 기대 refs도 모두 비어 있을 때만 감사 완료 후보가 된다. 0은 미확인 수위를 대신하는 값이 아니다.
+
 Gateway 실행 순서: ① Policy decision과 commit 검증, ② attempt_ref를 생성하고 구체 요청의 intent를 기록한 뒤 자신의 commit 확인, ③ 전송 임계 구역에서 취소/바인딩/신원/범위를 다시 확인하고 예산 원자 차감, ④ transport 진입, ⑤ sent/not_sent/unknown과 캡처 결과 기록. ①②를 입증할 수 없거나 저장에 실패하면 절대 ④로 진입하지 않는다. ③ 이후에도 외부 취소가 발생할 수 있으며 stop은 시작된 전송을 회수한다고 보장할 수 없다.
 
 ③은 prepare 때의 snapshot을 재사용하는 검사가 아니다. 모든 permit/감사 await가 끝난 후, **같은 event-loop의 await 없는 임계 구역에서 read_session_binding을 다시 호출**해 실행 계정과 교차 요청의 owner 계정 모두의 현재 session/account/generation/identity/context/cancelled·기한을 준비 view와 재대조한다. 변경·조회 실패면 session_generation_changed 등 사유와 not_sent를 남기고 transport는 0회다. 이 최종 읽기와 예산 차감·transport 진입 예약 사이에는 await가 없다. 실제 전송 진입 전에 제어를 넘긴 구현은 돌아온 뒤 같은 검사를 다시 해야 한다. fake는 ①②/permit 대기 중 generation을 교체해 S1-14/17/25를 검증한다.
@@ -441,6 +449,8 @@ Gateway 실행 순서: ① Policy decision과 commit 검증, ② attempt_ref를 
 S1 fake journal은 흐름 테스트를 위해 verified를 반환할 수 있지만 실제 HTTP는 검증된 영속 어댑터만 사용해야 한다. app은 memory fake를 실제 transport에 연결하는 것을 명시적으로 거부한다. 프로세스 장애 후 intent만 있고 완료 이벤트가 확정되지 않은 attempt는 unknown으로 복구하며 재전송으로 감사를 보완하지 않는다. 실행 후 감사가 실패해도 실제 전송 상태, audit_commit_failed 사유와 미확인 공백을 보존한다.
 
 read_audit의 첫 페이지에서 snapshot=None이면 run/producer 일관 snapshot을 생성하고, 이후 cursor에는 같은 snapshot이 있어야 하며 limit는 1–100이다. snapshot이 없거나 만료되면 failed/snapshot_expired를 명시적으로 반환하고 페이지를 섞지 않는다. terminal_sequence는 생산자가 해당 run의 진단 기록을 봉인한 뒤에만 값이 있으며 아직 열려 있으면 None이다. Host는 진단 작업을 종료하고 각 생산자의 최종 수위를 확인한 뒤 최종 보고를 호출한다. 보고 생성 자체의 후속 관리 로그는 이 진단 감사 범위에 포함하지 않으며, 보고 중 상태 조회는 partial/unknown일 수 있다. 빈 페이지·연속 번호·next_cursor=None만으로는 완전성을 증명할 수 없다.
+
+Host는 §9의 조립 절차에 따라 terminal_sequence를 기대 종료 수위로 전달하고 Report는 같은 봉인 상태와 전체 페이지를 확인한다. first_sequence·committed_through·terminal_sequence와 snapshot의 정합성이나 기대 ref 연관을 확인하지 못하면 partial/audit unknown이다. 큐가 비었거나 결과가 반환됐다는 이유만으로 생산자의 봉인을 가정하지 않는다.
 
 ## 11. 초기 한도, 사유 코드와 개발 사례
 
@@ -480,13 +490,13 @@ TTL과 deadline에는 단조 시계를 사용하고 모듈 간 기록에는 명�
 | S1-16 | 가짜 receipt/실제 event에서 outcome 또는 fingerprint 교체 | verify invalid, transport 0회. 생산자 조회 실패 시 unknown이며 0회 |
 | S1-17 | 세션 복구 충돌/잘못된 subject/이전 lease | 단일 복구 기록자, generation 무효화, 교차 0회, A/B jar 혼용 없음 |
 | S1-18 | compare 취소/캡처 만료/한쪽 저장 실패 | 원문을 finally에서 해제하고 저장된 receipt를 보존하며 불완전한 StoredComparison이 없음 |
-| S1-19 | 보고서 페이지 snapshot 만료/종료 수위 미확정/attempt 누락 | partial 보고서, audit unknown, 기존 sent/unknown 불변 |
+| S1-19 | 등록 생산자의 봉인 빈 journal·조회 실패·snapshot 만료·첫 sequence가 2인 prefix gap·종료 수위 미확정·기대 attempt 누락 | 빈 journal은 기대 refs도 비었을 때만 first=1/last=0으로 complete 가능. 그 외 누락/미확인은 생산자 항목을 유지한 partial/audit unknown, 기존 sent/unknown 불변 |
 | S1-20 | 각 모듈 단위 테스트를 독립 실행 | contracts와 자체 구현/fake만 사용하고 네트워크/DB/브라우저를 시작하지 않으며 동료 구현을 import하지 않음 |
 | S1-21 | fake transport를 Event로 멈춘 상태에서 상태 조회·stop | 응답 대기 해제 없이 제어 경로가 완료됨. 신규 전송 0건, 실제 종료 전 stop_state는 requested |
 | S1-22 | 큐 포화·상한보다 많은 후보·실행 요청 | 유한 개수만 생성/대기, queue_full 또는 제한 사유. 큐/permit 대기도 deadline 적용, 무제한 Task 생성 없음 |
 | S1-23 | prepare/commit 전·transport 진입 전·진입 후에 각각 취소/timeout | 전송 전만 not_sent, 진입 후 미확정은 unknown, 확정 전송은 sent. 자동 재전송 0회 |
 | S1-24 | 캡처 인계 직후/execute 결과 전달 전·compare 저장 중 취소 | 유실된 반환 핸들도 정리, active 캡처/lease 누수 없음, 완료 receipt 보존, CancelledError 전파 |
-| S1-25 | 같은 계정 갱신 경합·A/B 역순 요청·동시 핸들 소비 | 단일 갱신, 결정된 lease 획득 순서, 구세대 전송 0건, 핸들당 최대 1회 전송. worker 상한을 늘린 격리 fake 테스트로 검증 |
+| S1-25 | 같은 계정 갱신 경합·A/B 역순 요청·동시 핸들 소비·snapshot 교체 직후 읽기 | 단일 갱신, 결정된 lease 획득 순서, 구세대 전송 0건, 핸들당 최대 1회 전송. 교체 직후 새 snapshot을 읽고 기존 반환값은 불변이며 generation/identity/context/state/cancelled의 torn read 없음. worker 상한을 늘린 격리 fake 테스트로 검증 |
 | S1-26 | 한 작업의 예상 실패·TaskGroup의 ExceptionGroup·run 종료·cleanup 유예 초과 | run별 supervisor가 실패 기록/정리를 맡고 worker 루프는 다음 실행 가능한 작업을 처리. 무관한 작업까지 취소되지 않음. 미확인 종료를 stopped로 처리하거나 lease/permit을 조기 재배정하지 않음 |
 | S1-27 | transport permit/큐를 기다리는 동안 TTL/run deadline 경과 | 재검사로 새 전송 0건. 아직 생성하지 않은 시도는 가짜 not_sent를 만들지 않고 대기 실패 이유 기록 |
 | S1-28 | start_run 수락/저장 commit 직후 응답 유실·Queue.join/강제 종료 | 같은 submission_ref로 기존 run/receipt 확인, run 중복 수락/enqueue/추가 전송 0건. 큐가 비어도 기록/증거 누락은 완료가 아님 |
@@ -504,7 +514,7 @@ v0.5의 후속 검증 요구사항은 다음과 같다. 실제 테스트가 이�
 | S1-39 | 발견 단서와 각 producer의 저장 이벤트, stale candidate revision·deferred projection | Host만 register/get_case/project 호출. WebDiag의 Knowledge 의존 0개, 원본 producer/receipt 유지, stale 후보는 실행 0건, 재투영에 대상 재전송 0건 |
 | S1-40 | 인증·whoami·기준/교차·복구·저장 멱등 재확인 | WebDiag가 동작별 request_ref를 한 번 발급·보존하고 Gateway가 attempt에 그대로 연결. identity 재사용은 새 시도 0개, unknown 재전송 0건 |
 | S1-41 | Host의 정책/확인 값 한 필드 변조·미지원 wire version | Gateway/Policy가 주입 원본에 불일치로 차단하고 transport 0건. 문서 판번호만 바뀌어도 policy_input.v1은 유지 |
-| S1-42 | 동일 BudgetSnapshot으로 두 번째 시도·commit await 중 generation/context 변경 | 남은 예산을 fingerprint에 넣지 않고 전송 직전 최신 상태 재조회·원자 차감. 소진 예산/구세대의 전송 0건 |
+| S1-42 | 동일 BudgetSnapshot으로 두 번째 시도·commit await 중 실행/owner 계정의 generation/context 변경·close/취소 | 남은 예산을 fingerprint에 넣지 않고 같은 loop의 await 없는 구간에서 양쪽 최신 snapshot 재조회·원자 차감. 교체 후 구세대를 현재로 읽지 않으며 소진 예산/구세대/종료·취소 계정의 전송 0건 |
 
 ## 12. 계약 PR과 팀 검토
 
