@@ -3,6 +3,7 @@
 from abc2lab_gateway.core.model import (
     AttemptOutcome,
     CaptureStatus,
+    DecisionCommit,
     DecisionOutcome,
     GatewayReason,
     PreTransportGate,
@@ -19,6 +20,7 @@ from abc2lab_gateway.core.outcome import (
 __all__ = [
     "AttemptOutcome",
     "CaptureStatus",
+    "DecisionCommit",
     "DecisionOutcome",
     "GatewayReason",
     "PreTransportGate",
