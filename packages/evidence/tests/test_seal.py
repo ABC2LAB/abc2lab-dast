@@ -38,11 +38,15 @@ from abc2lab_contracts.primitives import (
     RunKey,
     SourceVersion,
 )
-from abc2lab_contracts.registration import ComparisonRules
+from abc2lab_contracts.registration import (
+    ComparisonRules,
+    OperationRegistration,
+    ResourceBinding,
+)
 from abc2lab_contracts.session import IdentityResult, IdentityStatus
 from abc2lab_evidence.adapters.memory_store import InMemoryEvidenceStore
 from abc2lab_evidence.core.seal import LocalSealer, SealerConfig
-from abc2lab_evidence.ports import DataSignals
+from abc2lab_evidence.ports import CaptureRegistry, DataSignals
 
 _RUN = RunKey("org-1", "target-1", "env-1", "run-1")
 _SOURCE = SourceVersion("issuer-1", "redaction-1", 1)
@@ -50,6 +54,23 @@ _RULES = ComparisonRules(_SOURCE, "normalizer-1", "oracle-1", "canary-1")
 _NOW = datetime(2026, 10, 22, tzinfo=UTC)
 _LATER = _NOW + timedelta(hours=1)
 _FP = "0" * 64
+_BINDING = ResourceBinding(
+    "binding-1",
+    _SOURCE,
+    "resource-1",
+    "subject-owner",
+    (RequestParameter("id", ParameterLocation.PATH, "42"),),
+)
+_OPERATION = OperationRegistration(
+    _SOURCE,
+    "operation-1",
+    (Purpose.OBSERVE, Purpose.ACCESS_COMPARE),
+    None,
+    "GET",
+    "https://app.example",
+    "/orders/{id}",
+    (_BINDING,),
+)
 
 
 def _now() -> datetime:
@@ -158,6 +179,17 @@ class _FakeEngine:
         return self._data
 
 
+class _FakeRegistry:
+    def __init__(self, *, known: bool = True) -> None:
+        self._known = known
+
+    def operation(self, operation_ref: Ref) -> OperationRegistration | None:
+        return _OPERATION if self._known and operation_ref == "operation-1" else None
+
+    def resource_binding(self, resource_binding_ref: Ref) -> ResourceBinding | None:
+        return _BINDING if self._known and resource_binding_ref == "binding-1" else None
+
+
 class _FakeMac:
     def compute(self, run_key: RunKey, data: bytes) -> bytes:
         return data
@@ -185,6 +217,7 @@ def _sealer(
     *,
     engine: _FakeEngine | None = None,
     journal_ok: bool = True,
+    registry: CaptureRegistry | None = None,
 ) -> LocalSealer:
     config = SealerConfig("evidence", _SOURCE, _refs(), _now)
     return LocalSealer(
@@ -193,6 +226,7 @@ def _sealer(
         engine or _FakeEngine(data=_ALL_YES),
         _FakeMac(),
         _FakeJournal(ok=journal_ok),
+        registry or _FakeRegistry(),
         config=config,
     )
 
@@ -206,6 +240,37 @@ async def test_seal_complete_publishes_evidence_with_matching_receipt() -> None:
     assert result.evidence is not None
     assert len(result.receipts) == 1
     assert "cap-1" in captures.released[0]
+
+
+@pytest.mark.asyncio
+async def test_seal_builds_registered_recipe_without_raw_values() -> None:
+    captures = _FakeCaptures()
+    captures.add("cap-1", _capture("owner"))
+    result = await _sealer(captures).seal(SealRequest(_RUN, "submission-1", "cap-1", _RULES))
+    assert result.status is ResultStatus.COMPLETE
+    assert result.evidence is not None
+    recipe = result.evidence.request_recipe
+    assert recipe is not None
+    assert recipe.origin_placeholder == "${REGISTERED_ORIGIN}"
+    assert recipe.path_template == "/orders/{id}"
+    assert recipe.parameters[0].value_placeholder == "${ID}"
+    # 실제 origin·입력 값은 레시피에 없다(S1-31).
+    assert all("https://app.example" not in p.value_placeholder for p in recipe.parameters)
+    assert "42" not in recipe.parameters[0].value_placeholder
+    assert result.evidence.recipe_reason_codes == ()
+
+
+@pytest.mark.asyncio
+async def test_seal_recipe_missing_when_registration_absent() -> None:
+    captures = _FakeCaptures()
+    captures.add("cap-1", _capture("owner"))
+    result = await _sealer(captures, registry=_FakeRegistry(known=False)).seal(
+        SealRequest(_RUN, "submission-1", "cap-1", _RULES)
+    )
+    assert result.status is ResultStatus.COMPLETE
+    assert result.evidence is not None
+    assert result.evidence.request_recipe is None
+    assert result.evidence.recipe_reason_codes == (ReasonCode.RECIPE_MISSING,)
 
 
 @pytest.mark.asyncio

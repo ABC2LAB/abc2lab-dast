@@ -8,6 +8,7 @@ ComparisonProjected는 저장 영수증과 생산자 감사가 모두 확인된 
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
@@ -35,6 +36,7 @@ from abc2lab_contracts.ports import EvidencePort
 from abc2lab_contracts.primitives import (
     AuditLink,
     CheckState,
+    Purpose,
     ReasonCode,
     Ref,
     ResponseClass,
@@ -43,11 +45,13 @@ from abc2lab_contracts.primitives import (
     SourceVersion,
     UtcTime,
 )
+from abc2lab_contracts.recipe import RecipeParameter, RegisteredRequestRecipe
 from abc2lab_contracts.registration import ComparisonRules
 from abc2lab_contracts.session import IdentityResult, IdentityStatus
 
 from abc2lab_evidence.ports import (
     CaptureAccess,
+    CaptureRegistry,
     ComparisonRuleEngine,
     EvidenceAuditJournal,
     RunMac,
@@ -95,15 +99,17 @@ class LocalSealer:
         engine: ComparisonRuleEngine,
         mac: RunMac,
         journal: EvidenceAuditJournal,
+        registry: CaptureRegistry,
         *,
         config: SealerConfig,
     ) -> None:
-        """캡처 접근·저장·규칙 엔진·MAC·감사 저널과 생산자 설정을 주입받는다."""
+        """캡처 접근·저장·규칙 엔진·MAC·감사 저널·등록 조회와 생산자 설정을 주입받는다."""
         self._captures = captures
         self._store = store
         self._engine = engine
         self._mac = mac
         self._journal = journal
+        self._registry = registry
         self._config = config
         self._submissions: dict[tuple[RunKey, Ref], _SubmissionRecord] = {}
 
@@ -302,6 +308,7 @@ class LocalSealer:
         status = capture.raw_response.status_code
         if not _HTTP_MIN <= status <= _HTTP_MAX:
             return None
+        recipe, recipe_reasons = self._build_recipe(capture)
         event_ref = self._config.new_ref()
         return EvidenceSummary(
             run_key=capture.run_key,
@@ -317,9 +324,49 @@ class LocalSealer:
             observed_at=capture.observed_at,
             redaction_version=self._config.redaction_version,
             source_event=AuditLink(self._config.producer_ref, event_ref),
-            request_recipe=None,
-            recipe_reason_codes=(ReasonCode.RECIPE_UNSUPPORTED,),
+            request_recipe=recipe,
+            recipe_reason_codes=recipe_reasons,
         )
+
+    def _build_recipe(
+        self, capture: CaptureRequest
+    ) -> tuple[RegisteredRequestRecipe | None, tuple[ReasonCode, ...]]:
+        """등록 동작/바인딩을 placeholder 레시피로 변환한다(실제 값·origin 미포함)."""
+        view = capture.executed_request
+        if view.purpose not in (Purpose.OBSERVE, Purpose.ACCESS_COMPARE) or view.method != "GET":
+            return None, (ReasonCode.RECIPE_UNSUPPORTED,)
+        resource_ref = capture.resource_ref
+        binding_ref = view.resource_binding_ref
+        binding_revision = view.resource_binding_revision
+        if resource_ref is None or binding_ref is None or binding_revision is None:
+            return None, (ReasonCode.RECIPE_UNSUPPORTED,)
+        operation = self._registry.operation(view.operation_ref)
+        binding = self._registry.resource_binding(binding_ref)
+        if operation is None or binding is None:
+            return None, (ReasonCode.RECIPE_MISSING,)
+        try:
+            parameters = tuple(
+                RecipeParameter(item.name, item.location, _placeholder(item.name))
+                for item in binding.parameters
+            )
+            recipe = RegisteredRequestRecipe(
+                schema_version="poc.v0.1",
+                operation_ref=view.operation_ref,
+                operation_revision=view.operation_revision,
+                resource_ref=resource_ref,
+                resource_binding_ref=binding_ref,
+                resource_binding_revision=binding_revision,
+                method="GET",
+                origin_placeholder="${REGISTERED_ORIGIN}",
+                path_template=operation.path_template,
+                parameters=parameters,
+                authentication="fresh_registered_session",
+                source=operation.source,
+            )
+        except ValueError:
+            # 등록 경로/슬롯을 안전한 placeholder로 공개할 수 없으면 비공개로 둔다.
+            return None, (ReasonCode.RECIPE_NOT_EXPORTABLE,)
+        return recipe, ()
 
     def _signals(
         self, request: CompareRequest, owner: CaptureRequest, cross: CaptureRequest
@@ -432,6 +479,12 @@ class LocalSealer:
 
     def _release(self, run_key: RunKey, capture_refs: tuple[Ref, ...]) -> None:
         self._captures.release_captures(ReleaseCapturesRequest(run_key, capture_refs))
+
+
+def _placeholder(name: str) -> str:
+    """등록 매개변수 이름을 공개 가능한 ${SLOT} placeholder로 바꾼다(실제 값 제외)."""
+    token = re.sub(r"[^A-Z0-9_]", "_", name.upper())
+    return f"${{{token}}}"
 
 
 def _incomplete_status(receipts: Sequence[StoreReceipt]) -> ResultStatus:
