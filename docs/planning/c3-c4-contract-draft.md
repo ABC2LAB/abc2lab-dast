@@ -1,15 +1,15 @@
 # C3·C4 최소 계약 초안 (gateway/judge 소유 범위)
 
-상태: **제안 / 이동찬 리뷰 반영 (2026-10-21)**. 작성 최민준. [C1·C2](s1-development-status.md#1-작은-계약-pr로-다시-시작)와 병렬로 제안한 C3·C4의 **최소 타입·Protocol** 초안이다. C3-A의 로컬 타입·포트·무전송 예제는 §2.1과 PR #26으로 병합됐고, 후속 Evidence 공유 계약은 [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27)에서 2026-10-22 병합됐다. 이 초안만으로 나머지 경계의 구현·벡터·fake 완료를 뜻하지 않는다. 이 초안은 [S1 API 상세 규격](s1-api-spec.md)과 [PoC 보고서 계약](poc-report-design.md)의 필드를 구현 가능한 Protocol 경계로 좁힌 것이며, 상위 두 문서가 충돌 시 우선한다. 현재 담당은 [배정표](../module-development.md#담당-배정)를 따른다.
+상태: **Gateway/Judge 경계의 초기 제안 기록 / C3 계약 #26·#27, Knowledge #30, Judge C4-B #39 및 제공자 사유 매핑 #41 반영 (2026-10-22)**. 작성 최민준. 이 초안의 capture/Judge 관련 공개 계약은 후속 별도 PR에서 이미 구현되었으므로 구현된 타입·상태는 [C3 동결안](evidence-c3-freeze.md)과 [Judge C4-B 계약](judge-c4-contract.md), 실제 `contracts` 코드를 정본으로 삼는다. Host 시작/상태/중지·Report 보고 입력/출력의 공개 계약, Judge의 실제 JudgePort 제공자 및 영속 감사는 아직 남아 있다. 초안 자체를 전체 C3/C4 서비스 완료 증거로 해석하지 않는다.
 
 ## 1. 범위와 선행 의존
 
-이 초안은 Gateway의 capture 소비 경계와 Judge의 제공 경계를 다룬다. Evidence 제공·Knowledge·Host·Report 경계는 아래 담당자가 별도 계약 PR로 제안한다. 최민준이 Report도 맡지만, Report 계약은 이 초안의 Judge 계약과 별도 작업으로 유지한다.
+이 초안은 Gateway의 capture 소비 경계와 Judge의 제공 경계를 다룬 당시 제안이다. Evidence(#27)와 Knowledge(#30), Judge(#39)의 공개 계약은 이후 별도 PR로 병합됐고, 제공자 구현은 각 담당 모듈에서 진행 중이다. Host의 진입점과 Report 공개 계약은 아직 별도 후속 작업이며, Report 담당 최민준이 제안하되 Judge 내부 구현과는 분리한다.
 
-| 계약 | 이 초안의 범위(최민준) | 후속 별도 계약과 현재 담당 |
+| 계약 | 이 초안의 담당 경계 | 2026-10-22 확인한 후속 구현/미완료 |
 |---|---|---|
-| C3 로컬 Evidence | Gateway→로컬 Evidence `capture` 포트, `ExecutedRequestView`, 실행 전용 `RawResponse` | Evidence의 `seal`/`compare_and_seal`/`store_evidence`/`evidence_read_summary`, `EvidenceSummary.request_recipe`, 레시피 생성 — 이경준 |
-| C4 발견·투영·보고 | Judge `judge` 포트, `JudgeRequest`/`JudgeResult`/`Verdict`/`VerdictProjected` | Knowledge의 `register_candidates`/`project`/`get_case_view` — 이동찬; Host 조립 — 이경준; Report의 `build_report` — 최민준 |
+| C3 로컬 Evidence | Gateway→로컬 Evidence `capture`, `ExecutedRequestView`, 실행 전용 `RawResponse` — Gateway 최민준 | C3-A #26·C3 Evidence 공유 계약 #27 병합; Evidence 이경준의 메모리 캡처·seal/compare·recover #35, recipe #36 구현. 실제 Gateway 연계·내구/감사/복구 통합은 후속 |
+| C4 발견·투영·판정·보고 | Judge `judge`, `JudgeRequest`/`JudgeResult`/`Verdict`/`VerdictProjected` — Judge 최민준 | KnowledgePort #30·JudgePort/Reader/`verdict.v2` #39·Judge 사유 매핑 #41 병합. Knowledge 제공자(이동찬), Host 진입점 제공자(이경준), Report 공유 계약·제공자(최민준)는 후속 |
 
 **선행:** C1 codec과 C2 타입(`Ref`, `Revision`, `RunKey`, `UtcTime`, `Purpose`, `ResultStatus`, `ReasonCode`, `CheckState`, `SourceVersion`, `AuditLink`, `IdentityResult`, `ExpectedAccessPolicySnapshot`, `ComparisonRules`, `RequestParameter`)가 선행이다. 아래 record는 그 타입을 재사용하며 **임의 dict·`Any`·서비스별 사본을 만들지 않는다**. 타입 이름·경로는 병합된 C2 계약을 따른다. fingerprint payload는 [공유 codec](fingerprint-contract.md#3-record별-payload)의 record별 adapter를 따르고, 새 record(`Verdict` 등)는 해당 계약 PR에서 typed wrapper·벡터를 추가한다. C1은 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15), C2는 [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)으로 main에 병합됐다. C3·C4 자체의 구현 완료를 뜻하지 않는다.
 
@@ -141,4 +141,4 @@ class JudgePort(Protocol):
 - C4: `expected_access`·sharing·delegation 중 하나만 바뀌어도 `CONFIRMED` 미발행(S1-08·S1-09).
 - C4: 같은 submission의 중복·충돌·revision 증가 처리(S1-07~09).
 
-구현은 각 경계 PR에서 진행한다. C3-A의 로컬 구현과 검증은 §2.1 및 [착수 상태](s1-development-status.md#5-c3-a-캡처-계약--병합-완료)에 구분해 기록한다. 이 초안만으로 나머지 계약·fake·테스트나 실제 서비스의 완료를 뜻하지 않는다.
+C3-A는 #26, 후속 Evidence 계약은 #27, C4-A Knowledge는 #30, C4-B Judge 계약은 #39로 각각 병합됐다. 제공자 사유 매핑은 #41에서 해소됐다. 각 PR의 타입 테스트와 실제 서비스 실행·영속·통합 검증은 분리하며, 아직 남은 Host·Report 최소 계약과 각 제공자 검증은 [S1 상태 §8](s1-development-status.md#8-현재-서비스-구현과-남은-작업)에서 추적한다.

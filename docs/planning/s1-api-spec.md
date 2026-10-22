@@ -1,6 +1,6 @@
-# S1 모듈 간 API 설계 v0.6
+# S1 모듈 간 API 설계 v0.7
 
-상태: **초기 설계안 / 팀 리뷰 반영 중**. [초안의 흐름·담당·수용 사례](s1-api-draft.md)를 입력·반환 규격으로 구체화한다. C2 공유 타입·포트·fingerprint는 이번 변경에 구현하며, 서비스·영속 journal·실제 대상 통신의 구현 완료를 뜻하지 않는다. 범위와 검증은 [착수 상태](s1-development-status.md)를 따른다.
+상태: **S1 호출 규격 설계 v0.7 / C1·C2·C3·C4-A·C4-B·Host↔WebDiag 일부 공유 계약 병합 / Host·Report 계약 및 S1 전체 서비스 구현 전 (2026-10-22)**. [초안의 흐름·담당·수용 사례](s1-api-draft.md)를 입력·반환 규격으로 구체화한다. 이미 병합된 공개 타입·Protocol은 `contracts`의 실제 코드가 우선하며, 이 명세에 나열된 29개 포트가 모두 구현됐다는 뜻은 아니다. 최신 병합·미완료 구분은 [S1 착수 상태 §8](s1-development-status.md#8-현재-서비스-구현과-남은-작업)를 따른다. 서비스·영속 journal·실제 대상 HTTP·통합과 배포는 단계별로 별도 검증한다.
 
 목표는 **상대 구현 없이 같은 입력과 실패 사례로 개발·테스트하기**다. Python 직접 호출에서 **I/O 서비스 포트는 비동기, 순수 계산과 제한된 메모리 상태 인계는 동기**로 구분한다. Host는 단일 프로세스의 유한 작업 큐와 S1 worker 1개로 실행한다. REST·MCP·배포 프로토콜은 정의하지 않는다. 상위 [아키텍처](mcp-architecture.md)와 [모듈 설계](module-design-confirmed.md)가 우선한다.
 
@@ -12,7 +12,7 @@ v0.5 변경: Host의 Knowledge 등록·조회·투영 책임, WebDiag의 논리 
 
 v0.6 변경: C2 실행 경계에서 감사 영수증의 생성 순서를 명시했다. `PolicyDecisionContent`와 `IdentityContent`는 저장 전 fingerprint용 불변 내용이며, 내용 fingerprint → producer commit → `AuditReceipt` → 최종 결과 순서로 조립한다. 최종 `PolicyDecision`의 영수증과 verified `IdentityResult`의 영수증 필수 조건은 유지한다. C2의 contracts 구현·무전송 예제·검증 테스트 현황은 [착수 상태](s1-development-status.md)에 기록한다.
 
-v0.7 변경: C4-B Judge 공유 계약을 반영했다. Judge는 필수 `ReadContext`를 받고, app이 주입한 `JudgePolicyReader`가 case의 정본 기대 정책을 독립 조회한다. `Verdict`는 `ALLOWED`를 포함한 `verdict.v2`만 사용하며 S1 공개 포트 집계는 29개(비동기 26, 동기 3)다. 세부 불변식과 case↔정책 검증 경계는 [Judge C4-B 계약](judge-c4-contract.md)을 따른다.
+v0.7 변경: C4-B Judge 공유 계약을 반영했다. Judge는 필수 `ReadContext`를 받고, app이 주입한 `JudgePolicyReader`가 case의 정본 기대 정책을 독립 조회한다. `Verdict`는 `ALLOWED`를 포함한 `verdict.v2`만 사용하며 S1 **설계상 호출 수**는 29개(비동기 26, 동기 3)다. 세부 불변식과 case↔정책 검증 경계는 [Judge C4-B 계약](judge-c4-contract.md)을 따른다. C4-A Knowledge(#30), Host↔WebDiag 계약(#38), Judge(#39) 및 Judge 사유 매핑(#41)이 main에 반영됐지만 Host 진입점과 Report 계약, 실제 제공자 서비스 구현은 별도다.
 
 ## 1. 이번에 선택한 기준
 
@@ -237,7 +237,7 @@ S1 Host는 같은 사례의 A 기준 요청과 B가 A 객체에 수행하는 교
 | app이 주입하는 등록 조회 경계 | read_case_policy (1) | — |
 | 생산자 감사 Protocol | verify_committed, read_audit (2) | — |
 
-현재 집계는 C3의 `recover_submission`과 C4-B의 `read_case_policy`를 포함한 총 29개(비동기 26개, 동기 3개)다. 위 v0.3·v0.5 변경 이력의 27개는 이 복구·정책 조회 포트 추가 전 기준이다.
+현재 집계는 C3의 `recover_submission`과 C4-B의 `read_case_policy`를 포함한 **설계상 총 29개(비동기 26개, 동기 3개)**다. 위 v0.3·v0.5 변경 이력의 27개는 두 호출 추가 전 기준이다. `Host.start_run/get_status/stop` 및 `Report.build_report`는 현재 문서에 명세되어 있지만 `contracts`의 공개 요청/결과 타입·Protocol로는 아직 구현되지 않았다. 이 미구현 경계는 각 제공자 담당자(Host 이경준, Report 최민준)와 별도 계약 PR로 확정한다. 실제 서비스의 호출 가능 여부는 [S1 상태 §8](s1-development-status.md#8-현재-서비스-구현과-남은-작업)을 따른다.
 
 ### 3.2 C2 contracts 포트 범위
 

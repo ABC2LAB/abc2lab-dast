@@ -1,15 +1,15 @@
 # C4 최소 계약 초안 — Host ↔ WebDiag 경계 (webdiag 소유)
 
-상태: **제안 (2026-10-22)**. 작성 이경준(webdiag·host·evidence). [C1·C2](s1-development-status.md#1-작은-계약-pr로-다시-시작)와 evidence/gateway/judge가 main에 반영된 뒤, webdiag 공개면을 열기 위한 **Host↔WebDiag 최소 타입·Protocol**을 제안한다. 구현·벡터·fake는 포함하지 않는다. [S1 API v0.5](s1-api-spec.md) §3의 필드를 구현 가능한 Protocol 경계로 좁힌 것이며 상위 문서가 충돌 시 우선한다.
+상태: **최소 계약 초안 / 공유 계약 [PR #38](https://github.com/ABC2LAB/abc2lab-dast/pull/38) 병합 완료 (2026-10-22)**. 작성 이경준(webdiag·host·evidence). 이 문서는 **Host↔WebDiag 최소 타입·Protocol**의 설계 기록이며, 구현된 공유 타입은 `abc2lab_contracts.webdiag`와 `WebDiagPort`에 있다. 세션 바인딩·상태 전이·context 생명주기는 후속 [PR #40](https://github.com/ABC2LAB/abc2lab-dast/pull/40)으로 반영됐지만 발견·인증/whoami·관찰·교차 비교 전체 서비스는 후속이다. 공개 필드·상태는 [S1 API 상세 규격](s1-api-spec.md)과 병합된 공유 계약을 따른다.
 
 ## 1. 범위와 선행 의존
 
-이 초안은 **Host가 WebDiag를 호출하는 경계**(WebDiagPort)만 다룬다. WebDiag가 소비하는 Gateway/Policy/Session/Evidence 포트는 이미 `abc2lab_contracts.ports`에 있고, Host의 진입점(start_run/get_status/stop)·Knowledge 투영 제출·ReportInput/AuditExpectation은 **별도 후속 초안**이다(Host·Report·eval 담당과 함께).
+이 초안은 **Host가 WebDiag를 호출하는 경계**(`WebDiagPort`)를 다룬다. 공유 타입과 포트는 PR #38에서 구현됐다. WebDiag가 소비하는 Gateway/Policy/Session/Evidence 포트는 이미 `abc2lab_contracts.ports`에 있으며, Knowledge 투영 제출은 Host가 기존 `KnowledgePort.project`를 호출해 조정한다. Host 진입점(`start_run/get_status/stop`)·Report 입력/결과·`build_report`는 **여전히 구현되지 않은 별도 공유 계약**으로, Host/Report 담당자와 확정해야 한다.
 
 | 구분 | 타입 | 상태 |
 |---|---|---|
 | 재사용 (contracts 기존) | `RunKey`·`Ref`·`ResultStatus`·`ReasonCode`·`AttemptSummary`·`AuditLink` (primitives), `SessionHandle`·`SessionResult`·`SessionState`·`IdentityResult` (session), `Observation` (observation), `Candidate`·`CandidateHint` (knowledge), `ObservationProjected` (projection), `ComparisonProjected`·`StoredComparison` (evidence), `ExpectedAccessPolicySnapshot`·`CrossExecutionConfirmation` (registration) | 머지됨 |
-| **신규 (이 초안 제안)** | `SessionRequest`·`IdentityRequest`·`DiscoveryRequest`·`ObserveRequest`·`AccessCompareRequest`·`DiscoveryResult`·`ObserveResult`·`AccessCompareResult`·`WebDiagProjectionEvent`·`WebDiagPort` | 미구현 |
+| **신규 (이 초안에서 제안, 현재 구현됨)** | `SessionRequest`·`IdentityRequest`·`DiscoveryRequest`·`ObserveRequest`·`AccessCompareRequest`·`DiscoveryResult`·`ObserveResult`·`AccessCompareResult`·`WebDiagProjectionEvent`·`WebDiagPort` | **PR #38 병합**, `abc2lab_contracts.webdiag` |
 
 **선행:** C2 공통 타입과 위 재사용 타입이 선행이다(모두 머지됨). 신규 record는 그 타입을 재사용하며 **임의 dict·`Any`·사본을 만들지 않는다**. S1은 **HTTP 단일 경로**이므로 `web_observe`(브라우저)는 이 초안에서 제외한다.
 
@@ -79,15 +79,14 @@ type WebDiagProjectionEvent = ObservationProjected | ComparisonProjected
 
 이 신규 record들은 **감사 fingerprint 대상이 아니다**(요청/결과 전달 record). 내부에 담기는 `Observation`·`StoredComparison`·투영 이벤트는 이미 자기 payload adapter·벡터를 갖는다. 따라서 이 초안은 [공유 codec](fingerprint-contract.md)에 **새 payload adapter를 추가하지 않는다.** `WebDiagProjectionEvent` union 추가만 있으면 된다.
 
-## 5. 열린 질문·리뷰·적용 사례
+## 5. 원래 열린 질문의 해소·남은 검증
 
-**리뷰:** 이동찬(contracts 소유·구현), 최민준(gateway/judge 인접·교차 확인 재검증), 소비자=이경준(Host).
+**검토 경계:** 이동찬(contracts), 최민준(gateway/judge·교차 확인), 이경준(Host/WebDiag 제공자·소비자).
 
-**열린 질문:**
-1. 신규 record의 모듈 위치 — `contracts`에 `webdiag.py`(요청/결과)로 둘지, 기존 모듈에 분산할지. `WebDiagProjectionEvent`는 projection/evidence 타입을 import하므로 순환 없는 위치 필요.
-2. `DiscoveryRequest.max_candidates`와 `RunLimits.max_candidates`·`max_page_size` 정합(상한 중복 정의 방지).
-3. `ObserveResult`/`AccessCompareResult`의 `_validate_invariants`를 contracts에서 강제할지, WebDiag 구현 책임으로 둘지(기존 SessionResult는 contracts에서 강제 중 → 일관되게 contracts 강제 권장).
+1. **타입 배치 — 해결:** PR #38에서 요청·결과와 `WebDiagProjectionEvent`, `WebDiagPort`를 모두 `abc2lab_contracts.webdiag`에 구현했다. 서비스 내부 구체 구현과는 분리한다.
+2. **`max_candidates` — 계약 일부 구현, 서비스 검증 후속:** `DiscoveryRequest` 생성자는 양의 정수 여부를 검사한다. `RunLimits.max_candidates` 및 계정·run별 실행 예산의 실제 상한 교차 검증과 유한 수집은 WebDiag/Host 제공자 통합 테스트에서 확인한다. 현재 공유 생성자의 검사만으로 예산 적용 완료를 주장하지 않는다.
+3. **반환 상태 구조 검사 — 해결/후속 분리:** PR #38에서 `DiscoveryResult`, `ObserveResult`, `AccessCompareResult` 생성자의 COMPLETE/FAILED 관련 구조 조건을 일부 강제한다. producer 원본 감사 확인·실제 요청 바인딩·부분 근거·주체 확인과 같은 실행 의미는 제공자 통합 검증이 남아 있다.
 
 **적용 case:** S1-01(정상 관찰) · S1-05(주체 불명/만료 유보) · S1-06(한쪽 저장 → partial) · S1-10(B 자기 객체 없음) · S1-39(WebDiag의 Knowledge 의존 0, candidate 값 전달) · S1-40(동작별 request_ref 1회 발급).
 
-이 초안은 리뷰용 제안이며 계약 구현·fake·테스트 완료를 뜻하지 않는다. 구현은 C2 정합 확인 후 contracts PR(이동찬)과 webdiag 소비 PR에서 진행한다.
+**구현 경계:** 타입·포트는 #38로 병합 완료. 세션 바인딩·상태 전이·context 생명주기 일부는 #40으로 병합 완료. `collect`·`acquire_session`·`whoami`·`http_observe`·`access_compare`의 전체 제공자 흐름과 실제 실행/감사 통합은 후속이며, 이 문서의 제안 시점 문장을 기능 완료 증거로 삼지 않는다.

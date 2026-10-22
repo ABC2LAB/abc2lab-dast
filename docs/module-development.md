@@ -97,7 +97,7 @@ uv run --no-project --python 3.13.15 scripts/dev.py check all
 
 S1 병렬 개발은 [API 흐름·담당·로컬 fake 사례](planning/s1-api-draft.md)와 [API 상세 규격](planning/s1-api-spec.md)를 팀 리뷰 자료로 사용한다. I/O 서비스 포트는 async def로 정의하고 소비자는 await한다. 정책 조건·오라클·정규화의 순수 로직, 세션 메모리 snapshot 조회·캡처 인계/해제는 동기다. Host는 유한 큐·worker 1개로 시작하며 순서·취소·동시성 상한은 [비동기 실행 계약](planning/s1-api-spec.md#22-비동기-호출과-작업-실행)을 따른다.
 
-로컬 fake도 포트의 async/def를 일치시키고, pytest-asyncio strict 설정에서 `@pytest.mark.asyncio`로 검사한다. Event·fake clock으로 지연·취소·경합을 재현하며 Task/캡처/lease가 남지 않는지 확인한다. 상세 규격의 필수 필드·반환 상태·수명·감사 확인 포트와 S1-01~28 수용 사례는 후속 구현 대상이다. 제공자와 소비자는 자기 입력이 충분한지, 출력을 독립적으로 만들 수 있는지, 실패를 fake로 재현할 수 있는지 더블 체크한다. 실제 소비 경계부터 작은 계약 PR로 확정한다.
+로컬 fake도 포트의 async/def를 일치시키고, pytest-asyncio strict 설정에서 `@pytest.mark.asyncio`로 검사한다. Event·fake clock으로 지연·취소·경합을 재현하며 Task/캡처/lease가 남지 않는지 확인한다. 상세 규격의 필수 필드·반환 상태·수명·감사 확인 포트와 S1-01~42 중 아직 서비스로 검증되지 않은 수용 사례는 후속 구현 대상이다. 제공자와 소비자는 자기 입력이 충분한지, 출력을 독립적으로 만들 수 있는지, 실패를 fake로 재현할 수 있는지 더블 체크한다. 실제 소비 경계부터 작은 계약 PR로 확정한다.
 
 [PoC 보고서 계약](planning/poc-report-design.md)은 Gateway의 실제 요청 최소 view → 로컬 Evidence의 등록 레시피/근거 저장 → Report의 재현 절차로 연결한다. S1-29~36에서 민감값 치환·요청 바인딩·무전송 보고·부분/취소 상태를 검증한다. [예시 보고서](examples/s1-poc-report.example.md)는 미실행 가상 문서이며 제품 입력이나 실제 진단 근거가 아니다. Report는 다른 모듈 DB나 Gateway 실행 포트를 직접 사용하지 않는다.
 
@@ -105,9 +105,11 @@ S1 병렬 개발은 [API 흐름·담당·로컬 fake 사례](planning/s1-api-dra
 
 C1의 import 경로와 snapshot 생성 예시는 [공개 API와 사용](planning/fingerprint-contract.md#22-c1-공개-api와-사용), 구현과 테스트의 확인 범위는 [C1 재검증](planning/s1-development-status.md#3-c1-구현-확인과-재검증)을 따른다. C1 통과를 업무 record의 운영 fingerprint 검증이나 S1 실행 수용 사례 통과로 집계하지 않는다.
 
-C3의 [첫 캡처 계약 경계](planning/c3-c4-contract-draft.md#21-c3-a-캡처-계약-구현--병합-완료)는 [PR #26](https://github.com/ABC2LAB/abc2lab-dast/pull/26)으로 병합됐다. 이동찬의 `contracts`에 실행 전용 타입·동기 `LocalCapturePort`·무전송 예제를 제공하며 실제 인계·정리는 Gateway 최민준과 Evidence 이경준이 담당한다. seal/compare·공개 저장/조회·요청 레시피·복구의 공유 계약은 [C3 동결안](planning/evidence-c3-freeze.md)에 따라 [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27)에서 구현·리뷰 중이며 아직 main 반영 완료가 아니다. 실행 전용 타입을 Host·LLM·MCP·공개 저장에 전달하지 않는다.
+C3의 [첫 캡처 계약 경계](planning/c3-c4-contract-draft.md#21-c3-a-캡처-계약-구현--병합-완료)는 [PR #26](https://github.com/ABC2LAB/abc2lab-dast/pull/26)으로 병합됐다. 이동찬의 `contracts`에 실행 전용 타입·동기 `LocalCapturePort`·무전송 예제를 제공하며 실제 인계·정리는 Gateway 최민준과 Evidence 이경준이 담당한다. seal/compare·공개 저장/조회·요청 레시피·복구의 공유 계약도 [C3 동결안](planning/evidence-c3-freeze.md)에 따라 [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27)로 main에 병합됐다. Evidence 로컬 구현과 레시피 생성은 후속 PR #35·#36으로 반영됐으며 실제 Gateway 연동·내구 저장·재시작 복구는 후속이다. 실행 전용 타입을 Host·LLM·MCP·공개 저장에 전달하지 않는다.
 
-C4는 먼저 [Knowledge 공유 계약](planning/knowledge-c4-contract.md)으로 나눈다. `KnowledgePort`의 비동기 register_candidates/project/get_case_view와 후보·조회·네 종류의 원본 projection 자료형을 정의한다. Observation/Verdict/ExpectedPolicy fingerprint는 공유 wrapper를 사용한다. 현재 별도 C4 브랜치의 구현·검증 범위이며 병합·팀 승인 완료는 아니다. 실제 Knowledge 메모리 저장소·Host 조정·WebDiag/Judge/Report 서비스는 각 담당자가 구현하고 이 계약의 무전송 fake를 참고한다.
+C4-A [Knowledge 공유 계약](planning/knowledge-c4-contract.md)은 [PR #30](https://github.com/ABC2LAB/abc2lab-dast/pull/30)으로 main에 병합됐다. `KnowledgePort`의 비동기 register_candidates/project/get_case_view와 후보·조회·네 종류의 원본 projection 자료형을 사용할 수 있다. C4-B [Judge 공유 계약](planning/judge-c4-contract.md)도 [PR #39](https://github.com/ABC2LAB/abc2lab-dast/pull/39)로 병합됐으며 `JudgePort`·app 주입 `JudgePolicyReader`·`verdict.v2`를 제공한다. Judge 사유 9개의 제공자 매핑과 관련 xfail은 [PR #41](https://github.com/ABC2LAB/abc2lab-dast/pull/41)에서 해소됐다. 실제 Judge 호출 서비스와 ALLOWED 발행 검증은 여전히 후속이다.
+
+Host↔WebDiag의 타입·`WebDiagPort`는 [PR #38](https://github.com/ABC2LAB/abc2lab-dast/pull/38), WebDiag 세션 바인딩·상태 전이·context 생명주기는 [PR #40](https://github.com/ABC2LAB/abc2lab-dast/pull/40)으로 병합됐다. 발견·신원 확인·관찰·교차 비교 전체 흐름을 구현한 것은 아니다. Host의 start_run/get_status/stop과 Report의 ReportInput/ReportResult/build_report는 아직 설계에만 있으므로 담당자와 최소 공개 계약을 별도 PR로 확정한다. 실제 Knowledge 저장소·Host·Report·app 조립을 포함한 현재 구현과 다음 작업은 [S1 상태 §8](planning/s1-development-status.md#8-현재-서비스-구현과-남은-작업)을 따른다.
 
 [착수 상태·선행조건](planning/s1-development-status.md)에 따라 CLOSED/unmerged PR #8을 대기하지 않는다. C1·C2 병합으로 Policy/Gateway가 공유 타입·포트를 사용하는 무전송 fake 개발의 선행조건은 충족됐다. C3·C4의 추가 경계는 각 계약 PR로 연결한다. [공유 fingerprint API](planning/fingerprint-contract.md)는 모든 모듈이 같은 구현을 재사용한다. 저장 전에는 `PolicyDecisionContent`/`IdentityContent`의 fingerprint를 계산하고, 실제 감사 저장 후 받은 영수증을 `from_content()`로 붙인다. 최종 결과를 받는 포트와 영수증 검증 의무는 유지한다. 문서 판번호와 policy_input.v1은 별개다. RunRegistration은 app 내부 집계이며 각 서비스에는 필요한 snapshot만 주입한다.
 

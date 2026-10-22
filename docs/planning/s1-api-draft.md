@@ -1,6 +1,6 @@
 # S1 API 설계 개요 v0.5 — 상대 구현 없이 개발·테스트하기
 
-상태: **초기 설계안 / 팀 리뷰 반영 중**. 이 문서는 흐름·책임·개발 사례를 설명한다. **호출별 필수 필드·상태·수명·D1~D7의 선택안은 [S1 API 상세 규격](s1-api-spec.md)를 기준으로 검토한다.** I/O 비동기 실행, [PoC 포함 보고서](poc-report-design.md), [공유 fingerprint](fingerprint-contract.md)와 [계약 PR 선행조건](s1-development-status.md)을 포함한다. C1·C2 공유 계약은 병합됐으며, 전체 서비스 API·서비스 fake·S1 수용 사례와 최종 팀 합의의 완료를 의미하지 않는다.
+상태: **S1 흐름·책임·로컬 fake 개발 설명의 설계 개요 (v0.5 문서) / 2026-10-22 구현 현황은 별도 추적**. 이 문서는 당시 D1~D7 협의와 개발 사례의 기록이다. 최신 필드·상태·포트 집계는 [S1 API 상세 규격 v0.7](s1-api-spec.md), 실제 계약 병합·서비스 구현·미완료 항목은 [S1 상태 §8](s1-development-status.md#8-현재-서비스-구현과-남은-작업)를 우선한다. 문서의 설계 흐름은 실제 대상 통신 또는 S1 E2E 검증 완료를 뜻하지 않는다.
 
 목표: **상대 모듈의 완성을 기다리지 않고도 내 모듈을 개발·테스트할 수 있게 한다.** 제공자와 소비자는 아래의 작은 경계와 사례를 함께 검토한다. 모듈 내부 모델·저장 구조·클래스 구성은 각 담당자가 소유한다.
 
@@ -311,11 +311,11 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 
 ## 11. 병렬 착수·검증 순서
 
-1. **경계 리뷰·새 계약 PR:** 각 담당자가 §5에서 제공/소비 API와 §9 case ID를 표시하고 D1–D7 제안을 검토한다. PM이 변경 기록을 남긴다. [착수 상태](s1-development-status.md)에 따라 C1 codec은 PR #15, C2 실행 경계 계약은 PR #20으로 병합됐다. 각 담당자는 이 공유 계약으로 독립 개발하고 추가로 필요한 C3·C4 경계를 작은 계약 PR로 연결한다. CLOSED/unmerged PR #8은 선행조건이 아니다.
-2. **독립 구현:** §8의 첫 PR을 병렬 진행한다. I/O fake도 async def로 구현하고 순수 로직은 동기로 시험한다. 기존 S1-01~20과 상세 규격의 비동기 사례 S1-21~28을 Event·fake clock으로 검증한다. `uv run --no-project --python 3.13.15 scripts/dev.py check <module>`을 실행하며 구현 간 내부 import를 추가하지 않는다.
+1. **경계 리뷰·새 계약 PR:** C1~C4-A/C4-B와 Host↔WebDiag 공개 계약은 [착수 상태](s1-development-status.md)에 기록된 PR까지 병합됐다. 남은 Host `start_run/get_status/stop` 및 Report `build_report` 공유 타입·Protocol은 각 담당자와 작은 별도 계약 PR로 확정한다. Knowledge·app 등록은 기존 공개 계약으로 병렬 착수 가능하다. CLOSED/unmerged PR #8은 선행조건이 아니다.
+2. **독립 구현:** §8의 첫 PR을 병렬 진행한다. I/O fake도 async def로 구현하고 순수 로직은 동기로 시험한다. S1-01~42의 해당 모듈별 수용 사례를 Event·fake clock과 무전송 fake로 단계별 검증한다. 계획된 전 사례를 이미 검증했다고 표시하지 않는다. `uv run --no-project --python 3.13.15 scripts/dev.py check <module>`을 실행하며 구현 간 내부 import를 추가하지 않는다.
 3. **초기 조립:** 이동찬이 `app/tests/`에서 실제 외부 통신 없는 fake 시나리오를 조립한다. fake Gateway의 허용 시도 기록 1건은 실제 HTTP 전송 1건을 뜻하지 않는다. 실제 모듈 교체 때 제공자·소비자의 동일 case ID 결과를 비교한다. 전체 검사는 `check all`을 사용한다.
 4. **실제 통합:** 필요한 실행 허가·역할 분리·내구 감사·인증/예산·비밀 보호·실제 전송 통제를 검증한 경로만 테스트 앱에 연결한다. 실제 통합 통과를 fake 테스트와 구분한다.
 
 주요 위험과 대응: opaque 참조의 숨은 저장 구조 결합은 §5.3의 Gateway 소유/값 전달로 줄인다. 공용 타입 비대화는 경계별 최소 PR과 모듈 내부 소유로 제한한다. fake/실제 의미 불일치는 동일 case ID의 전송 기록·상태·근거/감사 연결 비교로 검증한다. 실제 내구성/인가를 fake 통과로 오인하지 않는다.
 
-현재 저장소에는 패키지 골격·환경 검사와 [C1 저수준 fingerprint codec](fingerprint-contract.md#22-c1-공개-api와-사용)이 구현돼 있다. 이 C2 변경은 최소 실행 타입·8개 포트, 운영 fingerprint adapter와 무전송 소비자 예제를 추가한다. 저장 전 내용과 최종 결과의 생성 순서는 [C2 lifecycle](fingerprint-contract.md#31-c2-precommit-내용과-최종-결과의-lifecycle), 검증·병합 상태는 [착수 상태](s1-development-status.md)를 따른다. 실제 서비스·영속 journal과 S1 전체 수용 사례는 후속 구현 대상이다. 문서 초안의 링크·JSON 예시 검사는 실행 수용 테스트를 대신하지 않는다.
+현재 main(2026-10-22, `8f6fdd2`)에는 C1·C2, C3 Evidence 계약(#26·#27), C4-A Knowledge 계약(#30), Host↔WebDiag 계약(#38), C4-B Judge 계약(#39)과 Judge ReasonCode 매핑(#41)이 병합됐다. Evidence 메모리 구현·PoC 요청 레시피(#35·#36)와 WebDiag 세션 기반(#40)도 부분 구현됐지만, 실제 S1 통합은 완료되지 않았다. Host의 시작/조회/중지, Report의 보고 요청/결과는 아직 공유 계약 미구현이며, Knowledge 저장소·app 등록 정본·조립·eval은 후속 개발이다. 이 문서의 C1/C2 첫 PR 표현은 당시의 개발 지침 이력으로만 읽고, 현행 구현·검증·남은 작업의 정본은 [S1 상태](s1-development-status.md#8-현재-서비스-구현과-남은-작업)를 따른다. 무전송 fake 검증을 실제 영속·대상 통신·S1 실행 성공으로 간주하지 않는다.

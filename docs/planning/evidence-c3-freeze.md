@@ -1,6 +1,6 @@
 # Evidence C3 공유 계약 동결안 (2026-10-22 보완)
 
-상태: **공유 contracts 구현 / 2026-10-22 감사 연결·진단 보완의 영향 담당 승인 대기**. 기존 단계별 계약 합의의 21~23번을 포함하며 이번 보완은 §6에 정리한다. 실제 Evidence 저장소·저널·캡처 실행 구현의 검증 또는 배포 완료를 뜻하지 않는다.
+상태: **C3 공유 contracts [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27) 병합 완료 / Evidence 로컬 구현 PR #35·#36 병합 / 실제 지속성·감사 통합·재시작 복구 검증 전 (2026-10-22)**. 기존 단계별 계약 합의의 21~23번과 2026-10-22 감사 연결·비교 신호 보완은 본 문서 §6에 유지한다. PR #27의 당시 리뷰 대기 문구는 역사적 상태다. 공유 계약 병합을 실제 Gateway/Evidence 전체 연결 또는 배포 완료로 해석하지 않는다.
 
 기준: [S1 API §7/§10](s1-api-spec.md), [C3 보완안](evidence-c3-contract.md), [PoC recipe §3](poc-report-design.md), [fingerprint v1](fingerprint-contract.md). 차이가 있으면 본 문서의 **복구 확장·receipt 순서·동시성** 확정 규칙을 적용한다. Gateway 시그니처와 C3-A의 원문 동기 캡처 계약은 그대로 유지한다.
 
