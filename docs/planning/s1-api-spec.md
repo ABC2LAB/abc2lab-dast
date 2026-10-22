@@ -12,6 +12,8 @@ v0.5 변경: Host의 Knowledge 등록·조회·투영 책임, WebDiag의 논리 
 
 v0.6 변경: C2 실행 경계에서 감사 영수증의 생성 순서를 명시했다. `PolicyDecisionContent`와 `IdentityContent`는 저장 전 fingerprint용 불변 내용이며, 내용 fingerprint → producer commit → `AuditReceipt` → 최종 결과 순서로 조립한다. 최종 `PolicyDecision`의 영수증과 verified `IdentityResult`의 영수증 필수 조건은 유지한다. C2의 contracts 구현·무전송 예제·검증 테스트 현황은 [착수 상태](s1-development-status.md)에 기록한다.
 
+v0.7 변경: C4-B Judge 공유 계약을 반영했다. Judge는 필수 `ReadContext`를 받고, app이 주입한 `JudgePolicyReader`가 case의 정본 기대 정책을 독립 조회한다. `Verdict`는 `ALLOWED`를 포함한 `verdict.v2`만 사용하며 S1 공개 포트 집계는 29개(비동기 26, 동기 3)다. 세부 불변식과 case↔정책 검증 경계는 [Judge C4-B 계약](judge-c4-contract.md)을 따른다.
+
 ## 1. 이번에 선택한 기준
 
 | 결정 | 현재 선택 | 검토할 담당 |
@@ -223,7 +225,7 @@ S1 Host는 같은 사례의 A 기준 요청과 B가 A 객체에 수행하는 교
 
 동일한 감사 Protocol은 여러 생산자가 구현해도 정의를 한 번만 센다. 데이터 타입·순수 codec 함수·Host 내부 포트·후속 web_observe/MCP 도구는 집계하지 않는다.
 
-| 제공자/영역 | async def (25개) | def (3개) |
+| 제공자/영역 | async def (26개) | def (3개) |
 |---|---|---|
 | Host | start_run, get_status, stop (3) | — |
 | WebDiag | collect, http_observe, access_compare, acquire_session, whoami (5) | read_session_binding (1) |
@@ -232,13 +234,14 @@ S1 Host는 같은 사례의 A 기준 요청과 B가 A 객체에 수행하는 교
 | Evidence | seal, compare_and_seal, recover_submission, store_evidence, evidence_read_summary (5) | capture, release_captures (2) |
 | Knowledge | register_candidates, project, get_case_view (3) | — |
 | Judge / Report | judge, build_report (2) | — |
+| app이 주입하는 등록 조회 경계 | read_case_policy (1) | — |
 | 생산자 감사 Protocol | verify_committed, read_audit (2) | — |
 
-현재 집계는 C3의 `recover_submission`을 포함한 총 28개다. 위 v0.3·v0.5 변경 이력의 27개는 이 복구 포트 추가 전 기준이다.
+현재 집계는 C3의 `recover_submission`과 C4-B의 `read_case_policy`를 포함한 총 29개(비동기 26개, 동기 3개)다. 위 v0.3·v0.5 변경 이력의 27개는 이 복구·정책 조회 포트 추가 전 기준이다.
 
 ### 3.2 C2 contracts 포트 범위
 
-C2에서 병렬 모듈 개발에 필요한 최소 contracts 포트는 다음 8개다. Gateway는 `prepare`, `execute`, `open_session_context`, `close_session_context`, Policy는 `evaluate`, Session은 동기 `read_session_binding`, 감사는 `verify_committed`, `read_audit`를 제공한다. 실행·감사 서비스는 모두 `async def`이고 `read_session_binding`만 같은 event loop의 불변 snapshot을 즉시 읽는 `def`다. 이는 S1 전체 27개 구현 완료를 뜻하지 않으며, 실제 journal·HTTP·브라우저·DB 구현과 권한 증명은 후속 단계다.
+C2에서 병렬 모듈 개발에 필요한 최소 contracts 포트는 다음 8개다. Gateway는 `prepare`, `execute`, `open_session_context`, `close_session_context`, Policy는 `evaluate`, Session은 동기 `read_session_binding`, 감사는 `verify_committed`, `read_audit`를 제공한다. 실행·감사 서비스는 모두 `async def`이고 `read_session_binding`만 같은 event loop의 불변 snapshot을 즉시 읽는 `def`다. 이는 당시 27개였고 현재 §3.1에서 29개로 확장된 S1 전체 포트의 구현 완료를 뜻하지 않으며, 실제 journal·HTTP·브라우저·DB 구현과 권한 증명은 후속 단계다.
 
 ## 4. 인증·세션 통제
 
@@ -425,20 +428,23 @@ at_revision=None이면 현재 일관된 snapshot을 가져온다. 지정한 revi
 
 | 시그니처 | 입력 | 출력 |
 |---|---|---|
-| `async def judge(JudgeRequest) -> JudgeResult` | `run_key, case_ref, submission_ref, expected_policy: ExpectedAccessPolicySnapshot?, owner_identity: IdentityResult?, evaluated_identity: IdentityResult?, comparison_ref: Ref?` | `run_key, status, verdict: Verdict?, projection_event: VerdictProjected?, reason_codes`. complete는 판정과 원본 이벤트를 함께 반환 |
+| `async def judge(JudgeRequest) -> JudgeResult` | `run_key, context: ReadContext, case_ref, submission_ref, expected_policy: ExpectedAccessPolicySnapshot?, owner_identity: IdentityResult?, evaluated_identity: IdentityResult?, comparison_ref: Ref?` | `run_key, status, verdict: Verdict?, projection_event: VerdictProjected?, reason_codes`. complete는 판정과 원본 이벤트를 함께 반환 |
+| `async def read_case_policy(JudgePolicyReadRequest) -> JudgePolicyReadResult` | `run_key, context: ReadContext, case_ref, expected_policy: ExpectedAccessPolicySnapshot?` | 등록 정본 정책 또는 정상 부재/조회 실패. 상세는 [C4-B 계약](judge-c4-contract.md) |
 | `async def build_report(ReportInput) -> ReportResult` | `run_key, context: ReadContext, tasks: tuple[TaskSummary], observations: tuple[Observation], comparisons: tuple[AccessCompareResult], verdicts: tuple[Verdict], audit_expectations: tuple[AuditExpectation]` | `run_key, status, report: DiagnosisReport?, reason_codes` |
 
 | Record | 필드 |
 |---|---|
-| `Verdict` | `run_key, verdict_ref, revision, case_ref, value: CONFIRMED/SUSPECTED/UNDECIDABLE, policy_check: CheckState, identity_check: CheckState, data_check: CheckState, expected_policy_source: SourceVersion?, comparison_ref: Ref?, evidence_refs, oracle_version: SourceVersion, source_event: AuditLink, reason_codes` |
+| `Verdict` | `run_key, verdict_ref, revision, case_ref, value: CONFIRMED/SUSPECTED/ALLOWED/UNDECIDABLE, policy_check: CheckState, identity_check: CheckState, data_check: CheckState, expected_policy_source: SourceVersion?, comparison_ref: Ref?, evidence_refs, oracle_version: SourceVersion, source_event: AuditLink, reason_codes` |
 | `AuditExpectation` | `producer, first_sequence: int, last_sequence: int?, expected_event_refs: tuple[Ref], request_refs: tuple[Ref], attempt_refs: tuple[Ref]`. Host가 조립. first_sequence=1은 독립 기대 시작 경계, last_sequence는 확인한 봉인 수위이며 미확인이면 None. 기대 refs가 없고 봉인된 빈 journal만 last_sequence=0을 허용 |
 | `AuditGap` | `producer, request_ref: Ref?, attempt_ref: Ref?, event_ref: Ref?, reason_code` |
 | `DiagnosisReport` | `run_key, report_ref, verdicts, send_counts: SendCounts, incomplete_task_refs: tuple[Ref], audit_completeness: complete/unknown, audit_gaps: tuple[AuditGap], evidence_refs: tuple[Ref], comparison_refs: tuple[Ref], comparison_limits: tuple[CaseLimit], pocs: tuple[PocReport], reason_codes` |
 | `CaseLimit` | `case_ref`, `status: ResultStatus`, `stored_evidence_refs: tuple[Ref]`, `comparison_ref: Ref?`, `reason_codes`. 판정 전 실패/partial 사례도 보존 |
 
-Judge는 Evidence 읽기 포트로 저장된 comparison과 모든 receipt를 가져와 실제 주체·유효 기간·자원·정책의 대응을 검증하며, 호출자가 임의로 구성한 StoredComparison을 신뢰하지 않는다. WebDiag의 verify_committed로 IdentityResult의 정확한 내용과 identity 감사 receipt도 확인한다. 주체/정책 유효성은 각 근거의 observed_at 당시 유효했는지 확인하며, 판정 시각에 이미 TTL이 지났다는 이유만으로 당시 유효한 근거를 버리지 않는다. 정책이 없거나 실행 당시 만료되었거나 자료를 검증할 수 없으면 `UNDECIDABLE` Verdict를 반환한다. 이는 판정 작업 자체는 완료되었으므로 JudgeResult.complete일 수 있다. Judge가 판정/감사를 저장하지 못하면 failed/None이다. 같은 submission_ref를 다시 호출하면 멱등이며, 자료를 읽지 못했다고 Gateway에 재전송을 요구하지 않는다.
+Judge는 Evidence 읽기 포트로 저장된 comparison과 모든 receipt를 가져와 실제 주체·유효 기간·자원·정책의 대응을 검증하며, 호출자가 임의로 구성한 StoredComparison을 신뢰하지 않는다. 기대 정책은 Host의 값만으로 권한을 부여하지 않고 app이 주입한 `JudgePolicyReader`가 정확한 등록 policy_ref·SourceVersion·불변 내용을 case 정본과 독립 검증한다. 다른 case의 진짜 정책은 `UNDECIDABLE + expected_access_policy_invalid`, 위조·출처 검증 실패·조회 장애는 `JudgeResult.failed`로 구분한다. WebDiag의 verify_committed로 IdentityResult의 정확한 내용과 identity 감사 receipt도 확인한다. 정상적인 정책 부재·신원 부재·비교 신호 부족은 `UNDECIDABLE`이며 `data_unverifiable` 같은 사유를 보존한다. 원본 변조·run/case/resource/subject 불일치·receipt 오류·검증 경계 장애는 FAILED이고 안전 판정으로 바꾸지 않는다. 이는 판정 작업 자체가 완료된 UNDECIDABLE과 구분된다. 같은 submission_ref를 다시 호출하면 최초 해결한 정책·SourceVersion·판정 기준 시각을 보존한 멱등 결과를 재사용하되 현재 호출 권한은 다시 확인한다. 새 submission의 현재 ALLOWED는 새 revision과 감사 이벤트를 만든다. 자료를 읽지 못했다고 Gateway에 재전송을 요구하지 않는다.
 
-다음 세 항목이 모두 yes일 때만 CONFIRMED다. (a) 신뢰할 수 있는 정책이 B를 명시적으로 금지하고 공유/위임 예외가 해결됨, (b) A/B가 유효하고 서로 다른 검증된 subject임, (c) 같은 A 객체의 정상적이고 비자명한 실제 데이터가 B의 교차 응답에 나타나며 반사/템플릿이 제외됨. 신호가 부족하지만 구체적인 이상 징후가 있을 때만 SUSPECTED이며, 200/HMAC/ID echo/owner_id만으로 승격할 수 없다. 기대 정책이 허용하거나 유효성이 불명확하거나 증거가 부족한 사례는 취약점으로 확정할 수 없다. 보고서에는 그 이유를 보존하고 ‘안전’ 결론을 꾸며내지 않는다.
+`JudgePolicyReadResult.COMPLETE`의 정책 정상 부재는 `expected_policy=None`과 정확히 `(EXPECTED_ACCESS_POLICY_MISSING,)`만 허용한다. 중복·추가 사유는 거부한다. `JudgeResult.FAILED`와 `JudgePolicyReadResult.FAILED`는 `contracts.reason_codes.CALL_AUDIT_FAILURE_REASON_CODES`의 사유만 하나 이상 허용하며, 정상 부재를 포함한 판정 진단 12개와 `COMPARISON_CANARY_PASSED`는 실패 사유와 섞여도 거부한다. 두 역할군의 enum 전수 분류와 명시적 실패 허용목록은 [C4-B 계약 §2](judge-c4-contract.md#reasoncode-분리)를 따른다.
+
+다음 세 항목이 모두 yes일 때만 CONFIRMED다. (a) 신뢰할 수 있는 정책이 B를 명시적으로 금지하고 공유/위임 예외가 해결됨, (b) A/B가 유효하고 서로 다른 검증된 subject임, (c) 같은 A 객체의 정상적이고 비자명한 실제 데이터가 B의 교차 응답에 나타나며 반사/템플릿이 제외됨. SUSPECTED는 정책 UNKNOWN이면서 (b)(c)가 모두 YES이고 비교·근거·사유가 있을 때만 가능하며, 200/HMAC/ID echo/owner_id만으로 승격할 수 없다. 정책이 없더라도 이 엄격한 조건이면 SUSPECTED가 가능하고, 조건이 부족하면 UNDECIDABLE이다. 검증된 직접 또는 공유/위임 허용은 ALLOWED이며 ‘전체 시스템 안전’ 결론을 의미하지 않는다. 실제 정책·신원·시각·출처 검증과 세부 조건은 [C4-B 계약](judge-c4-contract.md)을 따른다.
 
 Report는 각 생산자의 감사 페이지와 공개 Evidence를 읽고 다른 모듈의 DB는 읽지 않는다. 모든 기대 이벤트/요청 연관, 생산자의 시작·종료 수위와 필요한 저장 기록이 일치할 때만 audit complete이다. A/A 두 건은 기대한 A/B를 충족하지 못한다. 읽기에 실패해도 gap과 unknown을 붙인 partial 보고서를 생성할 수 있으며, 알려진 sent와 unknown을 보존하고 not_sent로 보완하지 않는다.
 

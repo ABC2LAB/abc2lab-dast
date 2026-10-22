@@ -69,6 +69,8 @@ class LocalCapturePort(Protocol):
 
 ## 3. C4 — Judge `judge` 경계
 
+C4-B의 정본은 [Judge C4-B 공유 계약](judge-c4-contract.md)이다. 이 초안은 C4-A/C4-B의 상위 흐름을 설명하며, 구현 필드·상태·정책 조회 경계가 다르면 정본을 따른다.
+
 읽기·감사·판정 저장을 포함하므로 **async** 포트다. 내부 (a)(b)(c) 오라클·정규화 비교는 동기 순수 함수로 두고 포트에서 await한다(§2.2).
 
 ```python
@@ -78,28 +80,30 @@ class JudgePort(Protocol):
 
 | Record | 필드 |
 |---|---|
-| `JudgeRequest` | `run_key: RunKey`, `case_ref: Ref`, `submission_ref: Ref`, `expected_policy: ExpectedAccessPolicySnapshot?`, `owner_identity: IdentityResult?`, `evaluated_identity: IdentityResult?`, `comparison_ref: Ref?` |
-| `JudgeResult` | `run_key: RunKey`, `status: ResultStatus`, `verdict: Verdict?`, `projection_event: VerdictProjected?`, `reason_codes: tuple[ReasonCode, ...]`. complete는 판정과 원본 이벤트를 함께 반환, failed는 둘 다 None |
-| `Verdict` | `run_key, verdict_ref: Ref, revision: Revision, case_ref, value: CONFIRMED/SUSPECTED/UNDECIDABLE, policy_check: CheckState, identity_check: CheckState, data_check: CheckState, expected_policy_source: SourceVersion?, comparison_ref: Ref?, evidence_refs: tuple[Ref, ...], oracle_version: SourceVersion, source_event: AuditLink, reason_codes` |
+| `JudgeRequest` | `run_key: RunKey`, `context: ReadContext`, `case_ref: Ref`, `submission_ref: Ref`, `expected_policy: ExpectedAccessPolicySnapshot?`, `owner_identity: IdentityResult?`, `evaluated_identity: IdentityResult?`, `comparison_ref: Ref?` |
+| `JudgeResult` | `run_key: RunKey`, `status: ResultStatus`, `verdict: Verdict?`, `projection_event: VerdictProjected?`, `reason_codes: tuple[ReasonCode, ...]`. complete는 판정과 원본 이벤트를 함께 반환하고 호출 사유는 비움. failed는 둘 다 None이며 명시적 호출·감사 실패 허용목록의 사유만 하나 이상 요구 |
+| `Verdict` | `run_key, verdict_ref: Ref, revision: Revision, case_ref, value: CONFIRMED/SUSPECTED/ALLOWED/UNDECIDABLE, policy_check: CheckState, identity_check: CheckState, data_check: CheckState, expected_policy_source: SourceVersion?, comparison_ref: Ref?, evidence_refs: tuple[Ref, ...], oracle_version: SourceVersion, source_event: AuditLink, reason_codes` |
 | `VerdictProjected` | `kind=verdict`, `event_ref, run_key, producer: Ref, source_revision: Revision, source_receipt: AuditReceipt, verdict: Verdict`. Judge가 원본 생산자, 전달자가 소유권을 바꾸지 않음(§8) |
 
-**입력 경계:** Judge는 `comparison_ref`로 저장된 `StoredComparison`을 Evidence 읽기 포트로 **직접 가져와** 주체·유효기간·자원·정책 대응을 재검증하며, 호출자가 구성한 StoredComparison이나 원문·`CaptureRef`를 입력으로 받지 않는다. **기대 정책 신뢰(이동찬 리뷰 A):** `expected_policy`는 `app`이 주입한 불변 snapshot(또는 검증 포트)으로만 신뢰하고, 그 `SourceVersion`을 등록 정책 원본과 독립 대조한다. 호출자가 구성해 전달한 정책 내용을 그대로 믿지 않으며, 다른 모듈 DB를 직접 읽지 않는다. 등록 원본과의 일치를 확인할 수 없으면 `policy_check=unknown`으로 `UNDECIDABLE`이다. Evidence 읽기는 기존 `ReadContext` 접근 권한 검사를 유지한다. `ComparisonRules`(정규화·canary)는 Judge가 소유·정의하고 `app`이 로컬 Evidence에 주입한다(§13-6). 주체/정책 유효성은 각 근거의 `observed_at` 당시로 판단하고, 판정 시각 TTL 경과만으로 당시 유효 근거를 버리지 않는다.
+**입력 경계:** Judge는 `comparison_ref`로 저장된 `StoredComparison`을 Evidence 읽기 포트로 **직접 가져와** 주체·유효기간·자원·정책 대응을 재검증하며, 호출자가 구성한 StoredComparison이나 원문·`CaptureRef`를 입력으로 받지 않는다. **기대 정책 신뢰(이동찬 리뷰 A):** `expected_policy`는 app이 주입한 `JudgePolicyReader`에 선택적 대조 값으로 전달한다. Reader는 등록 원본과 독립 대조하고 case의 정본을 조회한다. 다른 case에 속한 진짜 정책은 `UNDECIDABLE + expected_access_policy_invalid`, 위조·출처 검증·조회 장애는 `FAILED`로 구분한다. 호출자가 구성해 전달한 정책 내용을 그대로 믿지 않으며, Knowledge resolver나 다른 모듈 DB를 직접 읽지 않는다. Evidence 읽기는 기존 `ReadContext` 접근 권한 검사를 유지한다. `ComparisonRules`(정규화·canary)는 Judge가 소유·정의하고 `app`이 로컬 Evidence에 주입한다(§13-6). 주체/정책 유효성은 각 근거의 `observed_at` 당시로 판단하고, 판정 시각 TTL 경과만으로 당시 유효 근거를 버리지 않는다.
 
-**판정 규칙(§7, §9):** 세 `CheckState`가 모두 `yes`일 때만 `value=CONFIRMED`.
+등록 Reader의 정상 부재는 정확히 `(EXPECTED_ACCESS_POLICY_MISSING,)`이며 중복·추가 사유를 허용하지 않는다. 이 정상 부재 마커를 포함한 진단 12개와 canary 성공 마커는 두 Judge 결과의 FAILED에서 금지한다. enum 전수 분류와 실패 허용목록은 [C4-B Judge 계약 §2](judge-c4-contract.md#reasoncode-분리)를 따른다.
+
+**판정 규칙(§7, §9):** 세 `CheckState`가 모두 `yes`일 때만 `value=CONFIRMED`. `SUSPECTED`는 정책 UNKNOWN·서로 다른 검증 주체·비자명 교차 데이터·비교/근거·반사/템플릿 제외를 모두 요구한다. `ALLOWED`는 정책상 직접 또는 실제 공유/위임 허용이 검증된 경우이며 관련 없는 UNKNOWN이 직접 ALLOW를 막지 않는다. 다만 허용 여부를 무효화할 수 있는 UNKNOWN은 `UNDECIDABLE`이다. 세부 구조 조건과 등록 정책 reader는 [C4-B Judge 계약](judge-c4-contract.md)을 정본으로 한다.
 - (a) `policy_check`: 신뢰된 등록 정책이 B를 명시적 금지(`expected_access=deny`)하고 `sharing/delegation=resolved_none`. 표시 문구·owner 필드·목록 차이를 정책으로 승격하지 않음. 미해소·불명은 `no`/`unknown`.
 - (b) `identity_check`: A·B가 유효하고 서로 다른 검증된 subject(`owner_identity`·`evaluated_identity`의 `status=verified`). 만료·불명은 유보.
 - (c) `data_check`: 같은 A 객체의 정상·비자명 실데이터가 B 교차 응답에 나타나고 반사/템플릿 제외. `nontrivial_data_match=yes` + `reflection_excluded`/`template_excluded`. HTTP 200·HMAC 일치·ID echo·owner_id·공통 템플릿만으로 `yes` 불가.
 
-부족하지만 구체적 이상이 있으면 `SUSPECTED`, 정책 부재·실행 당시 만료·자료 검증 불가는 `UNDECIDABLE`. 판정 작업 자체는 완료이므로 `JudgeResult.complete`일 수 있다. 판정/감사 저장 실패는 `failed`/None. 자료를 못 읽었다고 Gateway 재전송을 요구하지 않는다.
+정상적인 정책 부재·실행 당시 만료·부족한 검증 신호는 `UNDECIDABLE`이며, 정책 UNKNOWN이지만 엄격한 신원·교차 데이터 조건이 모두 충족되면 `SUSPECTED`가 가능하다. 원본 변조·run/case/resource/subject 불일치·receipt 오류·검증 경계 장애는 `JudgeResult.failed`다. 판정 작업 자체가 완료된 UNDECIDABLE은 COMPLETE일 수 있다. 자료를 못 읽었다고 Gateway 재전송을 요구하지 않는다.
 
-**SUSPECTED/UNDECIDABLE 경계(이동찬 리뷰 D — 제안, SUSPECTED 정확한 허용 조건은 팀 합의 필요):**
+**SUSPECTED/ALLOWED/UNDECIDABLE 경계(C4-B 확정):**
 
 | 정책·신원·데이터 상황 | 권장 판정 |
 |---|---|
 | (a)(b)(c) 모두 검증됨 | `CONFIRMED` |
-| 일부 확정 근거 부족이나 구체적 이상 징후 존재 | `SUSPECTED` 가능 |
-| 등록 정책 부재 또는 실행 당시 유효성 확인 불가 | `UNDECIDABLE` |
-| 명시적으로 허용된 접근 | 취약점으로 확정하지 않음 |
+| 정책 UNKNOWN이고 서로 다른 검증 주체·동일 자원·비자명 교차 노출·반사/템플릿 제외 확인 | `SUSPECTED` |
+| 정상적인 정책 부재·유효성 불명이며 위 엄격한 신원/데이터 조건도 부족 | `UNDECIDABLE` |
+| 유효한 직접 또는 공유/위임 허용과 평가 주체 B의 신원 검증 | `ALLOWED` |
 
 **멱등성과 revision(이동찬 리뷰 C):** 판정 변경은 새 `revision`으로 남기고 과거를 덮어쓰지 않는다. 같은 입력의 재호출과 새 판정을 구분한다. `Verdict.source_event`와 `VerdictProjected.source_receipt`의 생성 순서는 아래 fingerprint 절에서 고정한다.
 
@@ -110,7 +114,7 @@ class JudgePort(Protocol):
 | 새 근거로 재판정 | 새 submission·새 `revision` 발행 |
 | 감사 저장 결과 불명 | 기존 기록을 조회·확인, 무조건 재발행하지 않음 |
 
-**fingerprint:** `Verdict`의 payload adapter·golden vector는 이 C4 PR에서 `record_kind=verdict`, `schema_version=verdict.v1`로 추가한다(모든 business field 포함, 자체 digest 없음 — [계약 §3](fingerprint-contract.md#3-record별-payload)). `Verdict.source_event`는 fingerprint 이전에 고정된 `Verdict`의 business field다. `VerdictProjected.source_receipt`는 투영 시 생성되며 `Verdict`의 필드가 아니다 — 투영은 이미 fingerprint된 `Verdict`를 감싸므로 `Verdict` fingerprint는 투영 순서·receipt와 무관하게 결정적이다.
+**fingerprint:** `Verdict`의 payload adapter·golden vector는 `record_kind=verdict`, `schema_version=verdict.v2`로 사용한다(모든 business field 포함, 자체 digest 없음 — [계약 §3](fingerprint-contract.md#3-record별-payload)). v1 Verdict vector·운영 호환 경로는 남기지 않고, 다른 record의 v1 codec/vector는 유지한다. `Verdict.source_event`는 fingerprint 이전에 고정된 `Verdict`의 business field다. `VerdictProjected.source_receipt`는 투영 시 생성되며 `Verdict`의 필드가 아니다 — 투영은 이미 fingerprint된 `Verdict`를 감싸므로 `Verdict` fingerprint는 투영 순서·receipt와 무관하게 결정적이다.
 
 적용 사례: S1-07(기대 정책 누락·예외 불명 → `UNDECIDABLE`/근거 있는 `SUSPECTED`), S1-08((a)(b)(c) 충족 → `CONFIRMED`), S1-09(반사·동적·공유/위임·오류/로그인·soft-404 반례에서 `CONFIRMED` 없음), S1-05(A/B 주체 불명·만료 → 유보).
 
@@ -127,7 +131,7 @@ class JudgePort(Protocol):
 
 리뷰의 상위 지적(A 신뢰된 등록 정책 독립 검증, B `RawResponse` 소유권·메모리, C 멱등성·revision)은 각각 §3·§2에 반영했다.
 
-**남은 팀 합의:** `SUSPECTED`의 정확한 허용 조건(어떤 '구체적 이상 징후'가 SUSPECTED를 정당화하는지). §3의 표는 방향 제안이며 확정 규칙이 아니다.
+`SUSPECTED`·`ALLOWED`·`UNDECIDABLE`의 구조 조건은 C4-B에서 확정했다. 구체적인 정책 원본·관찰 시각·멱등성·CAS·감사 원자성은 Judge 서비스 구현 전에 후속 합의·검증한다.
 
 **구현 PR에서 강화할 경계 테스트(기존 사례에 추가, 새 수용 사례 남발 금지):**
 

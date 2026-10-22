@@ -45,7 +45,7 @@ class ObservationProjected(ContractRecord):
 
 @dataclass(frozen=True, slots=True)
 class VerdictProjected(ContractRecord):
-    """Preserve the Judge verdict revision, source event and committed digest."""
+    """Preserve the Judge verdict revision, source event and verdict.v2 digest."""
 
     kind: AuditEventKind
     event_ref: Ref

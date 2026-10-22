@@ -36,16 +36,16 @@
 |---|---|---|---|
 | Observation | observation_ref | 불변 record `1` | `observation_fingerprint` / observation.v1 |
 | Comparison | comparison_ref | 불변 record `1` | C3 `comparison_fingerprint` / comparison.v1 |
-| Verdict | verdict_ref | verdict.revision | `verdict_fingerprint` / verdict.v1 |
+| Verdict | verdict_ref | verdict.revision | `verdict_fingerprint` / verdict.v2 |
 | ExpectedPolicy | policy_ref | policy.source.revision | `expected_policy_fingerprint` / expected_policy.v1 |
 
 세 새 wrapper는 정확한 타입·명시적 필드 집합·중첩 enum/tuple/UTC 시각을 hash 전에 검증한다. 모든 업무 필드와 미리 고정한 source_event를 포함하고 새 영수증을 payload에 넣지 않는다. 흐름은 **payload와 source event ID 고정 → fingerprint → 원본 producer commit → receipt → projection**이다. 기존 C1/C2/C3 bytes·벡터는 변경하지 않는다.
 
 `AuditReceipt.sequence`는 생산자의 감사 순번, `source_revision`은 원본 record 버전, `knowledge_revision`은 graph snapshot 버전이다. 서로 같다고 가정하지 않는다. 타입 생성 성공은 실제 commit·저장·인가의 증명이 아니다. Knowledge는 `app`이 주입한 신뢰된 생산자별 `AuditVerifier`와 Evidence 읽기 포트로 원본·출처·의존 자료를 독립 확인한다. PolicyRegistered는 신뢰된 등록 생산자에게만 허용한다. Host가 receipt나 producer를 다시 작성하지 않는다.
 
-Verdict 생성자는 CONFIRMED의 필요조건(3개 check 모두 YES, 정책 출처·비교·근거 ref 존재)만 검사한다. 다른 결론은 사유를 남긴다. 실제 정책·신원·데이터 검증과 SUSPECTED의 판정 기준은 Judge 소유이며 이 계약이 판정 알고리즘을 정의하지 않는다.
+Verdict 생성자는 CONFIRMED의 필요조건(3개 check 모두 YES, 정책 출처·비교·근거 ref 존재)과 C4-B의 `SUSPECTED`·`ALLOWED`·`UNDECIDABLE` 구조 조건을 검사한다. 실제 정책·신원·데이터 검증은 Judge 소유이며, 상세 계약은 [Judge C4-B 계약](judge-c4-contract.md)을 따른다.
 
-공유 `VerdictValue`의 wire 값은 명세대로 대문자다. 소문자 enum을 사용하는 Judge 내부 모델은 후속 제공자 어댑터에서 공유 VerdictValue·CheckState로 명시 변환한다. 내부 enum 객체를 공유 계약에 직접 넣지 않으며 이번 변경에서 Judge 구현을 수정하지 않는다.
+공유 `VerdictValue`의 wire 값은 명세대로 대문자다. PR #34의 기존 제공자 어댑터는 소문자 Judge 내부 enum을 공유 VerdictValue·CheckState로 명시 변환한다. C4-B는 내부 enum을 통합하지 않으며 ALLOWED 발행과 추가 사유 매핑은 Judge 담당자의 후속 PR이다. 내부 enum 객체를 공유 계약에 직접 넣지 않는다.
 
 ## 4. revision·멱등성·조회 한도 명확화
 
