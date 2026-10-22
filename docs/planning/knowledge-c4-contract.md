@@ -1,6 +1,6 @@
 # C4-A Knowledge 공유 계약
 
-상태: **공유 계약 구현·로컬 검증 완료 / [PR #30](https://github.com/ABC2LAB/abc2lab-dast/pull/30) 리뷰 중 (2026-10-22)**. 이동찬의 `contracts`와 관련 문서가 범위다. 선행 의존성인 C3 [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27)은 2026-10-22 병합됐다. C4-A는 아직 팀 승인 및 `main` 병합 전이며, `knowledge`의 실제 메모리 저장소·AGE 어댑터, Host/WebDiag/Judge/Report 서비스, `app` 조립은 후속 구현이다.
+상태: **공유 계약 구현·로컬 검증 완료 / [PR #30](https://github.com/ABC2LAB/abc2lab-dast/pull/30) 병합 완료 (2026-10-22)**. 이동찬의 `contracts`와 관련 문서가 범위다. 선행 의존성인 C3 [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27)은 2026-10-22 병합됐다. C4-A 공유 계약은 `main`에 반영됐으며, `knowledge`의 실제 메모리 저장소·AGE 어댑터, Host/WebDiag/Judge/Report 서비스, `app` 조립은 후속 구현이다.
 
 기준은 [S1 API §8](s1-api-spec.md#8-knowledge의-후보와-투영), [모듈 설계](module-design-confirmed.md), [fingerprint 계약](fingerprint-contract.md)이다. 목표는 Host와 Knowledge 담당자가 상대 구현 없이 같은 요청·결과·실패 사례로 개발하는 것이다.
 
