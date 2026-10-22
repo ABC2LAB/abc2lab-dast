@@ -15,6 +15,7 @@ from abc2lab_contracts.audit import (
 from abc2lab_contracts.evidence import (
     ArtifactKind,
     CompareOutcome,
+    CompareRequest,
     ComparisonPayload,
     ComparisonProjected,
     ComparisonSignals,
@@ -29,7 +30,11 @@ from abc2lab_contracts.evidence import (
     StoreOutcome,
     StoreReceipt,
 )
-from abc2lab_contracts.fingerprint import comparison_fingerprint, evidence_fingerprint
+from abc2lab_contracts.fingerprint import (
+    comparison_fingerprint,
+    evidence_fingerprint,
+    identity_content_fingerprint,
+)
 from abc2lab_contracts.ports import EvidencePort, ExecutionEvidencePort, LocalCapturePort
 from abc2lab_contracts.primitives import (
     AuditLink,
@@ -43,6 +48,7 @@ from abc2lab_contracts.primitives import (
 )
 from abc2lab_contracts.recipe import RecipeParameter, RegisteredRequestRecipe
 from abc2lab_contracts.registration import ComparisonRules
+from abc2lab_contracts.session import IdentityContent, IdentityResult
 
 STAMP = datetime(2026, 10, 21, tzinfo=UTC)
 
@@ -323,6 +329,63 @@ def test_evidence_recipe_none_has_nonsecret_reason() -> None:
     )
     assert without_recipe.request_recipe is None
     assert evidence_fingerprint(without_recipe) != evidence_fingerprint(evidence)
+
+
+def test_same_identity_ref_cannot_claim_distinct_verified_subjects() -> None:
+    payload = _comparison()
+    with pytest.raises(ValueError, match="same identity ref"):
+        replace(payload, evaluated_identity_ref=payload.owner_identity_ref)
+
+
+@pytest.mark.parametrize("state", [CheckState.NO, CheckState.UNKNOWN])
+def test_same_identity_comparison_preserves_negative_or_unknown_signal(state: CheckState) -> None:
+    payload = _comparison()
+    same_identity = replace(
+        payload,
+        evaluated_identity_ref=payload.owner_identity_ref,
+        signals=replace(payload.signals, distinct_verified_subjects=state),
+    )
+    assert same_identity.signals.distinct_verified_subjects is state
+    assert comparison_fingerprint(same_identity) != comparison_fingerprint(payload)
+
+
+@pytest.mark.parametrize("distinct_refs", [False, True])
+def test_same_subject_compare_request_is_preserved_for_signal_evaluation(
+    identity: IdentityResult, identity_content: IdentityContent, distinct_refs: bool
+) -> None:
+    evaluated = identity
+    if distinct_refs:
+        content = replace(
+            identity_content, identity_ref="identity-b", session_ref="session-b", account_ref="b"
+        )
+        receipt = identity.audit_receipt
+        assert receipt is not None and content.identity_ref is not None
+        evaluated = IdentityResult.from_content(
+            content,
+            replace(
+                receipt,
+                event_ref="event-identity-b",
+                binding=replace(
+                    receipt.binding,
+                    record_ref=content.identity_ref,
+                    record_fingerprint=identity_content_fingerprint(content),
+                ),
+            ),
+        )
+    request = CompareRequest(
+        identity.run_key,
+        "case",
+        "submission",
+        "resource",
+        "operation",
+        "capture-owner",
+        "capture-cross",
+        identity,
+        evaluated,
+        ComparisonRules(_source(), "normalizer", "oracle", "canary"),
+    )
+    assert request.owner_identity.subject_ref == request.evaluated_identity.subject_ref
+    assert (identity.identity_ref != evaluated.identity_ref) is distinct_refs
 
 
 @pytest.mark.parametrize("status", tuple(ResultStatus))

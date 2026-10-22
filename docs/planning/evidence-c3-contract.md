@@ -49,6 +49,8 @@ Gateway transport
 
 `EvidenceSummary.request_recipe`는 필수 nullable 필드다. 따라서 그 타입을 dict/Any나 임시 None 전용 타입으로 대신하지 않는다. 레시피 생성·민감값 치환 구현은 후속으로 둘 수 있지만, 공유 자료형은 EvidenceSummary와 같은 PR 또는 선행 PR에서 정의한다. 미지원이면 기존 계약대로 request_recipe=None과 사유를 보존한다. Report의 PoC 출력 타입과 Judge/Knowledge 포트는 이 구현 범위에 넣지 않는다.
 
+동일 주체 비교의 NO/UNKNOWN 보존과 같은 identity_ref의 distinct YES 거부는 [동결안 §6.3](evidence-c3-freeze.md#63-owner--evaluated-주체-구분-2026-10-22-보완)을 따른다. 레시피 부재 코드는 지원·공개 가능한 경로의 미생성/자료 누락이면 recipe_missing, 생성 경로 미구현/형식 미지원이면 recipe_unsupported, 안전한 공개 불가면 recipe_not_exportable이다. 중첩 조건·바인딩 실패와의 구분은 [동결안 §6.4](evidence-c3-freeze.md#64-레시피-부재-사유-선택-2026-10-22-보완)을 따른다.
+
 ## 4. 비교 저장·감사 수명주기
 
 `ComparisonPayload`는 이미 감사·저장 영수증이 없는 불변 업무 내용이다. `EvidenceSummary`도 감사 영수증 필드가 없고 미리 고정한 AuditLink만 가진다. 현재 필드 구조에는 별도 `ComparisonContent`·`EvidenceSummaryContent`가 필요하지 않다. 이는 최종 record가 실제 AuditReceipt를 필수 필드로 갖는 C2 PolicyDecision/IdentityResult와 다른 조건이다.

@@ -115,6 +115,11 @@ class ComparisonPayload(ContractRecord):
     def _validate_invariants(self) -> None:
         if self.owner_evidence_ref == self.cross_evidence_ref:
             raise ValueError("owner/cross must reference different evidence artifacts")
+        if (
+            self.owner_identity_ref == self.evaluated_identity_ref
+            and self.signals.distinct_verified_subjects is CheckState.YES
+        ):
+            raise ValueError("same identity ref cannot claim distinct verified subjects")
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,7 +290,7 @@ class SealResult(ContractRecord):
 
 @dataclass(frozen=True, slots=True, repr=False)
 class CompareRequest(ContractRecord):
-    """Private A/B capture handles and already-verified identity snapshots."""
+    """Private comparison input; subject distinctness is verified as a signal."""
 
     run_key: RunKey
     case_ref: Ref
@@ -306,7 +311,8 @@ class CompareRequest(ContractRecord):
             or self.evaluated_identity.run_key != self.run_key
         ):
             raise ValueError("comparison identity run mismatch")
-        # Valid/expired subject and source proof are independently checked by Evidence.
+        # Same-subject comparisons retain NO/UNKNOWN; this input cannot authorize transport.
+        # Subject validity and source proof are independently checked by Evidence/Judge.
 
 
 @dataclass(frozen=True, slots=True)

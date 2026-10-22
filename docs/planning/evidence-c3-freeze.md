@@ -98,7 +98,33 @@
 
 COMPARISON binding의 request_ref/attempt_ref/binding_id와 event의 send_status/account_ref/session_generation/policy_outcome은 None이다. event.case_ref는 payload.case_ref, evidence_refs는 `(owner_evidence_ref, cross_evidence_ref)` 순서다. EVIDENCE의 evidence_refs는 정확히 `(summary.evidence_ref,)`다. 두 종류 모두 verdict_refs는 비어 있고 EVIDENCE의 policy_outcome도 None이다. 비교에 한쪽 실행 계정이나 후속 Verdict를 섞지 않는다. `validate_comparison_audit`는 이 바인딩·fingerprint·신호/사유 일관성을 검사한다. 이는 순수 로컬 검사이며 저장/감사 진위를 증명하지 않는다. 감사 metadata는 comparison digest에 포함되지 않으므로 **주입된 생산자 reader/verifier의 동일 원본 보장과 불변 journal**을 통해 확인한다. 감사 읽기 실패나 사유 누락을 이유 없는 정상 비교로 처리하지 않는다.
 
-### 6.3 남은 리스크 (C3 타입 동결 범위 밖)
+### 6.3 Owner / evaluated 주체 구분 (2026-10-22 보완)
+
+**주체가 서로 다른지는 신호와 독립 검증으로 판정한다.** CompareRequest가 같은 identity_ref 또는 subject_ref를 받는 것 자체는 구조 오류로 거부하지 않는다. 유효한 동일 주체 관찰의 비교 결과도 NO로 저장할 수 있으며, 비교 COMPLETE는 저장·감사 완료이지 교차 IDOR 성립을 뜻하지 않는다. 이 요청은 이미 얻은 캡처의 비교 입력이며 같은 주체의 교차 전송을 허가하지 않는다. 실행 전 서로 다른 검증 주체를 요구하는 Policy/Gateway §6의 조건은 그대로다.
+
+| 독립 확인 결과 | distinct_verified_subjects |
+|---|---|
+| 두 신원 원본·관찰 당시 유효성·캡처/계정/세대 연결을 확인했고, 같은 대상의 신뢰된 주체 식별 체계에서 서로 다른 subject | YES |
+| 같은 조건으로 확인한 두 subject가 같음 | NO |
+| 신원·출처·유효성·식별 체계 대응 중 확인 불가 | UNKNOWN, COMPARISON 감사에 comparison_subjects_unknown 및 확인된 원인 코드 |
+
+서로 다른 identity_ref·account_ref·session_ref만으로 YES를 만들지 않는다. 같은 subject에 대한 별도 신원 확인·다른 계정 참조도 있을 수 있다. Evidence가 실제 IdentityResult와 원본 감사·저장 근거를 확인해 신호를 만들고 Judge는 다시 독립 확인한다. 주체가 같거나 미확인이면 CONFIRMED가 될 수 없다. 위조/캡처 바인딩 불일치를 정상 NO로 포장하거나, 신원 미확인을 NO로 바꾸지 않는다.
+
+**최소 구조 가드:** ComparisonPayload의 owner_identity_ref와 evaluated_identity_ref가 같은데 distinct_verified_subjects=YES이면 생성·fingerprint 전에 거부한다. NO/UNKNOWN은 보존한다. 서로 다른 ref라고 실제 주체가 다르다는 뜻은 아니므로, 이 가드가 Evidence/Judge의 원본 검증을 대신하지 않는다. 공개 필드·comparison.v1 bytes·기존 고정 벡터는 변경하지 않는다.
+
+### 6.4 레시피 부재 사유 선택 (2026-10-22 보완)
+
+request_recipe=None이면 recipe_reason_codes에 다음 세 코드 중 **주된 부재 원인 하나**를 선택한다. 상태만 추측해 채우지 않으며 본문·URL 값·인증 자료는 사유에 넣지 않는다. 레시피가 있으면 이 부재 코드는 붙이지 않는다.
+
+| 코드 | 생산자 선택 기준·예시 |
+|---|---|
+| recipe_missing | 현재 생산자가 지원하고 안전하게 공개 가능한 객체 GET인데 예상 레시피가 아직 생성되지 않았거나, 레시피 생성에만 필요한 등록 자료가 누락됨 |
+| recipe_unsupported | 현재 생산자가 해당 요청 형식/생성 경로를 지원하지 않음. 인증 POST·지원 밖 슬롯, 또는 생성 기능 자체가 아직 구현되지 않은 경우 |
+| recipe_not_exportable | 형식은 다룰 수 있어도 등록 공개 규칙상 비공개이거나, 비밀·실제 값을 고정 placeholder로 안전하게 치환할 수 없음 |
+
+여러 조건이 확인되면 공개 금지/안전한 치환 불가(not_exportable)를 우선하고, 그다음 구현 미지원(unsupported), 지원·공개 가능한 경로의 미생성/자료 누락(missing)으로 선택한다. 객체 GET이라는 이유만으로 이미 구현된 생성기를 가정하지 않는다. 그 외 상세 원인이 확인되면 관련 코드도 함께 보존한다. **실제 요청 view·등록 바인딩 불일치는 별도 실패**이며 위 세 부재 코드로 숨기지 않는다. 캡처/동작 바인딩 검증에 필요한 등록 자료까지 없으면 미확인/실패를 그대로 보존하며 recipe_missing만으로 완료 처리하지 않는다. 레시피만 없는 경우 기존 캡처·응답 근거·전송 사실은 유지한다. 미생성 사유는 나중에 불변 EvidenceSummary를 덮어쓸 권한이 아니다. PoC 제공 가능성과 봉인/비교 저장 완료는 구분한다.
+
+### 6.5 남은 리스크 (C3 타입 동결 범위 밖)
 
 1. Source가 **명시적으로 폐기**되었을 때 과거 Evidence의 소급 유효성은 등록 정책/이력 검증으로만 판단한다. 단순 revision 갱신과 구분하고 유효성 불명이라면 COMPLETE 금지.
 2. 같은 제출 기록이 내구 commit되었지만 아직 Payload가 생성되지 않은 상태에서 프로세스가 죽으면 그 원문으로부터 Payload를 재생성할 수 없다. 외부 저장소/감사 기록에 실제로 아무것도 없고 진행 I/O가 없음을 확정하면 FAILED다.

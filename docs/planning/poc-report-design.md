@@ -72,6 +72,8 @@ RegisteredRequestRecipe는 대상·입력 값을 새로 선택하는 실행 API�
 
 S1은 객체 GET·path/query 슬롯에 대해 일치가 확인되는 레시피만 발행한다. 정당한 인증용 POST·지원하지 않는 형식·공개할 수 없는 경로는 정상 capture_ref/응답 근거를 유지하고 request_recipe=None과 recipe_unsupported 또는 recipe_not_exportable을 남긴다. 이 제한은 인증 실행 실패를 뜻하지 않는다. 실제 view 불일치는 앞 절의 capture 실패와 원문 해제 규칙을 따른다. 호출자/자료 권한 검사는 기존 Evidence 읽기 계약을 따른다.
 
+생산자는 **지원·공개 가능한 경로의 미생성/자료 누락 → recipe_missing**, **형식 미지원 또는 생성 기능 미구현 → recipe_unsupported**, **비공개 규칙/안전한 placeholder 치환 불가 → recipe_not_exportable**로 구분한다. 중첩 조건의 우선순위와 실제 바인딩 불일치 처리 기준은 [C3 동결안 §6.4](evidence-c3-freeze.md#64-레시피-부재-사유-선택-2026-10-22-보완)를 따른다. 레시피 누락을 원 전송·응답 근거의 누락으로 바꾸지 않는다.
+
 ## 5. 상태와 완료 조건
 
 | PoC state | 의미 |
