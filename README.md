@@ -1,6 +1,12 @@
 # abc2lab-dast
 
-ABC2LAB DAST의 uv 멀티패키지 개발 워크스페이스입니다. C1 결정적 fingerprint codec([PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15))과 C2 실행 경계 타입·Protocol·운영 fingerprint·무전송 연결 예제([PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20))가 병합됐습니다. 실제 진단 서비스와 HTTP·DB 통합은 후속 구현 대상입니다. 담당 배정은 [모듈 개발 가이드](docs/module-development.md#담당-배정), 공유 착수 조건은 [S1 착수 상태](docs/planning/s1-development-status.md)를 따릅니다.
+ABC2LAB DAST의 uv 멀티패키지 개발 워크스페이스입니다. C1 결정적 fingerprint codec([PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15))과 C2 실행 경계 타입·Protocol·운영 fingerprint·무전송 연결 예제([PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20))가 병합됐습니다. C3 Evidence 공유 계약([PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27))과 C4-A Knowledge 공유 계약([PR #30](https://github.com/ABC2LAB/abc2lab-dast/pull/30))도 병합됐습니다. 실제 진단 서비스와 HTTP·DB 통합은 후속 구현 대상입니다. 담당 배정은 [모듈 개발 가이드](docs/module-development.md#담당-배정), 공유 착수 조건은 [S1 착수 상태](docs/planning/s1-development-status.md)를 따릅니다.
+
+## 최종 제품 형태
+
+최종 배포는 **`app`(웹 화면·API·진단 worker), `ollama`(로컬 모델), `db`(PostgreSQL+AGE)** 세 컨테이너를 Docker Compose로 기동하고 localhost에서 사용하는 로컬 웹을 목표로 합니다. 서비스별 패키지·책임 경계는 유지합니다. 상세 구성과 완료 기준은 [로컬 배포 설계](docs/planning/local-deployment.md)를 따릅니다.
+
+현재는 서비스·계약 개발 단계이며 웹 UI/API·전체 조립·Dockerfile·Compose 설정은 구현 전입니다. 모듈 개발과 기본 테스트는 아래 uv 환경으로 진행합니다.
 
 ## 개발 시작
 

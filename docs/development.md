@@ -46,6 +46,14 @@ PostgreSQL 드라이버는 Psycopg 3의 `binary,pool` extras를 사용한다. �
 
 PostgreSQL+AGE 서버/이미지 digest, ZAP/Nuclei 실행 파일과 검토 템플릿, 모델 공급자 SDK/가중치, UI 및 target-app 프레임워크는 이 의존성 설정에서 임의로 정하지 않는다. 설계의 해당 통합 단계에서 검증하고 고정한다. 설계 문서에 기록된 PG16/AGE1.6.0 PoC를 최종 배포 조합으로 취급하지 않는다.
 
+## 최종 제품의 로컬 배포
+
+2026-10-22 확정한 기본 제품 구성은 **`app`·`ollama`·`db` 세 컨테이너**다. `app`에 웹 화면·API와 진단 worker·서비스 구현을 묶고, Ollama는 로컬 추론, PostgreSQL+AGE는 영속 저장을 담당한다. 접속·영속 볼륨·모델/DB 장애·패키징 완료 기준은 [로컬 배포 설계](planning/local-deployment.md)를 따른다.
+
+현재 웹 UI/API와 Dockerfile·Compose 설정은 구현 전이며 위 구성은 배포 목표다. 팀원의 모듈 개발·기본 검사는 기존 uv 명령으로 계속하고, Docker·모델 다운로드·DB 기동을 선행조건으로 추가하지 않는다. Compose와 각 이미지·모델 버전, 포트·볼륨·CPU/GPU 조건은 제품 통합 단계에서 고정하고 검증한다.
+
+개발 단계의 제품 웹에는 [LLM 설정 화면](planning/local-deployment.md#21-개발용-llm-설정-화면)을 제공하는 것으로 정했다. 로컬 Ollama와 외부/내부 모델의 공급자·endpoint·모델·API 키·호출 한도를 설정하고 별도로 연결을 확인한다. 저장된 키 원문은 다시 표시하지 않으며 프로필 수정은 다음 run부터 적용한다. 현재 이 화면·설정 API·실제 모델 연결은 구현 전이고, 이를 위해 아직 없는 환경 변수나 SDK를 설치하도록 안내하지 않는다.
+
 ## Playwright 브라우저
 
 Python 패키지와 브라우저 바이너리는 별도 설치다. 기본 테스트는 브라우저 프로세스와 실제 대상 통신을 사용하지 않는다.
