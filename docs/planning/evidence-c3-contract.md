@@ -1,6 +1,6 @@
 # Evidence C3 계약 보완안
 
-상태: **공유 계약 동결(2026-10-21, 이동찬 확인) / Evidence 제공자·소비자 코드 리뷰 필요**. 세부 확정안은 [C3 동결안](evidence-c3-freeze.md)을 따른다. 이경준의 Evidence 소유 경계 제안을 검토해 [S1 상세 규격 §7·§10](s1-api-spec.md)과 [fingerprint 계약](fingerprint-contract.md)에 맞춘다. 이는 실제 Evidence 저장·감사 서비스 구현 완료를 뜻하지 않는다.
+상태: **C3 공유 계약 [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27) 병합 완료 / Evidence 메모리 구현 [#35](https://github.com/ABC2LAB/abc2lab-dast/pull/35)·레시피 생성 [#36](https://github.com/ABC2LAB/abc2lab-dast/pull/36) 부분 구현 완료 (2026-10-22)**. 이 문서는 당시 Evidence C3 보완 결정을 기록하며, 최종 공유 의미는 [C3 동결안](evidence-c3-freeze.md)을 따른다. 구현된 부분은 로컬 캡처·seal/compare·recover·레시피 및 메모리 저장소이고, 실제 Gateway 연계·지속성/감사/재시작 복구와 권한 통합 검증은 후속이다. 팀 승인 대기 표현은 병합 전 기록으로만 읽는다.
 
 ## 1. 이번에 고정한 의미
 

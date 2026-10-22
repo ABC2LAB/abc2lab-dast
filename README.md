@@ -1,6 +1,8 @@
 # abc2lab-dast
 
-ABC2LAB DAST의 uv 멀티패키지 개발 워크스페이스입니다. C1 결정적 fingerprint codec([PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15))과 C2 실행 경계 타입·Protocol·운영 fingerprint·무전송 연결 예제([PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20))가 병합됐습니다. C3 Evidence 공유 계약([PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27))과 C4-A Knowledge 공유 계약([PR #30](https://github.com/ABC2LAB/abc2lab-dast/pull/30))도 병합됐습니다. 실제 진단 서비스와 HTTP·DB 통합은 후속 구현 대상입니다. 담당 배정은 [모듈 개발 가이드](docs/module-development.md#담당-배정), 공유 착수 조건은 [S1 착수 상태](docs/planning/s1-development-status.md)를 따릅니다.
+ABC2LAB DAST의 uv 멀티패키지 개발 워크스페이스입니다. C1 결정적 fingerprint codec([PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)), C2 실행 경계([PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)), C3 Evidence([PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27)), C4-A Knowledge([PR #30](https://github.com/ABC2LAB/abc2lab-dast/pull/30)), C4-B Judge([PR #39](https://github.com/ABC2LAB/abc2lab-dast/pull/39))와 Host↔WebDiag([PR #38](https://github.com/ABC2LAB/abc2lab-dast/pull/38))의 공유 계약이 main에 병합됐습니다.
+
+2026-10-22, `8f6fdd2` 기준으로 서비스는 일부 로컬 구현 단계입니다. WebDiag 세션 기반([PR #40](https://github.com/ABC2LAB/abc2lab-dast/pull/40))과 Judge 사유 코드 매핑([PR #41](https://github.com/ABC2LAB/abc2lab-dast/pull/41))도 반영됐지만, Host·Report 공개 계약과 실제 서비스 연결·HTTP/DB 통합은 남아 있습니다. 담당 배정은 [모듈 개발 가이드](docs/module-development.md#담당-배정), 구현 범위와 다음 작업은 [S1 착수 상태](docs/planning/s1-development-status.md#8-현재-서비스-구현과-남은-작업)를 따릅니다.
 
 ## 최종 제품 형태
 
@@ -49,7 +51,7 @@ uv run --no-project --python 3.13.15 scripts/dev.py check knowledge
 - [모듈 설계](docs/planning/module-design-confirmed.md)
 - [S1 API 흐름·담당·개발 사례](docs/planning/s1-api-draft.md)
 - [S1 API 상세 규격](docs/planning/s1-api-spec.md) — 비동기 I/O·공유 fingerprint·Host 투영 조정·PoC 보고서, 팀 리뷰 반영 중 설계안
-- [S1 착수 상태·계약 PR 순서](docs/planning/s1-development-status.md) — C1·C2 병합 완료, 후속 경계별 개발 순서와 검증 범위
+- [S1 착수 상태·계약 PR 순서](docs/planning/s1-development-status.md) — C4-B까지의 계약 병합 이력, 현재 서비스 구현 범위와 남은 작업
 - [fingerprint 계약·사용법](docs/planning/fingerprint-contract.md) — C1 정규 바이트와 C2 운영 record별 fingerprint, 저장 전·후 결과의 생성 순서
 - [PoC 포함 보고서 설계](docs/planning/poc-report-design.md) · [미실행 가상 보고서 예시](docs/examples/s1-poc-report.example.md)
 
