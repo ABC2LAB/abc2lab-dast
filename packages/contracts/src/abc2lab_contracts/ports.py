@@ -28,6 +28,12 @@ from abc2lab_contracts.execution import (
     PolicyInput,
     PrepareResult,
 )
+from abc2lab_contracts.judge import (
+    JudgePolicyReadRequest,
+    JudgePolicyReadResult,
+    JudgeRequest,
+    JudgeResult,
+)
 from abc2lab_contracts.knowledge import (
     CandidateAck,
     CandidateSubmission,
@@ -43,6 +49,37 @@ from abc2lab_contracts.session import (
     SessionContextRequest,
     SessionContextResult,
 )
+
+
+class JudgePort(Protocol):
+    """Authorize every call and publish only independently verified committed verdicts.
+
+    ReadContext is excluded from semantic idempotency input, but cached results
+    still require current read authorization. Providers match result run/case to
+    the request and verify source records; constructor checks do not prove this.
+    """
+
+    async def judge(self, request: JudgeRequest) -> JudgeResult:
+        """Resolve the case policy and verify evidence before committing a verdict."""
+        ...
+
+
+class JudgePolicyReader(Protocol):
+    """Read a case policy from app-injected immutable registration provenance.
+
+    Authorize every read. Verify any supplied hint against its policy_ref,
+    SourceVersion and full registered content before resolving the case policy
+    independently. A complete result attests that this hint check succeeded;
+    its policy is the case's canonical policy, not a copy of the hint. A different
+    authentic hint is left for Judge to classify as UNDECIDABLE/policy-invalid.
+    Missing policy on a known case is distinct from an unknown case, forgery or
+    read failure. Only the latter fail the read. Match returned run/case to the
+    request. No constructor proves provenance, authorization or an audit commit.
+    """
+
+    async def read_case_policy(self, request: JudgePolicyReadRequest) -> JudgePolicyReadResult:
+        """Return a canonical policy or known absence; preserve source/read failures."""
+        ...
 
 
 class KnowledgePort(Protocol):

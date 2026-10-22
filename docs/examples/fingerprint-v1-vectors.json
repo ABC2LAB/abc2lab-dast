@@ -335,10 +335,10 @@
       "sha256": "5c701899691d845e2bbcb2130dec6d01afcf1d30c51dbf452515b382f8dd2df5"
     },
     {
-      "id": "verdict-v1-c4",
+      "id": "verdict-v2-c4",
       "validation_path": "production_adapter",
       "record_kind": "verdict",
-      "schema_version": "verdict.v1",
+      "schema_version": "verdict.v2",
       "payload": {
         "run_key": {
           "organization_ref": "org-c4",
@@ -372,8 +372,8 @@
           "comparison_incomplete"
         ]
       },
-      "canonical_utf8": "{\"codec_version\":\"canonical-json.v1\",\"payload\":{\"case_ref\":\"case-a\",\"comparison_ref\":\"comparison-a\",\"data_check\":\"unknown\",\"evidence_refs\":[\"evidence-owner\",\"evidence-cross\"],\"expected_policy_source\":null,\"identity_check\":\"yes\",\"oracle_version\":{\"issuer\":\"app\",\"revision\":2,\"source_ref\":\"comparison-rules\"},\"policy_check\":\"unknown\",\"reason_codes\":[\"comparison_incomplete\"],\"revision\":3,\"run_key\":{\"environment_ref\":\"env-c4\",\"organization_ref\":\"org-c4\",\"run_ref\":\"run-c4\",\"target_ref\":\"target-c4\"},\"source_event\":{\"event_ref\":\"event-verdict\",\"producer\":\"judge-producer\"},\"value\":\"UNDECIDABLE\",\"verdict_ref\":\"verdict-a\"},\"record_kind\":\"verdict\",\"schema_version\":\"verdict.v1\"}",
-      "sha256": "886a6d6a6117d5fc4d0239023a3dd2993017d82df7ddc007d74a11ee064f7476"
+      "canonical_utf8": "{\"codec_version\":\"canonical-json.v1\",\"payload\":{\"case_ref\":\"case-a\",\"comparison_ref\":\"comparison-a\",\"data_check\":\"unknown\",\"evidence_refs\":[\"evidence-owner\",\"evidence-cross\"],\"expected_policy_source\":null,\"identity_check\":\"yes\",\"oracle_version\":{\"issuer\":\"app\",\"revision\":2,\"source_ref\":\"comparison-rules\"},\"policy_check\":\"unknown\",\"reason_codes\":[\"comparison_incomplete\"],\"revision\":3,\"run_key\":{\"environment_ref\":\"env-c4\",\"organization_ref\":\"org-c4\",\"run_ref\":\"run-c4\",\"target_ref\":\"target-c4\"},\"source_event\":{\"event_ref\":\"event-verdict\",\"producer\":\"judge-producer\"},\"value\":\"UNDECIDABLE\",\"verdict_ref\":\"verdict-a\"},\"record_kind\":\"verdict\",\"schema_version\":\"verdict.v2\"}",
+      "sha256": "b5d580fb65eb5cffbd788a4af82185680885cd26874b8233c2a8b4f8df3cab1a"
     },
     {
       "id": "expected-policy-v1-c4",

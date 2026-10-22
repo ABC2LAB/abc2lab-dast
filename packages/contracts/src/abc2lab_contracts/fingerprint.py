@@ -796,7 +796,7 @@ _REGISTERED_RECORDS: tuple[_RecordRegistration, ...] = (
     _RecordRegistration(
         CODEC_VERSION,
         "verdict",
-        "verdict.v1",
+        "verdict.v2",
         Verdict,
         cast(Callable[[object], CanonicalValue], _verdict_payload),
     ),
@@ -907,7 +907,7 @@ def observation_fingerprint(value: Observation) -> str:
 
 
 def verdict_fingerprint(value: Verdict) -> str:
-    """Fingerprint exact verdict.v1 content, including the preallocated source link."""
+    """Fingerprint exact verdict.v2 content, including the preallocated source link."""
     if type(value) is not Verdict:
         raise TypeError("expected exact Verdict")
     return _registered_record_fingerprint(value)

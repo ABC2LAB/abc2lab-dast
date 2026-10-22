@@ -164,7 +164,7 @@ flowchart TB
 | `webdiag` | Web Diagnostic(관찰·비교·인증) | `collect`·`web_observe`·`http_observe`·`access_compare`·`acquire_session`·`whoami` | 세션 상태 |
 | `policy` | Safety Policy | `evaluate(plan, ctx) -> PolicyDecision` | 정책 판정 |
 | `gateway` | Web Execution Gateway + Vault | 실행 전용 `execute(plan, decision) -> CapturedObservation` | 요청 시도 |
-| `judge` | Independent Judge + 유형별 oracle | `judge(candidate, policy_ref, baseline_ref, cross_ref, compare_result, corroboration?) -> Verdict` | 판정 |
+| `judge` | Independent Judge + 유형별 oracle | `judge(JudgeRequest) -> JudgeResult`; app이 주입한 `JudgePolicyReader`를 소비 | 판정 |
 | `reasoner` | AI Reasoner·Context Builder·Model Adapter | `build_context`·`infer` (선택·제안만) | 없음 |
 | `report` | Report Service | `build_report(run) = 결과 + 감사 타임라인` | 보고 |
 | `mcp-*` | MCP 서버 2개 | 포트를 MCP Tools로 노출(얇은 어댑터) | 없음 |
@@ -218,11 +218,8 @@ class KnowledgePort(Protocol):
     # 도달/확정 가능한 미도달/판단불가와 지연·제한·완전성·근거 경로를 구분한다(§7).
 
 class JudgePort(Protocol):
-    def judge(self, candidate: CandidateEntry, policy_ref: str,
-              baseline_ref: EvidenceRef, cross_ref: EvidenceRef,
-              compare_result: CompareResult,
-              corroboration: Corroboration | None = None) -> Verdict: ...
-    # CONFIRMED / SUSPECTED / UNDECIDABLE. compare 일치는 보조. §7 (a)(b)(c) 전부 충족 때만 CONFIRMED.
+    async def judge(self, request: JudgeRequest) -> JudgeResult: ...
+    # C4-B: CONFIRMED / SUSPECTED / UNDECIDABLE / ALLOWED. 정책은 주입된 등록 reader로 확인.
 ```
 
 **캡처와 비교의 생명주기:** Gateway가 응답 수신 후 로컬 `capture`를 호출해 원문을 실행영역 메모리에 보관한다. `CaptureRef`는 run·대상·요청·계정/세션 세대·관찰 시점에 바인딩하고 실행영역 밖으로 내보내지 않는다. WebDiag의 `access_compare`가 내부 Gateway로 기준/교차 요청을 조정하고 두 캡처 참조로 `compare_and_seal`을 호출한다. Host는 이 작업을 요청할 뿐 원문/캡처 참조를 중계하지 않는다. 일반 관찰은 로컬 `seal` 후 민감값 제거 `Observation`·`EvidenceRef`만 반환한다.
@@ -262,7 +259,7 @@ class JudgePort(Protocol):
 
 > **⚠ slice 초안에서 폐기한 것:** `BA==AA ∧ BA≠BB`(해시 매치)를 **확정 근거로** 쓰는 4응답 오라클은 쓰지 않는다. 서버가 조회 없이 식별자만 반사해도(`{"id": 요청id}`) 두 식이 성립 → 입력 반사를 못 거른다([아키텍처 §11.4](mcp-architecture.md#114-지원-유형확정-한계통제-데모)). 이 비교는 **보조 신호**로만. R_BB(공격자 자기 객체)를 필수로 요구하지 않는다(아키텍처 §11.4: "B의 자기 주문 보유는 요구하지 않는다"). `OWNS`를 관찰로 투영하지 않는다("A가 X 조회"=관찰, "A가 X 소유"=정책 근거 필요한 결론, 아키텍처 §6.2).
 
-CONFIRMED 조건은 셋이며 **모두 별도로 확인**한다. 하나라도 부족·반례(반사·템플릿·공유·위임)면 CONFIRMED 안 쓰고 SUSPECTED/UNDECIDABLE(보수적 기본값).
+CONFIRMED 조건은 셋이며 **모두 별도로 확인**한다. 유효한 직접/공유/위임 허용은 ALLOWED다. 정책 UNKNOWN이고 엄격한 신원·교차 데이터 조건이 충족된 경우만 SUSPECTED이며, 나머지 정상적인 근거 부족은 UNDECIDABLE로 보존한다. 원본·감사 검증 장애는 호출 실패와 구분한다. S1의 구조 조건과 결과 의미는 [C4-B Judge 계약](judge-c4-contract.md)을 따른다.
 
 **(a) 기대 접근 정책** — 운영자가 신뢰된 창구에 사전 등록한 명시 정책(자원 종류·동작·허용/금지 주체·소유/공유/위임 예외·출처/버전·유효 범위)으로 정한다. 일반 웹 표시 문구·owner 필드·목록 차이를 명시 정책으로 자동 승격 금지. 보조 관찰 신호(비인증 요청 거부 등)는 정책 적용 여부 확인용일 뿐. [잔여 한계] 403은 자격 무관 이유로도 발생 → 거절 원인 확인된 범위에서만 단서. 공유/위임 미해소면 (a) 미충족. GT와 분리, 모든 비교군 동일 제공.
 
@@ -282,14 +279,15 @@ CONFIRMED 조건은 셋이며 **모두 별도로 확인**한다. 하나라도 �
 
 **조회 상한과 정책상 허용 깊이는 다르다.** 정상 위임이 3홉이고 실행 상한이 2홉이면 B를 못 찾았어도 미도달 확정이 아니라 판단불가다. 반면 현재 등록 정책 자체가 유효 위임 깊이를 2홉으로 제한하고 그 범위가 완전하게 반영/조회됐다면 그 정책 범위의 부재를 확인할 수 있다. 하나의 유효 경로로 도달을 입증하는 것과, 모든 관련 허용 경로가 없음을 확인하는 데 필요한 완전성도 구분한다.
 
-판정 의미는 다음과 같다. 실제 enum과 미확정 사유 코드는 후속 계약으로 고정한다.
+판정 의미는 다음과 같다. 아래 표는 S2 정책·그래프 의미를 설명하는 설계 배경이다. C4-B에서 확정한 `ALLOWED`·`SUSPECTED`·`UNDECIDABLE` 구조 조건과 ReasonCode는 [Judge C4-B 계약](judge-c4-contract.md)을 따른다.
 
 | 정책/조회 조건 | (b)(c)와 추가 전제 | 판정 의미 |
 |---|---|---|
 | 현재 정책이 B의 접근을 명시 금지하고 공유/위임을 포함한 예외·충돌이 해소됨 | (b)(c) 충족 | **CONFIRMED**. 위임 명시 불허는 위임 여부 불명과 다르며 S1의 확정 경로를 유지 |
-| 현재 정책이 위임을 허용하고 해당 자원/동작/시점에 유효한 정책 출처 경로로 B 도달 | 반증 경로와 정책/실제 계정·자원 맥락 확인 | 해당 인가 위반 가설의 반증·억제. 웹 전체가 정상이라는 뜻은 아님 |
+| 현재 정책이 위임을 허용하고 해당 자원/동작/시점에 유효한 정책 출처 경로로 B 도달 | 반증 경로와 정책/실제 계정·자원 맥락 확인 | **ALLOWED**. 해당 인가 위반 가설의 반증이며 웹 전체가 정상이라는 뜻은 아님 |
 | 위임 허용 정책의 해당 범위가 완전하고 유효한 경로가 없음 | 다른 허용 주체/공유/예외도 해소돼 B가 금지 대상임을 확인하고 (b)(c) 충족 | **CONFIRMED**. 단순한 빈 경로 결과만으로 확정하지 않음 |
-| 정책/예외 불명·충돌, 관찰 간선뿐/출처 불명, 잘림·지연·부분/실패 등으로 확인 불가 | (a)(b)(c) 중 미충족/미확인 사유 보존 | **SUSPECTED/UNDECIDABLE**. 정상으로 억제하거나 위반으로 확정하지 않음 |
+| 정상적으로 확인된 정책/예외 UNKNOWN 또는 관찰·조회 한계 | (b)(c)와 비교·근거 ref를 독립 확인 | **SUSPECTED**는 정책 UNKNOWN·서로 다른 검증 주체·교차 데이터 YES·비교/근거가 모두 있을 때만 가능. 신원/데이터도 부족하면 **UNDECIDABLE** |
+| 원본 변조·출처 검증 실패·읽기 장애 | 검증 자체의 실패 사유 보존 | **JudgeResult.FAILED**. 정상적인 정책 부재나 판단불가로 숨기지 않음 |
 
 S2는 정책 출처·적용 조건·제한/완전성·근거 경로가 판정과 반증에 연결되는지를 검증한다. 그래프 표현/AGE가 관계 테이블·재귀 CTE보다 우수하거나 필수라는 증명이 아니다. KG 채택은 유지하고 비교 우위 실험은 추가하지 않는다. 질의 의미·홉 상한·revision·간선 출처와 완전성은 §13-5를 따른다.
 
@@ -301,7 +299,7 @@ S2는 정책 출처·적용 조건·제한/완전성·근거 경로가 판정과
 
 **공격자 자기 응답 유무 (corroboration, 선택):**
 - B 자기 응답 가능: `교차==소유자 ∧ 교차≠B자기`는 **보조**. 비자명 실데이터 검증 병행 필수.
-- B 자기 객체 없음: 소유자 기준과의 비자명 실데이터 일치로 판정. 보조로 없을 법한 id의 통제 응답(R_ctrl) 비교 가능하나 부재 보장 불가 → 유효성·한계 기록. R_ctrl 미확보가 다른 충분 근거 검사를 막지 않음. 남는 반사·soft-404 위험은 SUSPECTED.
+- B 자기 객체 없음: 소유자 기준과의 비자명 실데이터 일치로 판정. 보조로 없을 법한 id의 통제 응답(R_ctrl) 비교 가능하나 부재 보장 불가 → 유효성·한계 기록. R_ctrl 미확보가 다른 충분 근거 검사를 막지 않음. 남는 반사·soft-404 위험 때문에 비자명 데이터 노출을 확인할 수 없으면 UNDECIDABLE이며 SUSPECTED로 승격하지 않는다.
 
 **보조 근거(단독 확정 금지):** 목록 차이(필터·페이지네이션·공유 링크), id-echo(입력 반사).
 
@@ -334,7 +332,7 @@ S2는 정책 출처·적용 조건·제한/완전성·근거 경로가 판정과
 - **정규화 규칙은 `app`이 `judge`→`evidence`로 주입.** evidence는 judge를 import 안 함(순환 차단). 규칙 타입만 `contracts`.
 - **교차 요청은 `access_compare`만.** 실제 전송 허용 조건의 정본은 §13-2이며 모든 교차 전송에서 확인한다. `web/http_observe`는 자기 자원만 관찰한다(§6 불변식).
 - **정책 결정은 구체 요청에 바인딩, Gateway가 재검증**(이중 방어). 리다이렉트·하위요청도 같은 경계.
-- **오라클 ≠ 확정.** judge의 유형별 oracle이 (a)(b)(c)를 확인하고, 조건 미충족은 SUSPECTED/UNDECIDABLE.
+- **오라클 ≠ 확정.** judge가 (a)(b)(c)를 독립 확인한다. SUSPECTED는 정책 UNKNOWN과 검증된 서로 다른 A/B·교차 데이터 YES·비교/근거 ref를 모두 요구한다. 다른 정상적인 근거 부족은 UNDECIDABLE, 검증된 정책 허용은 ALLOWED다.
 - **등록 질의는 유한 최대 홉·조회량/시간 상한**(무제한 `*0..` 금지, 아키텍처 §6.2). 상한과 정책 적용 맥락·완전성/최신성·제한 사유는 **포트 계약**이며 `store_memory`·`store_age`가 같은 의미로 반환한다. 제한에 걸린 미도달을 경로 부재로 바꾸지 않는다. 반증용 `DELEGATES` 간선은 등록 정책 출처와 해당 자원/동작/시점의 유효 조건을 모두 검증한다(§7 S2).
 - **reasoner는 gateway·policy를 호출 못 함.** 의존/import 검사와 실행 시 호출 권한으로 제한하며 기본 경로는 모델 없이 완주한다. (A14)
 
@@ -413,7 +411,7 @@ sequenceDiagram
 | 다른 자원/동작에만 유효하거나 만료/취소된 정책 간선 | 현재 접근의 정상 위임 반증으로 사용 금지. 나머지 유효 정책/예외·(b)(c)로 판정 |
 | 정책이 B 접근과 공유/위임 예외를 명시 금지, (b)(c) 충족 | S1과 같은 CONFIRMED 경로 유지 |
 | 위임 허용 정책의 해당 범위가 완전하고 유효 경로/다른 허용 예외가 없으며 (b)(c) 충족 | 완전성 근거를 연결한 CONFIRMED |
-| 관찰 위임만 있고 등록 정책/예외가 불명인 오염 사례 | 관찰 간선으로 억제 금지, SUSPECTED/UNDECIDABLE |
+| 관찰 위임만 있고 등록 정책/예외가 불명인 오염 사례 | 관찰 간선으로 억제 금지. 정책 UNKNOWN이고 서로 다른 검증 주체·비자명 교차 데이터·비교/근거가 모두 있을 때만 SUSPECTED, 나머지는 UNDECIDABLE |
 
 같은 의미의 fixture·상한·snapshot/프로필로 인메모리와 AGE 어댑터를 확인하며, 제한된 결과가 두 구현에서 일치해도 조회 완전성의 증명으로 바꾸지 않는다.
 
