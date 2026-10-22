@@ -334,6 +334,8 @@ Gateway가 다시 검증한다. Policy 기록이 실제 해당 binding/view의 a
 | not_sent | not_applicable | None | Gateway가 전송 단계에 진입하지 않았음을 증명할 수 있음 |
 | unknown | indeterminate | None | 전송 여부를 확인할 수 없음. 자동 재전송하지 않음 |
 
+`transport_not_entered`는 전송 전 검사를 모두 통과했더라도 실제 transport 단계에 **진입하지 않았음이 확인된** 시도의 공개 사유다. 정책 차단·취소·기한 만료 등 별도 원인이 밝혀진 경우에는 기존의 구체적인 사유를 사용한다. 전송 진입 이후 실제 전송 여부가 미확정되면 `unknown`을 유지하며, 이 코드를 이용해 `not_sent`로 낮추지 않는다.
+
 `AttemptSummary` 필드: `run_key, request_ref, attempt_ref, send_status, audit_links, reason_codes`. WebDiag는 각 인증·신원 확인·기준·교차 요청의 이 요약을 실패/partial인 경우에도 Host에 전달한다. 캡처/준비/context 핸들, 인증 신호 또는 원문은 포함하지 않는다. 아직 prepare/execute하지 않은 요청 없는 실패에 가짜 attempt를 만들지 않는다.
 
 `SendCounts` 필드: `sent: int, not_sent: int, unknown: int`. Host/Report는 고유 attempt_ref로 중복 제거한다. 같은 ID의 내용이 충돌하면 감사 상태는 unknown이다. 기록을 찾지 못했다고 not_sent로 보지 않고 감사 공백으로 남긴다. 중지할 때는 새 준비/전송을 먼저 금지한 뒤 정리하며, 이미 전송된 HTTP를 취소한다고 보장할 수 없다.
@@ -416,6 +418,8 @@ ExecutedRequestView·RegisteredRequestRecipe는 [PoC 계약 §3](poc-report-desi
 투영은 생산자가 저장한 이벤트를 읽는다. Knowledge는 app이 주입한 생산자의 verify_committed와 Evidence 요약 읽기 포트로 원본/출처와 의존성을 검증한다. 검증할 fingerprint는 투영 안의 실제 원본 payload에서 계산한다. ComparisonProjected는 StoredComparison.payload를 hash하고 receipt 세 개도 별도로 확인한다. 전달자인 Host가 소유권을 바꾸지 않는다. 존재하지 않는 Evidence, 출처 없는 이벤트, 같은 event_ref의 다른 내용은 모두 거부한다. 일시적으로 검증할 수 없으면 deferred를 사용하고 applied로 위장하지 않는다. 이미 완전히 적용된 같은 이벤트는 멱등적으로 duplicate를 반환한다. Graph는 작업/Policy/감사의 정본이 아니며 접근 관찰로 OWNS를 추론하지 않는다. S1은 메모리 graph를 사용하고 프로세스 재시작 시 각 정본에서 재구성할 수 있다.
 
 at_revision=None이면 현재 일관된 snapshot을 가져온다. 지정한 revision이 없거나 더 이상 읽을 수 없으면 failed/revision_unavailable을 반환하며 최신 값으로 조용히 바꾸지 않는다. limit를 초과하면 partial/truncated를 반환하고, 한 번의 limit 범위는 1–100이다. S1은 모든 메모리 snapshot의 무기한 보존을 약속하지 않으며, 이력 저장소가 없을 때는 현재 revision만 지원하고 이전 값을 명시적으로 거부한다.
+
+**C4-A 공유 계약 명확화(2026-10-21):** 세 메서드는 `contracts.ports.KnowledgePort`로 정의한다. [C4-A 계약](knowledge-c4-contract.md)은 후보/조회/투영의 상태·사유·run 불변식과 네 종류의 폐쇄 `ProjectionEvent`를 구현한다. 원본 Observation/Comparison revision은 1, Verdict는 verdict.revision, PolicyRegistered는 policy.source.revision이며 감사 sequence·graph revision과 구분한다. 초기 빈 graph revision은 1이고, applied/duplicate는 적용 revision, deferred/rejected는 revision None을 반환한다. duplicate는 최초 적용 revision을 보존한다. 조회 limit은 candidates+events 합계 상한이고 절단은 partial/truncated·result_limit_exceeded다. 실제 후보 병합·관련 이벤트 선택·인가·저장/감사 검증은 Knowledge 서비스 책임이며, 명시적으로 연결한 무전송 fixture의 통과를 해당 서비스 구현 완료로 집계하지 않는다.
 
 ## 9. Judge와 Report
 
@@ -503,11 +507,11 @@ TTL과 deadline에는 단조 시계를 사용하고 모듈 간 기록에는 명�
 
 | 사유 코드 그룹 | 초기 코드 |
 |---|---|
-| 입력/읽기 | `configuration_missing`, `not_found`, `access_denied`, `revision_conflict`, `revision_unavailable`, `snapshot_expired`, `idempotency_conflict`, `unsupported_authentication`, `queue_full` |
+| 입력/읽기 | `configuration_missing`, `not_found`, `access_denied`, `revision_conflict`, `revision_unavailable`, `result_limit_exceeded`, `snapshot_expired`, `idempotency_conflict`, `unsupported_authentication`, `queue_full` |
 | 계약 버전 | `unsupported_schema_version`. 문서 판번호로 대체하거나 알 수 없는 codec/kind/schema를 추측하지 않음 |
 | 준비/정책 | `policy_blocked`, `policy_view_mismatch`, `prepared_handle_invalid`, `prepared_handle_expired`, `prepared_handle_foreign_scope`, `prepared_handle_consumed`, `scope_mismatch`, `expected_access_policy_missing`, `expected_access_policy_invalid`, `cross_confirmation_missing`, `sharing_or_delegation_unknown` |
 | 세션/중지 | `identity_unknown`, `identity_mismatch`, `session_expired`, `session_generation_changed`, `session_busy`, `recovery_exhausted`, `cancelled`, `budget_exhausted`, `deadline_exceeded`, `cleanup_timeout`, `internal_error`, `scheduler_failed` |
-| 전송/증거/감사 | `send_acknowledgement_lost`, `capture_unavailable`, `capture_expired`, `capture_binding_mismatch`, `response_limit_exceeded`, `evidence_store_failed`, `cross_evidence_store_failed`, `comparison_incomplete`, `source_unverified`, `audit_commit_failed`, `audit_verification_unknown`, `audit_gap` |
+| 전송/증거/감사 | `transport_not_entered`, `send_acknowledgement_lost`, `capture_unavailable`, `capture_expired`, `capture_binding_mismatch`, `response_limit_exceeded`, `evidence_store_failed`, `cross_evidence_store_failed`, `comparison_incomplete`, `source_unverified`, `audit_commit_failed`, `audit_verification_unknown`, `audit_gap` |
 | 비교 감사 상태/사유 | `comparison_canary_passed/failed/unknown` 중 하나, `comparison_same_resource_unknown`, `comparison_subjects_unknown`, `comparison_owner_data_unknown`, `comparison_cross_data_unknown`, `comparison_data_match_unknown`, `comparison_reflection_unknown`, `comparison_template_unknown`. 정확한 문자열·신호 대응은 [동결안 §6.2](evidence-c3-freeze.md#62-unknown-사유와-canary-2026-10-22-확정) 참고 |
 | PoC | `recipe_missing`, `recipe_unsupported`, `recipe_not_exportable`, `recipe_binding_mismatch`, `poc_evidence_incomplete`, `poc_verdict_unconfirmed`, `poc_audit_incomplete` |
 
