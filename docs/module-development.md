@@ -107,6 +107,8 @@ C1의 import 경로와 snapshot 생성 예시는 [공개 API와 사용](planning
 
 C3의 [첫 캡처 계약 경계](planning/c3-c4-contract-draft.md#21-c3-a-캡처-계약-구현--병합-완료)는 [PR #26](https://github.com/ABC2LAB/abc2lab-dast/pull/26)으로 병합됐다. 이동찬의 `contracts`에 실행 전용 타입·동기 `LocalCapturePort`·무전송 예제를 제공하며 실제 인계·정리는 Gateway 최민준과 Evidence 이경준이 담당한다. seal/compare·공개 저장/조회·요청 레시피·복구의 공유 계약은 [C3 동결안](planning/evidence-c3-freeze.md)에 따라 [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27)에서 구현·리뷰 중이며 아직 main 반영 완료가 아니다. 실행 전용 타입을 Host·LLM·MCP·공개 저장에 전달하지 않는다.
 
+C4는 먼저 [Knowledge 공유 계약](planning/knowledge-c4-contract.md)으로 나눈다. `KnowledgePort`의 비동기 register_candidates/project/get_case_view와 후보·조회·네 종류의 원본 projection 자료형을 정의한다. Observation/Verdict/ExpectedPolicy fingerprint는 공유 wrapper를 사용한다. 현재 별도 C4 브랜치의 구현·검증 범위이며 병합·팀 승인 완료는 아니다. 실제 Knowledge 메모리 저장소·Host 조정·WebDiag/Judge/Report 서비스는 각 담당자가 구현하고 이 계약의 무전송 fake를 참고한다.
+
 [착수 상태·선행조건](planning/s1-development-status.md)에 따라 CLOSED/unmerged PR #8을 대기하지 않는다. C1·C2 병합으로 Policy/Gateway가 공유 타입·포트를 사용하는 무전송 fake 개발의 선행조건은 충족됐다. C3·C4의 추가 경계는 각 계약 PR로 연결한다. [공유 fingerprint API](planning/fingerprint-contract.md)는 모든 모듈이 같은 구현을 재사용한다. 저장 전에는 `PolicyDecisionContent`/`IdentityContent`의 fingerprint를 계산하고, 실제 감사 저장 후 받은 영수증을 `from_content()`로 붙인다. 최종 결과를 받는 포트와 영수증 검증 의무는 유지한다. 문서 판번호와 policy_input.v1은 별개다. RunRegistration은 app 내부 집계이며 각 서비스에는 필요한 snapshot만 주입한다.
 
 Host는 Knowledge 등록/조회/투영과 run/task/case ID를, WebDiag는 인증·whoami·복구·기준/교차 request_ref 발급을 맡는다. WebDiag에는 Knowledge 포트를 주입하지 않고 Host가 조회한 Candidate 값을 전달한다. 추가 수용 사례 S1-37~42는 codec·identity 매핑·투영 호출자·ID·등록 재검증·전송 직전 세션/예산 검사를 다룬다. 팀원의 개인 status.md/plan.md에도 새 계약 PR 선행조건을 적용한다.

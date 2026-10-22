@@ -137,6 +137,18 @@ EvidenceSummary는 감사 영수증 필드를 갖지 않으므로 별도 Evidenc
 
 C3 공유 계약 동결 패치에서는 evidence.v1/comparison.v1 typed wrapper·정확한 adapter·고정 벡터를 함께 추가한다. **서비스의 실제 저장·감사 구현 완료를 뜻하지 않는다.** 공유 타입·레시피 자료형·실패/멱등 수명주기의 구체 범위는 [Evidence C3 동결안](evidence-c3-freeze.md)을 따른다.
 
+### 3.4 C4-A Knowledge 투영 payload
+
+[Knowledge C4-A 계약](knowledge-c4-contract.md)은 다음 세 typed wrapper와 운영 adapter를 추가한다. `ObservationProjected`·`VerdictProjected`·`PolicyRegistered` 자체나 Candidate를 hash하지 않고, 각 이벤트의 실제 원본 payload를 hash한 뒤 원본 감사 receipt와 대조한다.
+
+| 함수 | 정확한 입력 | record kind/schema |
+|---|---|---|
+| `observation_fingerprint` | `observation.Observation` | observation / observation.v1 |
+| `verdict_fingerprint` | `verdict.Verdict` | verdict / verdict.v1 |
+| `expected_policy_fingerprint` | `registration.ExpectedAccessPolicySnapshot` | expected_policy / expected_policy.v1 |
+
+모든 업무 필드와 nullable 필드를 명시적으로 변환한다. Observation/Verdict의 자체 source_event는 fingerprint 전에 고정하며 payload에 포함한다. 원본 producer는 내용 fingerprint 계산·commit 이후 receipt와 projection을 조립한다. 이 세 payload에는 receipt가 없으므로 별도 precommit Content 타입은 필요하지 않다. wrapper·생성자 통과는 실제 commit·출처의 증명이 아니며 Knowledge가 주입된 생산자를 조회해 독립 검증한다. run/task wrapper와 Host 상태 payload는 후속 계약이다.
+
 ## 4. 고정 벡터와 후속 테스트
 
 정적 벡터는 [fingerprint-v1-vectors.json](../examples/fingerprint-v1-vectors.json)에 있다. C1의 `primitive-v1`과 C2 운영 벡터 5개 모두 정확한 `canonical_utf8`·SHA-256 일치를 테스트로 검증했다. 벡터 파일의 기존 내용은 유지하며, 이 일치가 실행 관문 통과나 실제 감사 내구성을 증명하지는 않는다.

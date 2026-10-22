@@ -1,6 +1,6 @@
 # S1 착수 상태와 계약 PR 순서
 
-확인 기준: 2026-10-22, C1 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)·C2 [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)·C3-A [PR #26](https://github.com/ABC2LAB/abc2lab-dast/pull/26) 병합, 후속 C3 [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27) 감사 연결·비교 진단 리뷰 보완 시점. 병합된 공유 계약을 사용하는 독립 개발의 선행조건은 충족됐으며 #27의 추가 계약은 아직 리뷰 중이다. 실제 서비스·영속 journal·S1 실행이나 대상 전송 허가의 완료를 뜻하지 않는다. 현재 담당 배정은 [모듈 개발 가이드](../module-development.md#담당-배정)를 따른다. 각 팀원의 개인 status.md/plan.md/CLAUDE.md는 이 저장소에 없으므로 여기서 수정하지 않는다.
+확인 기준: 2026-10-22, C1 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)·C2 [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)·C3-A [PR #26](https://github.com/ABC2LAB/abc2lab-dast/pull/26) 병합, 후속 C3 [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27) 병합 확인 시점. C3 공유 계약과 감사 연결·비교 진단 보완은 main에 반영됐고 C4-A는 로컬 개발 중이다. 실제 서비스·영속 journal·S1 실행이나 대상 전송 허가의 완료를 뜻하지 않는다. 현재 담당 배정은 [모듈 개발 가이드](../module-development.md#담당-배정)를 따른다. 각 팀원의 개인 status.md/plan.md/CLAUDE.md는 이 저장소에 없으므로 여기서 수정하지 않는다.
 
 ## 0. 현재 선행조건
 
@@ -13,7 +13,7 @@
 | [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15) | MERGED, C1 코드·테스트·계약 문서 | `primitive-v1` bytes/SHA-256 검증, 불변 snapshot 및 미등록 운영 record 거부 구현 |
 | [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20) | MERGED, C2 실행·세션·감사 계약 | 5개 운영 kind의 typed adapter, 저장 전 내용 타입, 8개 포트·무전송 예제 구현. 실제 서비스와 감사 내구성 구현은 후속 |
 | [PR #26](https://github.com/ABC2LAB/abc2lab-dast/pull/26) | MERGED, C3-A 동기 캡처 계약 | 실행 전용 타입·`LocalCapturePort`·무전송 예제 사용 가능. 실제 Gateway/Evidence 캡처 구현은 각 담당자 책임 |
-| [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27) | OPEN, 후속 C3 공유 계약 구현·리뷰 중 | Evidence·Comparison·recipe·저장/조회·봉인/복구 포트와 fingerprint 추가. main 반영·영향 담당 승인 완료로 표시하지 않음 |
+| [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27) | MERGED, 후속 C3 공유 계약과 리뷰 보완 | Evidence·Comparison·recipe·저장/조회·봉인/복구 포트와 fingerprint 사용 가능. 실제 제공자 구현·통합 검증 완료를 뜻하지 않음 |
 | [PR #14](https://github.com/ABC2LAB/abc2lab-dast/pull/14)·[PR #16](https://github.com/ABC2LAB/abc2lab-dast/pull/16) | MERGED, C3·C4 최소 계약 초안과 리뷰 반영 | capture·Judge 소유 경계의 문서 제안. C2나 C3·C4 구현·벡터·fake가 제공된 것은 아님 |
 
 Policy/Gateway 공개 포트와 그 fake의 공유 선행조건인 **C2 실행 경계 계약 PR #20의 병합이 완료됐다.** 각 담당자는 최신 main의 contracts를 사용해 상대 서비스 구현을 기다리지 않고 자기 모듈과 로컬 fake를 개발·시험한다. 폐기된 PR #8을 선행조건으로 삼지 않는다. 공개 계약 대신 임의 Any·dict·서비스별 타입 사본을 만들지 않으며, 추가로 필요한 C3·C4 경계는 작은 계약 PR로 정의한다.
@@ -24,7 +24,7 @@ Policy/Gateway 공개 포트와 그 fake의 공유 선행조건인 **C2 실행 �
 |---|---|---|---|
 | C1 fingerprint codec (**MERGED, PR #15**) | [정규 바이트·검증 경로](fingerprint-contract.md#21-정규-바이트와-운영-계약-검증의-분리), stdlib-only canonical codec·demo 저수준 벡터·빈 운영 registry의 거부 검사 구현 완료 | 공통 canonical codec 사용 가능. 운영 record fingerprint 발행은 C2 typed adapter 검증 범위로 이동 | mminjun·31-no3won·sleepingman1222 |
 | C2 실행 경계 (**MERGED, PR #20**) | 공통 Ref/RunKey/SourceVersion/상태, PolicyInput/Decision 및 필요한 등록·세션 snapshot, prepare/evaluate/execute·세션 읽기·commit 검증/감사 조회의 최소 Protocol. PolicyDecisionContent/IdentityContent precommit lifecycle, typed wrapper·adapter·운영 벡터와 무전송 예제 포함 | Policy/Gateway가 등록된 타입별 fingerprint와 contracts를 사용하는 병렬 개발·검증 | mminjun·31-no3won·sleepingman1222 |
-| C3 로컬 Evidence (**C3-A MERGED #26 / 후속 #27 리뷰 중**) | capture/release 타입·동기 포트·무전송 예제 병합. 후속 PR에서 seal/compare·민감값 제거 근거·ComparisonProjected·저장 receipt·PoC 요청 레시피·복구 계약 구현 | C3-A로 Gateway의 캡처 인계와 Evidence 로컬 fake 연결. 추가 공유 계약은 #27 병합 후 사용 | 31-no3won·mminjun |
+| C3 로컬 Evidence (**C3-A #26 / 후속 #27 MERGED**) | capture/release 타입·동기 포트·무전송 예제 병합. 후속 PR에서 seal/compare·민감값 제거 근거·ComparisonProjected·저장 receipt·PoC 요청 레시피·복구 계약 구현 | C3-A로 Gateway의 캡처 인계와 Evidence 로컬 fake 연결. 추가 공유 계약도 #27 병합으로 사용 가능 | 31-no3won·mminjun |
 | C4 발견·투영·보고 | Host/WebDiag의 hints/Candidate 전달과 이벤트·조회, Judge/Report 경계. 실제 소비 경계마다 별도 PR로 분할 | Host/Knowledge와 Judge/Report fake 연결, app에서 한 경계씩 교체 | 31-no3won·mminjun·sleepingman1222 |
 
 C2를 위해 C3/C4의 전체 도메인을 먼저 정의하지 않는다. 아직 없는 capture 서비스 등은 실제 연동 전 해당 소계약을 병합한다. C2만으로 전체 Gateway/Evidence 연동이나 S1이 완료된 것으로 표시하지 않는다. 후속 단계의 내부 로직은 필요한 계약 준비와 병행할 수 있다. C3·C4의 gateway/judge 소유 경계(capture·Judge)는 [C3·C4 최소 계약 초안](c3-c4-contract-draft.md)에서 병렬로 제안한다.
@@ -105,16 +105,24 @@ seal/compare·Evidence 공개 저장/조회·ComparisonProjected·요청 레시�
 
 2026-10-21, 이경준의 후속 제안을 검토하고 [Evidence C3 계약 보완안](evidence-c3-contract.md)을 기록했다. EvidenceSummary.source_event는 Evidence가 fingerprint 전에 고정하는 자체 artifact 감사 링크로 이동찬이 확인했다. Gateway 결과 commit을 capture 선행조건으로 두지 않는다. EvidenceSummary/ComparisonPayload에는 별도 Content 타입을 추가하지 않는다. 후속 구현과 리뷰 상태는 아래 §6으로 연결한다.
 
-## 6. 후속 C3 Evidence 계약 — PR #27 리뷰 중
+## 6. 후속 C3 Evidence 계약 — PR #27 병합 완료
 
-`feat/c3-evidence-contracts`에서 [C3 동결안](evidence-c3-freeze.md)의 공유 타입·실행 전용/공개 포트·recipe·`evidence.v1`/`comparison.v1` typed fingerprint와 고정 벡터를 구현했다. [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27)은 미병합이며 Evidence/WebDiag/Host와 Gateway/Judge/Report 담당자의 리뷰가 필요하다.
+`feat/c3-evidence-contracts`에서 [C3 동결안](evidence-c3-freeze.md)의 공유 타입·실행 전용/공개 포트·recipe·`evidence.v1`/`comparison.v1` typed fingerprint와 고정 벡터를 구현했다. [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27)은 2026-10-22 병합됐고 로컬 main과 C4 작업 브랜치에 반영했다. 각 담당자는 병합된 계약으로 실제 서비스 구현과 통합 검증을 이어간다.
 
 리뷰 보완으로 결과와 receipt의 run·상태·사유, 함께 제공된 payload의 fingerprint, Evidence/recipe의 동작·자원 일치와 경로 형태를 검증한다. 이동찬 확인에 따라 일부 저장 성공 후 나머지 복구가 불가능해도 성공 receipt는 `PARTIAL`에 보존한다. 무전송 fake는 등록과 다른 recipe가 저장 전에 거부됨을 검사하며 실제 인가·저장 서비스의 검증을 대신하지 않는다.
 
 2026-10-21 로컬 검증: `scripts/dev.py check contracts`의 Ruff lint/format·mypy 25개 파일·테스트 **172개**, 전체 기본 pytest **254개**·mypy **51개 파일**, Import Linter **6개 경계 유지·위반 0개**, contracts wheel·sdist 빌드 모두 통과했다. 실제 제출 내구 기록·감사·Lease/Fencing·재시작 복구는 Evidence 제공자의 후속 구현·검증 범위이며 이 결과에 포함하지 않는다.
 
-2026-10-22 리뷰 보완: [동결안 §6](evidence-c3-freeze.md#6-감사-연결비교-진단과-남은-리스크)에 EVIDENCE binding.attempt_ref → 주입된 Gateway ATTEMPT 감사 조회/검증 경로를 고정했다. 공개 AuditPage에 전체 AttemptRecord가 없다는 검증 한계를 명시하고, Gateway가 원본 digest·전송 metadata를 보장하도록 구분한다. 비교 UNKNOWN의 신호별 사유와 canary 3상태는 Evidence COMPARISON 감사 metadata에서 확인한다. `validate_evidence_audit`·`validate_comparison_audit`와 복구 kind/반환 타입/run을 검사하는 `validate_recovery_result`를 추가했다. evidence.v1/comparison.v1 payload와 기존 고정 벡터, capture 입력 및 서비스 포트 시그니처는 유지한다. 이 보완은 영향 담당자의 승인 대기이며 서비스 구현 완료가 아니다.
+2026-10-22 리뷰 보완: [동결안 §6](evidence-c3-freeze.md#6-감사-연결비교-진단과-남은-리스크)에 EVIDENCE binding.attempt_ref → 주입된 Gateway ATTEMPT 감사 조회/검증 경로를 고정했다. 공개 AuditPage에 전체 AttemptRecord가 없다는 검증 한계를 명시하고, Gateway가 원본 digest·전송 metadata를 보장하도록 구분한다. 비교 UNKNOWN의 신호별 사유와 canary 3상태는 Evidence COMPARISON 감사 metadata에서 확인한다. `validate_evidence_audit`·`validate_comparison_audit`와 복구 kind/반환 타입/run을 검사하는 `validate_recovery_result`를 추가했다. evidence.v1/comparison.v1 payload와 기존 고정 벡터, capture 입력 및 서비스 포트 시그니처는 유지한다. 이 보완은 PR #27에 포함됐으며 서비스 구현 완료가 아니다.
 
 보완 후 로컬 검증: `scripts/dev.py check contracts`에서 Ruff lint/format·mypy **26개 파일**·테스트 **230개 통과**(추가 회귀 사례 58개), `scripts/dev.py check all`에서 전체 pytest **312개**·mypy **51개 파일**·Import Linter **6개 경계 유지/위반 0개**, 전체 패키지 wheel·sdist 빌드와 외부 라이브러리 import smoke가 통과했다. 테스트는 순수 계약 검증이며 실제 Gateway/Evidence 감사 조회·commit·전송 증명의 통합 검증은 후속 제공자 책임이다. GitHub CI와 사람의 PR 승인은 이 로컬 검증과 별도로 확인한다.
 
 같은 날 추가 리뷰의 주체 구분·레시피 부재 기준을 [동결안 §6.3·§6.4](evidence-c3-freeze.md#63-owner--evaluated-주체-구분-2026-10-22-보완)에 반영했다. 동일 주체 비교를 NO/UNKNOWN으로 보존하되 같은 identity_ref의 distinct YES는 구조적으로 거부한다. recipe_missing/unsupported/not_exportable의 선택 기준은 생성·공개 능력에 따라 제공자가 판단하며 실제 바인딩 실패와 구분한다. 추가 신원 경계 회귀 **5개**, contracts **235개**·전체 **317개** 테스트와 기존 Ruff·mypy·6개 의존 경계·전체 패키지 빌드·import smoke가 통과했다. 다른 담당 서비스 구현과 fingerprint adapter·고정 벡터는 변경하지 않았다.
+
+## 7. C4-A Knowledge 공유 계약 — 로컬 구현·검증
+
+`codex/c4-knowledge-contracts`에서 [C4-A 계약](knowledge-c4-contract.md)의 비동기 `KnowledgePort` 3개 메서드, 후보·조회·투영 상태 타입과 폐쇄 `ProjectionEvent`를 추가한다. 선행 의존성 C3 #27이 병합된 최신 main에서 로컬 C4 작업을 이어가며, C4-A의 main 반영·팀 승인 완료는 아니다.
+
+Observation/Verdict payload와 원본 projection, 기존 ExpectedAccessPolicySnapshot의 projection을 최소 공유 자료형으로 정의하고 typed fingerprint wrapper·adapter·고정 벡터를 추가한다. 이 변경은 WebDiag·Judge·Report의 서비스/호출 포트나 Knowledge의 실제 메모리 저장소를 구현하는 범위가 아니다. 무전송 예제는 명시적으로 연결한 한 후보와 Observation으로 등록→조회→검증·투영→재조회를 재생한다. 이경준(Host/WebDiag/Evidence)·최민준(Judge/Policy/Report)의 영향 경계 리뷰가 필요하다.
+
+2026-10-21 로컬 검증: 격리 `check contracts`에서 Ruff·mypy 33개 파일·계약 테스트 221개, 전체 pytest 303개·mypy 55개 파일, Import Linter 6개 경계와 contracts wheel·sdist 빌드가 통과했다. 기존 fingerprint 벡터 8개를 유지하고 새 3개 wrapper의 정규 bytes·digest를 고정했다. 실제 서비스·통합·GitHub CI·팀원 승인 완료와 구분한다.
