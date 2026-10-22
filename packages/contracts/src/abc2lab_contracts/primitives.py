@@ -110,6 +110,7 @@ class ReasonCode(StrEnum):
     CLEANUP_TIMEOUT = "cleanup_timeout"
     INTERNAL_ERROR = "internal_error"
     SCHEDULER_FAILED = "scheduler_failed"
+    TRANSPORT_NOT_ENTERED = "transport_not_entered"
     SEND_ACKNOWLEDGEMENT_LOST = "send_acknowledgement_lost"
     CAPTURE_UNAVAILABLE = "capture_unavailable"
     CAPTURE_EXPIRED = "capture_expired"
