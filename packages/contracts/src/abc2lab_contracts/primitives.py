@@ -74,7 +74,7 @@ class ParameterLocation(StrEnum):
 
 
 class ReasonCode(StrEnum):
-    """S1 명세에 등록된 비밀 없는 실패·부분 결과 사유다."""
+    """S1 명세에 등록된 비밀 없는 감사 상태·실패·부분 결과 사유다."""
 
     CONFIGURATION_MISSING = "configuration_missing"
     NOT_FOUND = "not_found"
@@ -117,6 +117,16 @@ class ReasonCode(StrEnum):
     EVIDENCE_STORE_FAILED = "evidence_store_failed"
     CROSS_EVIDENCE_STORE_FAILED = "cross_evidence_store_failed"
     COMPARISON_INCOMPLETE = "comparison_incomplete"
+    COMPARISON_CANARY_PASSED = "comparison_canary_passed"
+    COMPARISON_CANARY_FAILED = "comparison_canary_failed"
+    COMPARISON_CANARY_UNKNOWN = "comparison_canary_unknown"
+    COMPARISON_SAME_RESOURCE_UNKNOWN = "comparison_same_resource_unknown"
+    COMPARISON_SUBJECTS_UNKNOWN = "comparison_subjects_unknown"
+    COMPARISON_OWNER_DATA_UNKNOWN = "comparison_owner_data_unknown"
+    COMPARISON_CROSS_DATA_UNKNOWN = "comparison_cross_data_unknown"
+    COMPARISON_DATA_MATCH_UNKNOWN = "comparison_data_match_unknown"
+    COMPARISON_REFLECTION_UNKNOWN = "comparison_reflection_unknown"
+    COMPARISON_TEMPLATE_UNKNOWN = "comparison_template_unknown"
     SOURCE_UNVERIFIED = "source_unverified"
     AUDIT_COMMIT_FAILED = "audit_commit_failed"
     AUDIT_VERIFICATION_UNKNOWN = "audit_verification_unknown"

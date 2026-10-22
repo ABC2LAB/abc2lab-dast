@@ -1,6 +1,6 @@
 # Evidence C3 계약 보완안
 
-상태: **설계 보완 / Evidence 자체 source_event는 이동찬 확인, 제공자·소비자 리뷰 대기 (2026-10-21)**. 이경준의 Evidence 소유 경계 제안을 검토해 [S1 상세 규격 §7·§10](s1-api-spec.md)과 [fingerprint 계약](fingerprint-contract.md)에 맞춘다. 이 문서는 후속 `contracts` 구현의 설계이며, 타입·포트·운영 fingerprint 구현 완료를 뜻하지 않는다. 현재 C3-A 캡처 계약은 [별도 구현 범위](c3-c4-contract-draft.md#21-c3-a-캡처-계약-구현--pr-리뷰-대기)를 따른다.
+상태: **공유 계약 동결(2026-10-21, 이동찬 확인) / Evidence 제공자·소비자 코드 리뷰 필요**. 세부 확정안은 [C3 동결안](evidence-c3-freeze.md)을 따른다. 이경준의 Evidence 소유 경계 제안을 검토해 [S1 상세 규격 §7·§10](s1-api-spec.md)과 [fingerprint 계약](fingerprint-contract.md)에 맞춘다. 이는 실제 Evidence 저장·감사 서비스 구현 완료를 뜻하지 않는다.
 
 ## 1. 이번에 고정한 의미
 
@@ -31,23 +31,25 @@ Gateway transport
 → AttemptResult
 ```
 
-응답의 원인인 Gateway attempt와 Evidence의 artifact 이벤트는 구분한다. 생산자 간 원인 연결은 `AuditEvent.causal_links`에서 표현한다. 필요한 Gateway 링크의 전달·조회 방식은 후속 Evidence/Gateway 경계 리뷰에서 고정하며, 이 문서만으로 SealRequest/CompareRequest에 새 필드나 새 감사 조회 포트를 추가하지 않는다. 어떤 방식이든 원문 인계 전에 Gateway 결과 commit을 기다리게 하지 않고, caller가 준 링크 자체를 commit 증명으로 취급하지 않는다.
+응답의 원인인 Gateway attempt와 Evidence의 artifact 이벤트는 구분한다. **2026-10-22 확정:** EVIDENCE binding.attempt_ref로 app이 주입한 Gateway의 ATTEMPT를 read_audit·verify_committed로 확인하고, 확인된 링크를 EVIDENCE AuditEvent.causal_links에 넣는다. ATTEMPT binding에는 같은 record_ref/attempt_ref와 request_ref가 필수다. EVIDENCE binding은 summary에서 재구성할 수 있도록 request_ref/binding_id=None이다. 전체 AttemptRecord를 받지 않는 이 경로는 신뢰된 생산자 원본 확인이며, 소비자가 전송 레코드 전체를 독립 재해시한 것으로 취급하지 않는다. snapshot·revision 충돌·unknown 처리와 Judge/Report 소비 절차는 [동결안 §6.1](evidence-c3-freeze.md#61-evidence와-실제-전송의-연결-2026-10-22-확정)을 따른다. 새 필드/포트를 추가하지 않으며 원문 인계 전에 Gateway 결과 commit을 기다리게 하지 않는다.
 
-## 3. 후속 contracts 구현 범위
+## 3. 이번 contracts 구현 범위
 
 필드는 [S1 §7](s1-api-spec.md#7-evidence-실행-전용과-공개-저장)과 [PoC 최소 타입](poc-report-design.md#3-최소-추가-타입)을 따른다. 기존 C2의 `ComparisonRules`·`IdentityResult`·`AuditLink`·감사 타입과 scalar/상태/사유를 재사용한다.
 
-| 묶음 | 추가할 계약 |
+| 묶음 | 구현한 공유 계약 |
 |---|---|
 | 공개 근거·비교 자료 | `EvidenceSummary`, `ComparisonSignals`, `ComparisonPayload`, `StoredComparison` |
 | 저장·조회 | `ArtifactKind(evidence/comparison)`, `StoreReceipt`, `RedactedBundle`, `StoreOutcome`, `EvidenceReadRequest`, `EvidenceReadResult` |
-| 로컬 봉인·비교 | `SealRequest`, `SealResult`, `CompareRequest`, `CompareOutcome`와 async `seal`·`compare_and_seal` |
+| 로컬 봉인·비교·복구 | `SealRequest`, `SealResult`, `CompareRequest`, `CompareOutcome`, `RecoverSubmissionRequest`, `EvidenceSubmissionKind`와 async `seal`·`compare_and_seal`·`recover_submission` |
 | 공개 저장·읽기 포트 | async `store_evidence`·`evidence_read_summary` |
 | 원본 비교 이벤트 | `ComparisonProjected`와 실제 Evidence producer의 감사 영수증 바인딩 |
 | 레시피 자료형 | `RecipeParameter`, `RegisteredRequestRecipe` |
 | fingerprint | `evidence.v1`·`comparison.v1`의 정확한 typed wrapper·payload adapter·운영 registry·고정 벡터 |
 
 `EvidenceSummary.request_recipe`는 필수 nullable 필드다. 따라서 그 타입을 dict/Any나 임시 None 전용 타입으로 대신하지 않는다. 레시피 생성·민감값 치환 구현은 후속으로 둘 수 있지만, 공유 자료형은 EvidenceSummary와 같은 PR 또는 선행 PR에서 정의한다. 미지원이면 기존 계약대로 request_recipe=None과 사유를 보존한다. Report의 PoC 출력 타입과 Judge/Knowledge 포트는 이 구현 범위에 넣지 않는다.
+
+동일 주체 비교의 NO/UNKNOWN 보존과 같은 identity_ref의 distinct YES 거부는 [동결안 §6.3](evidence-c3-freeze.md#63-owner--evaluated-주체-구분-2026-10-22-보완)을 따른다. 레시피 부재 코드는 지원·공개 가능한 경로의 미생성/자료 누락이면 recipe_missing, 생성 경로 미구현/형식 미지원이면 recipe_unsupported, 안전한 공개 불가면 recipe_not_exportable이다. 중첩 조건·바인딩 실패와의 구분은 [동결안 §6.4](evidence-c3-freeze.md#64-레시피-부재-사유-선택-2026-10-22-보완)을 따른다.
 
 ## 4. 비교 저장·감사 수명주기
 
@@ -66,6 +68,7 @@ Gateway transport
 - `ComparisonProjected`의 event_ref/producer/run/source_revision은 원본 comparison 감사 영수증과 결합한다. source_revision은 artifact record revision이며 감사 sequence나 규칙 버전으로 대체하지 않는다.
 - complete에는 저장·필수 감사 확인과 비교·원본 이벤트가 모두 필요하다. 일부 확인 실패·불명에는 성공한 receipt를 보존하고 완료 StoredComparison/Projection을 새로 발행하지 않는다. 감사 저장 불명은 같은 식별자로 재조회하며 대상 요청을 재전송하지 않는다.
 - Evidence는 기존 `AuditVerifier`·`AuditReader`를 구현한다. 새 범용 commit 서비스 포트는 추가하지 않으며 자기 journal의 쓰기는 Evidence 내부 구현 책임이다.
+- UNKNOWN인 비교 신호의 원인과 canary 3상태는 원본 COMPARISON AuditEvent.reason_codes에서 확인한다. payload에 필드를 추가하지 않는다. 생산자·소비자는 `validate_comparison_audit`로 신호/사유·case/근거 참조·내용 지문을 대조하고 실제 감사 commit을 별도 확인한다. 상세 코드와 불변 metadata 규칙은 [동결안 §6.2](evidence-c3-freeze.md#62-unknown-사유와-canary-2026-10-22-확정)를 따른다.
 
 ## 5. 담당과 후속 확인
 
@@ -77,6 +80,6 @@ Gateway transport
 | WebDiag·Host 소비·전달 | 이경준 |
 | Judge·Report 소비·비교 규칙 제공 | 최민준 |
 
-후속 계약 PR에서는 저장 전·후 fingerprint 일치, 동일 submission의 event_ref 재사용, 잘못된 producer/kind/ref/revision/내용 거부, 한쪽 근거 누락, 저장 성공 후 감사 실패·불명, 부분 receipt 보존과 무전송 재확인을 검사한다. 캡처 크기는 기존 C3-A의 **본문 + 모든 헤더 이름·값 UTF-8 bytes 합계 1 MiB** 기준을 따른다.
+이번 contracts 테스트는 완결 결과의 업무 내용/receipt fingerprint 일치, 잘못된 producer/kind/ref/revision/내용 거부, 성공 receipt의 같은 run·`PARTIAL` 보존, 미완료 사유 필수, 실패 조회의 자료 비공개를 검사한다. 등록과 다른 레시피를 저장 전에 거부하는 무전송 fake 예제도 포함한다. 상태의 정확한 의미는 [동결안 §5](evidence-c3-freeze.md#5-complete--partial--failed)를 따른다. 동일 submission의 event_ref 재사용, 한쪽 근거 누락과 저장·감사 실패/불명의 실제 복구·동시성 검증은 Evidence 제공자 구현에서 수행해야 한다. 캡처 크기는 기존 C3-A의 **본문 + 모든 헤더 이름·값 UTF-8 bytes 합계 1 MiB** 기준을 따른다.
 
 제안자가 보고한 Evidence 로컬 구현·격리 검사 결과는 제공자 측 진행 상황이며, 현재 공유 checkout에 그 구현이 제공됐거나 검증됐다는 의미는 아니다. 임시 `_c3_records.py`·fingerprinting 구현은 해당 담당자가 공유 계약 병합 후 import로 교체한다. 이동찬의 작업은 contracts와 관련 문서에 한정한다.

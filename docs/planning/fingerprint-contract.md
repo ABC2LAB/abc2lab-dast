@@ -99,6 +99,8 @@ receipt·자체 fingerprint를 제외하는 규칙을 필드명으로 재귀 검
 
 업무 record에 새 필드가 생기면 해당 변환자와 golden vector를 같은 계약 PR에서 갱신한다. 알 수 없는 record kind/version이나 필드 누락은 성공 fingerprint로 바꾸지 않는다.
 
+**C3 리뷰 보완(2026-10-22):** Gateway ATTEMPT와 Evidence의 연결은 AuditEvent.causal_links, 비교 신호의 UNKNOWN 사유와 canary 상태는 원본 COMPARISON AuditEvent.reason_codes에 둔다. 이 metadata는 EvidenceSummary/ComparisonPayload에 추가하지 않으므로 evidence.v1/comparison.v1의 bytes·고정 벡터는 그대로다. payload digest가 감사 metadata까지 암호학적으로 포함한다고 주장하지 않는다. 소비자는 주입된 생산자의 원본 reader·commit 검증과 불변 journal을 통해 metadata를 확인한다. 순수 `validate_evidence_audit`·`validate_comparison_audit`는 내용/참조/사유의 로컬 일관성 검사이며 실제 저장 증명이 아니다. 전체 AttemptRecord가 없는 소비자의 확인 범위와 담당 책임은 [C3 동결안 §6](evidence-c3-freeze.md#6-감사-연결비교-진단과-남은-리스크)을 따른다.
+
 ### 3.1 C2 precommit 내용과 최종 결과의 lifecycle
 
 `PolicyDecisionContent`는 최종 결정과 동일한 9개 업무 필드를, `IdentityContent`는 `IdentityResult`의 12개 감사 제외 필드를 보유한다. 두 타입은 producer가 저장하기 전 fingerprint를 계산하는 불변 값이다. 정상 경로는 `content → typed fingerprint → producer commit → AuditReceipt → from_content(content, receipt) → consumer recompute/verify` 순서다. `from_content`는 구조적으로 receipt를 붙일 뿐 실제 journal 내구성이나 commit 성공을 증명하지 않는다.
@@ -133,7 +135,7 @@ uv run --no-project --python 3.13.15 scripts/dev.py check contracts
 
 EvidenceSummary는 감사 영수증 필드를 갖지 않으므로 별도 EvidenceSummaryContent 없이 그 record의 전체 업무 내용을 fingerprint할 수 있다. ComparisonPayload도 이미 영수증 없는 비교 내용이며 별도 ComparisonContent를 만들지 않는다. 저장 receipt는 StoredComparison에, 원본 COMPARISON 감사 receipt는 ComparisonProjected에 결합하고 각 내용을 별도로 검증한다. record 자체 revision이 없는 artifact는 감사 바인딩 revision 1을 사용한다.
 
-후속 구현에서는 evidence.v1/comparison.v1 typed wrapper·정확한 adapter·고정 벡터를 함께 추가한다. **현재 이 두 운영 kind의 구현·registry 등록이 완료된 것은 아니다.** 공유 타입·레시피 자료형·실패/멱등 수명주기의 구체 범위는 [Evidence C3 계약 보완안](evidence-c3-contract.md)을 따른다.
+C3 공유 계약 동결 패치에서는 evidence.v1/comparison.v1 typed wrapper·정확한 adapter·고정 벡터를 함께 추가한다. **서비스의 실제 저장·감사 구현 완료를 뜻하지 않는다.** 공유 타입·레시피 자료형·실패/멱등 수명주기의 구체 범위는 [Evidence C3 동결안](evidence-c3-freeze.md)을 따른다.
 
 ## 4. 고정 벡터와 후속 테스트
 
