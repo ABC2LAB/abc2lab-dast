@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from hashlib import sha256
 
 from abc2lab_contracts.audit import AuditEventKind, AuditRecordBinding
 from abc2lab_contracts.capture import CaptureRequest, RawResponse, ReleaseCapturesRequest
@@ -20,7 +21,9 @@ from abc2lab_contracts.evidence import (
     ComparisonPayload,
     ComparisonProjected,
     ComparisonSignals,
+    EvidenceSubmissionKind,
     EvidenceSummary,
+    RecoverSubmissionRequest,
     RedactedBundle,
     SealRequest,
     SealResult,
@@ -40,6 +43,7 @@ from abc2lab_contracts.primitives import (
     SourceVersion,
     UtcTime,
 )
+from abc2lab_contracts.registration import ComparisonRules
 from abc2lab_contracts.session import IdentityResult, IdentityStatus
 
 from abc2lab_evidence.ports import (
@@ -61,6 +65,15 @@ class SealerConfig:
     redaction_version: SourceVersion
     new_ref: Callable[[], Ref]
     now: Callable[[], UtcTime]
+
+
+@dataclass(frozen=True, slots=True)
+class _SubmissionRecord:
+    """제출별 내구 기록(슬라이스 인메모리): 종류·바인딩 지문·발행 결과."""
+
+    kind: EvidenceSubmissionKind
+    binding: str
+    result: SealResult | CompareOutcome
 
 
 def _find_receipt(
@@ -92,8 +105,87 @@ class LocalSealer:
         self._mac = mac
         self._journal = journal
         self._config = config
+        self._submissions: dict[tuple[RunKey, Ref], _SubmissionRecord] = {}
 
     async def seal(self, request: SealRequest) -> SealResult:
+        """제출 멱등: 커밋된 동일 제출은 재캡처 없이 기존 SealResult를 반환한다."""
+        key = (request.run_key, request.submission_ref)
+        binding = self._seal_binding(request)
+        record = self._submissions.get(key)
+        if record is not None:
+            if record.kind is EvidenceSubmissionKind.SEAL and record.binding == binding:
+                if isinstance(record.result, SealResult):
+                    return record.result
+            return self._failed_seal(request.run_key, ReasonCode.IDEMPOTENCY_CONFLICT)
+        result = await self._run_seal(request)
+        self._record(key, EvidenceSubmissionKind.SEAL, binding, result)
+        return result
+
+    async def compare_and_seal(self, request: CompareRequest) -> CompareOutcome:
+        """제출 멱등: 커밋된 동일 제출은 재캡처 없이 기존 CompareOutcome을 반환한다."""
+        key = (request.run_key, request.submission_ref)
+        binding = self._compare_binding(request)
+        record = self._submissions.get(key)
+        if record is not None:
+            if record.kind is EvidenceSubmissionKind.COMPARE and record.binding == binding:
+                if isinstance(record.result, CompareOutcome):
+                    return record.result
+            return self._compare_failed(request.run_key, ReasonCode.IDEMPOTENCY_CONFLICT)
+        result = await self._run_compare(request)
+        self._record(key, EvidenceSubmissionKind.COMPARE, binding, result)
+        return result
+
+    async def recover_submission(
+        self, request: RecoverSubmissionRequest
+    ) -> SealResult | CompareOutcome:
+        """캡처 재취득·대상 재전송 없이 커밋된 제출의 현재 상태를 재조회한다."""
+        record = self._submissions.get((request.run_key, request.submission_ref))
+        if record is None:
+            return self._failed_for(request.kind, request.run_key, ReasonCode.NOT_FOUND)
+        if record.kind is not request.kind:
+            return self._failed_for(request.kind, request.run_key, ReasonCode.IDEMPOTENCY_CONFLICT)
+        return record.result
+
+    def _record(
+        self,
+        key: tuple[RunKey, Ref],
+        kind: EvidenceSubmissionKind,
+        binding: str,
+        result: SealResult | CompareOutcome,
+    ) -> None:
+        # 내구 artifact(성공 receipt)가 생긴 제출만 기록한다. 최초 기록 전 실패는 남기지 않는다.
+        if result.receipts:
+            self._submissions[key] = _SubmissionRecord(kind, binding, result)
+
+    def _failed_seal(self, run_key: RunKey, reason: ReasonCode) -> SealResult:
+        return SealResult(run_key, ResultStatus.FAILED, None, (), (reason,))
+
+    def _failed_for(
+        self, kind: EvidenceSubmissionKind, run_key: RunKey, reason: ReasonCode
+    ) -> SealResult | CompareOutcome:
+        if kind is EvidenceSubmissionKind.SEAL:
+            return self._failed_seal(run_key, reason)
+        return self._compare_failed(run_key, reason)
+
+    def _seal_binding(self, request: SealRequest) -> str:
+        return _submission_fingerprint(("seal", request.capture_ref, *_rules_parts(request.rules)))
+
+    def _compare_binding(self, request: CompareRequest) -> str:
+        return _submission_fingerprint(
+            (
+                "compare",
+                request.owner_capture_ref,
+                request.cross_capture_ref,
+                request.resource_ref,
+                request.operation_ref,
+                request.case_ref,
+                request.owner_identity.identity_ref or "",
+                request.evaluated_identity.identity_ref or "",
+                *_rules_parts(request.rules),
+            )
+        )
+
+    async def _run_seal(self, request: SealRequest) -> SealResult:
         """캡처를 민감값 제거 근거로 봉인·저장·감사하고 완료 시 Evidence를 반환한다."""
         capture = self._captures.acquire(request.run_key, request.capture_ref)
         if capture is None:
@@ -141,7 +233,7 @@ class LocalSealer:
                 ReleaseCapturesRequest(request.run_key, (request.capture_ref,))
             )
 
-    async def compare_and_seal(self, request: CompareRequest) -> CompareOutcome:
+    async def _run_compare(self, request: CompareRequest) -> CompareOutcome:
         """A/B 캡처를 비교·봉인하고 세 저장·감사가 모두 확인되면 완료 비교를 발행한다."""
         owner = self._captures.acquire(request.run_key, request.owner_capture_ref)
         cross = self._captures.acquire(request.run_key, request.cross_capture_ref)
@@ -344,6 +436,23 @@ class LocalSealer:
 
 def _incomplete_status(receipts: Sequence[StoreReceipt]) -> ResultStatus:
     return ResultStatus.PARTIAL if receipts else ResultStatus.FAILED
+
+
+def _rules_parts(rules: ComparisonRules) -> tuple[str, ...]:
+    return (
+        rules.source.issuer,
+        rules.source.source_ref,
+        str(rules.source.revision),
+        rules.normalizer_ref,
+        rules.oracle_ref,
+        rules.canary_profile_ref,
+    )
+
+
+def _submission_fingerprint(parts: tuple[str, ...]) -> str:
+    # 원문 capture_ref가 아니라 도메인 분리 지문만 기록해 제출 충돌을 대조한다.
+    joined = "\x1f".join(parts)
+    return sha256(f"evidence.submission.v1\x1f{joined}".encode()).hexdigest()
 
 
 def _distinct_subjects(owner: IdentityResult, evaluated: IdentityResult) -> CheckState:

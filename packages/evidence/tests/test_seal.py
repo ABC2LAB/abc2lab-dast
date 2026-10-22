@@ -19,7 +19,12 @@ from abc2lab_contracts.capture import (
     RawResponse,
     ReleaseCapturesRequest,
 )
-from abc2lab_contracts.evidence import CompareRequest, SealRequest
+from abc2lab_contracts.evidence import (
+    CompareRequest,
+    EvidenceSubmissionKind,
+    RecoverSubmissionRequest,
+    SealRequest,
+)
 from abc2lab_contracts.primitives import (
     CheckState,
     CloseResult,
@@ -291,3 +296,72 @@ async def test_compare_missing_capture_fails() -> None:
     assert outcome.status is ResultStatus.FAILED
     assert outcome.stored_comparison is None
     assert outcome.reason_codes == (ReasonCode.CAPTURE_EXPIRED,)
+
+
+@pytest.mark.asyncio
+async def test_seal_is_idempotent_without_recapture() -> None:
+    captures = _FakeCaptures()
+    captures.add("cap-1", _capture("owner"))
+    sealer = _sealer(captures)
+    first = await sealer.seal(SealRequest(_RUN, "submission-1", "cap-1", _RULES))
+    second = await sealer.seal(SealRequest(_RUN, "submission-1", "cap-1", _RULES))
+    assert first.status is ResultStatus.COMPLETE
+    assert second == first
+    # 재캡처 없이 기존 결과를 반환하므로 해제는 최초 1회뿐이다.
+    assert len(captures.released) == 1
+
+
+@pytest.mark.asyncio
+async def test_seal_same_submission_different_capture_conflicts() -> None:
+    captures = _FakeCaptures()
+    captures.add("cap-1", _capture("owner"))
+    captures.add("cap-2", _capture("owner"))
+    sealer = _sealer(captures)
+    await sealer.seal(SealRequest(_RUN, "submission-1", "cap-1", _RULES))
+    conflict = await sealer.seal(SealRequest(_RUN, "submission-1", "cap-2", _RULES))
+    assert conflict.status is ResultStatus.FAILED
+    assert conflict.reason_codes == (ReasonCode.IDEMPOTENCY_CONFLICT,)
+
+
+@pytest.mark.asyncio
+async def test_recover_returns_committed_seal() -> None:
+    captures = _FakeCaptures()
+    captures.add("cap-1", _capture("owner"))
+    sealer = _sealer(captures)
+    committed = await sealer.seal(SealRequest(_RUN, "submission-1", "cap-1", _RULES))
+    recovered = await sealer.recover_submission(
+        RecoverSubmissionRequest(_RUN, "submission-1", EvidenceSubmissionKind.SEAL)
+    )
+    assert recovered == committed
+
+
+@pytest.mark.asyncio
+async def test_recover_returns_committed_compare() -> None:
+    sealer = _sealer(_compare_captures())
+    committed = await sealer.compare_and_seal(_compare_request())
+    recovered = await sealer.recover_submission(
+        RecoverSubmissionRequest(_RUN, "submission-c1", EvidenceSubmissionKind.COMPARE)
+    )
+    assert recovered == committed
+
+
+@pytest.mark.asyncio
+async def test_recover_unknown_submission_fails() -> None:
+    recovered = await _sealer(_FakeCaptures()).recover_submission(
+        RecoverSubmissionRequest(_RUN, "nope", EvidenceSubmissionKind.SEAL)
+    )
+    assert recovered.status is ResultStatus.FAILED
+    assert recovered.reason_codes == (ReasonCode.NOT_FOUND,)
+
+
+@pytest.mark.asyncio
+async def test_recover_wrong_kind_conflicts() -> None:
+    captures = _FakeCaptures()
+    captures.add("cap-1", _capture("owner"))
+    sealer = _sealer(captures)
+    await sealer.seal(SealRequest(_RUN, "submission-1", "cap-1", _RULES))
+    recovered = await sealer.recover_submission(
+        RecoverSubmissionRequest(_RUN, "submission-1", EvidenceSubmissionKind.COMPARE)
+    )
+    assert recovered.status is ResultStatus.FAILED
+    assert recovered.reason_codes == (ReasonCode.IDEMPOTENCY_CONFLICT,)
