@@ -60,8 +60,9 @@ def undecidable_mapped_oracle() -> OracleVerdict:
 
 
 @pytest.fixture
-def undecidable_unmapped_oracle() -> OracleVerdict:
-    """데이터 검증 불가로 UNDECIDABLE. 유일한 사유 DATA_UNVERIFIABLE가 미대응이라 발행 불가."""
+def undecidable_data_unverifiable_oracle() -> OracleVerdict:
+    """데이터 검증 불가로 UNDECIDABLE. YES 근거 2개는 드롭되고 유일하게 남는 wire 사유가
+    DATA_UNVERIFIABLE다. C4-B(#39)로 공개 코드가 생겨 이제 발행 가능하다."""
     return OracleVerdict(
         value=VerdictValue.UNDECIDABLE,
         policy_check=CheckState.YES,
