@@ -29,6 +29,7 @@ _VALUE_MAP: dict[JudgeVerdictValue, VerdictValue] = {
     JudgeVerdictValue.CONFIRMED: VerdictValue.CONFIRMED,
     JudgeVerdictValue.SUSPECTED: VerdictValue.SUSPECTED,
     JudgeVerdictValue.UNDECIDABLE: VerdictValue.UNDECIDABLE,
+    JudgeVerdictValue.ALLOWED: VerdictValue.ALLOWED,
 }
 
 # 값은 같아도 내부·공개가 별도 타입이라 명시 대응한다.
