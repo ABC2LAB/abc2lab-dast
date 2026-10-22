@@ -45,6 +45,8 @@ from abc2lab_policy.adapters.translation import (
 from abc2lab_policy.adapters.view_checks import (
     check_cross_execution,
     check_injected_view_consistency,
+    check_operation_binding,
+    check_scope_profile_limits,
 )
 from abc2lab_policy.core.evaluation import evaluate as evaluate_rules
 from abc2lab_policy.core.model import AuthorizationContext, PolicyEvaluation
@@ -185,7 +187,12 @@ class PolicyService:
         verification = await self._journal.verify_committed(
             AuditVerifyRequest(run_key=request.run_key, receipt=receipt, expected=expected)
         )
-        if verification.state is not VerificationState.VERIFIED:
+        # 다른 run의 VERIFIED를 돌려주는 잘못된 어댑터를 수락하지 않는다.
+        verified = (
+            verification.run_key == request.run_key
+            and verification.state is VerificationState.VERIFIED
+        )
+        if not verified:
             reason = (
                 ReasonCode.AUDIT_VERIFICATION_UNKNOWN
                 if verification.state is VerificationState.UNKNOWN
@@ -216,11 +223,15 @@ class _ResolvedOutcome:
 def _injected_mismatch_reasons(
     request: PolicyInput, registration: PolicyRegistration, now: datetime
 ) -> tuple[ReasonCode, ...]:
-    """주입 원본 대조(view 일관성 + 교차 실행)의 사유를 모은다. 통과면 빈 tuple."""
+    """주입 원본 대조(view 일관성·실제 범위/프로필 제한·동작 바인딩·교차 실행)의 사유를 모은다."""
     reasons: list[ReasonCode] = []
-    view_reason = check_injected_view_consistency(request, registration.scope, registration.profile)
-    if view_reason is not None:
-        reasons.append(view_reason)
+    for single in (
+        check_injected_view_consistency(request, registration.scope, registration.profile),
+        check_scope_profile_limits(request, registration.scope, registration.profile, now),
+        check_operation_binding(request, registration.operations),
+    ):
+        if single is not None:
+            reasons.append(single)
     reasons.extend(
         check_cross_execution(
             request, registration.expected_policies, registration.cross_confirmations, now

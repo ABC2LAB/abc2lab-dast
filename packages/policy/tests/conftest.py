@@ -21,6 +21,7 @@ from abc2lab_contracts.registration import (
     ExpectedAccessPolicySnapshot,
     OperationRegistration,
     ResolutionState,
+    ResourceBinding,
     ScopeSnapshot,
 )
 from abc2lab_contracts.session import IdentityBindingSummary
@@ -74,7 +75,15 @@ def operation(source: SourceVersion) -> OperationRegistration:
         method="GET",
         origin="https://app.test",
         path_template="/orders/{id}",
-        resource_bindings=(),
+        resource_bindings=(
+            ResourceBinding(
+                resource_binding_ref="rb-1",
+                source=source,
+                resource_ref="res-1",
+                owner_subject_ref="subject-a",
+                parameters=(),
+            ),
+        ),
     )
 
 
@@ -218,7 +227,15 @@ def cross_operation(source: SourceVersion) -> OperationRegistration:
         method="GET",
         origin="https://app.test",
         path_template="/orders/{id}",
-        resource_bindings=(),
+        resource_bindings=(
+            ResourceBinding(
+                resource_binding_ref="rb-1",
+                source=source,
+                resource_ref="res-1",
+                owner_subject_ref="subject-a",
+                parameters=(),
+            ),
+        ),
     )
 
 

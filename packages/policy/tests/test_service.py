@@ -61,6 +61,14 @@ class _UnknownVerificationJournal(InMemoryPolicyDecisionJournal):
         )
 
 
+class _WrongRunVerificationJournal(InMemoryPolicyDecisionJournal):
+    """다른 run의 VERIFIED를 돌려주는 잘못된 journal."""
+
+    async def verify_committed(self, request: AuditVerifyRequest) -> AuditVerifyResult:
+        other_run = replace(request.run_key, run_ref="run-other")
+        return AuditVerifyResult(other_run, VerificationState.VERIFIED, ())
+
+
 class _ForeignReceiptJournal(InMemoryPolicyDecisionJournal):
     """다른 요청의 binding을 담은 영수증을 돌려주고 검증도 무조건 통과시키는 journal."""
 
@@ -237,6 +245,20 @@ async def test_unknown_verification_returns_no_decision(
 
 
 @pytest.mark.asyncio
+async def test_verification_for_other_run_is_rejected(
+    policy_input: PolicyInput, registration: PolicyRegistration, run_key: RunKey, now: datetime
+) -> None:
+    # 검증 응답의 run_key가 요청과 다르면 VERIFIED여도 수락하지 않는다.
+    service, _ = _service(registration, run_key, _WrongRunVerificationJournal("policy"), now)
+
+    result = await service.evaluate(policy_input)
+
+    assert result.status is ResultStatus.FAILED
+    assert result.decision is None
+    assert result.reason_codes == (ReasonCode.AUDIT_COMMIT_FAILED,)
+
+
+@pytest.mark.asyncio
 async def test_foreign_receipt_is_rejected_even_if_verifier_passes(
     policy_input: PolicyInput, registration: PolicyRegistration, run_key: RunKey, now: datetime
 ) -> None:
@@ -399,6 +421,42 @@ async def test_view_mismatch_reason_survives_core_block(
     assert result.decision.outcome is PolicyOutcome.BLOCK
     assert ReasonCode.POLICY_VIEW_MISMATCH in result.decision.reason_codes
     assert ReasonCode.IDENTITY_UNKNOWN in result.decision.reason_codes
+
+
+@pytest.mark.asyncio
+async def test_scope_not_yet_valid_blocks_through_service(
+    policy_input: PolicyInput,
+    registration: PolicyRegistration,
+    run_key: RunKey,
+    now: datetime,
+) -> None:
+    # snapshot이 원본과 같아도 아직 유효 시작 전이면 block한다(코어는 만료만 본다).
+    future_scope = replace(policy_input.scope, valid_from=now + timedelta(minutes=1))
+    request = replace(policy_input, scope=future_scope)
+    registration = replace(registration, scope=future_scope)
+    service, _ = _service(registration, run_key, _journal(now), now)
+
+    result = await service.evaluate(request)
+
+    assert result.status is ResultStatus.COMPLETE
+    assert result.decision is not None
+    assert result.decision.outcome is PolicyOutcome.BLOCK
+    assert result.decision.reason_codes == (ReasonCode.SCOPE_MISMATCH,)
+
+
+@pytest.mark.asyncio
+async def test_operation_revision_mismatch_blocks_through_service(
+    policy_input: PolicyInput, registration: PolicyRegistration, run_key: RunKey, now: datetime
+) -> None:
+    request = replace(policy_input, operation_revision=2)
+    service, _ = _service(registration, run_key, _journal(now), now)
+
+    result = await service.evaluate(request)
+
+    assert result.status is ResultStatus.COMPLETE
+    assert result.decision is not None
+    assert result.decision.outcome is PolicyOutcome.BLOCK
+    assert result.decision.reason_codes == (ReasonCode.POLICY_VIEW_MISMATCH,)
 
 
 @pytest.mark.asyncio

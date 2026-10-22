@@ -24,6 +24,8 @@ from abc2lab_policy.adapters.translation import (
 from abc2lab_policy.adapters.view_checks import (
     check_cross_execution,
     check_injected_view_consistency,
+    check_operation_binding,
+    check_scope_profile_limits,
 )
 
 __all__ = [
@@ -39,6 +41,8 @@ __all__ = [
     "build_evaluation_request",
     "check_cross_execution",
     "check_injected_view_consistency",
+    "check_operation_binding",
+    "check_scope_profile_limits",
     "decision_record_binding",
     "new_decision_ref",
     "source_version_key",

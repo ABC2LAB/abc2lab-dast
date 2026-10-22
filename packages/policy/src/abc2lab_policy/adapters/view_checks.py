@@ -10,13 +10,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from abc2lab_contracts.execution import PolicyIdentityStatus, PolicyInput
+from abc2lab_contracts.execution import PolicyAttributes, PolicyIdentityStatus, PolicyInput
 from abc2lab_contracts.primitives import Purpose, ReasonCode
 from abc2lab_contracts.registration import (
     CrossExecutionConfirmation,
     ExecutionProfileSnapshot,
     ExpectedAccess,
     ExpectedAccessPolicySnapshot,
+    OperationRegistration,
     ResolutionState,
     ScopeSnapshot,
 )
@@ -27,6 +28,68 @@ def check_injected_view_consistency(
 ) -> ReasonCode | None:
     """view의 scope·profile snapshot이 주입 원본과 전체 필드까지 같은지 확인한다."""
     if request.scope != scope or request.profile != profile:
+        return ReasonCode.POLICY_VIEW_MISMATCH
+    return None
+
+
+def check_scope_profile_limits(
+    request: PolicyInput, scope: ScopeSnapshot, profile: ExecutionProfileSnapshot, now: datetime
+) -> ReasonCode | None:
+    """snapshot이 원본과 같아도 실제 허용 조건을 평가한다.
+
+    아직 유효 시작 전(scope.valid_from 이후), origin이 허용 목록 밖, method가 프로필 허용 밖이면
+    `scope_mismatch`로 막는다. 유효 종료(valid_until)는 코어가 구성 만료로 처리한다.
+    """
+    if now < scope.valid_from:
+        return ReasonCode.SCOPE_MISMATCH
+    if request.origin not in scope.allowed_origins:
+        return ReasonCode.SCOPE_MISMATCH
+    if request.method not in profile.allowed_methods:
+        return ReasonCode.SCOPE_MISMATCH
+    return None
+
+
+def check_operation_binding(
+    request: PolicyInput, operations: tuple[OperationRegistration, ...]
+) -> ReasonCode | None:
+    """요청의 operation revision·경로/매개변수 일치·자원 바인딩을 등록 원본에 대조한다."""
+    operation = next(
+        (item for item in operations if item.operation_ref == request.operation_ref), None
+    )
+    if operation is None:
+        return None  # 미등록 operation은 코어가 OPERATION_UNREGISTERED로 거부한다.
+    if request.operation_revision != operation.source.revision:
+        return ReasonCode.POLICY_VIEW_MISMATCH
+    attributes = request.policy_attributes
+    if not attributes.registered_path_matches or not attributes.parameters_match_registration:
+        return ReasonCode.POLICY_VIEW_MISMATCH
+    return _check_resource_binding(attributes, operation)
+
+
+def _check_resource_binding(
+    attributes: PolicyAttributes, operation: OperationRegistration
+) -> ReasonCode | None:
+    """자원 바인딩 ref·자원·소유자·등록 revision을 등록 바인딩과 대조한다.
+
+    `resource_binding_revision`은 등록 바인딩의 출처 revision(`source.revision`)에 대응한다.
+    """
+    if attributes.resource_binding_ref is None:
+        return None  # 자원 바인딩을 참조하지 않는 요청은 대조할 바인딩이 없다.
+    binding = next(
+        (
+            item
+            for item in operation.resource_bindings
+            if item.resource_binding_ref == attributes.resource_binding_ref
+        ),
+        None,
+    )
+    if binding is None:
+        return ReasonCode.SCOPE_MISMATCH
+    if (
+        binding.resource_ref != attributes.resource_ref
+        or binding.owner_subject_ref != attributes.resource_owner_subject_ref
+        or binding.source.revision != attributes.resource_binding_revision
+    ):
         return ReasonCode.POLICY_VIEW_MISMATCH
     return None
 
@@ -92,6 +155,11 @@ def _check_correspondence(
     """run·자원·동작·계정/주체 대응과 판정 시각 유효성, A/B 구분·검증을 확인한다."""
     resource_ref = request.policy_attributes.resource_ref
     if confirmation.run_key != request.run_key:
+        return ReasonCode.POLICY_VIEW_MISMATCH
+    if (
+        policy.target_ref != request.run_key.target_ref
+        or policy.environment_ref != request.run_key.environment_ref
+    ):
         return ReasonCode.POLICY_VIEW_MISMATCH
     if request.operation_ref not in (policy.operation_ref, confirmation.operation_ref):
         return ReasonCode.POLICY_VIEW_MISMATCH
