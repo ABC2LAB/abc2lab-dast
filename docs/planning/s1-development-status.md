@@ -1,6 +1,6 @@
 # S1 착수 상태와 계약 PR 순서
 
-확인 기준: 2026-10-22, C1 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)·C2 [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)·C3-A [PR #26](https://github.com/ABC2LAB/abc2lab-dast/pull/26) 병합, 후속 C3 [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27) 병합 확인 시점. C3 공유 계약과 감사 연결·비교 진단 보완은 main에 반영됐고 C4-A는 로컬 개발 중이다. 실제 서비스·영속 journal·S1 실행이나 대상 전송 허가의 완료를 뜻하지 않는다. 현재 담당 배정은 [모듈 개발 가이드](../module-development.md#담당-배정)를 따른다. 각 팀원의 개인 status.md/plan.md/CLAUDE.md는 이 저장소에 없으므로 여기서 수정하지 않는다.
+확인 기준: 2026-10-22, C1 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)·C2 [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)·C3-A [PR #26](https://github.com/ABC2LAB/abc2lab-dast/pull/26) 병합, 후속 C3 [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27) 병합 확인 시점. C3 공유 계약과 감사 연결·비교 진단 보완은 main에 반영됐고 C4-A 공유 계약은 [PR #30](https://github.com/ABC2LAB/abc2lab-dast/pull/30)에서 리뷰 중이며 아직 main에 병합되지 않았다. 실제 서비스·영속 journal·S1 실행이나 대상 전송 허가의 완료를 뜻하지 않는다. 현재 담당 배정은 [모듈 개발 가이드](../module-development.md#담당-배정)를 따른다. 각 팀원의 개인 status.md/plan.md/CLAUDE.md는 이 저장소에 없으므로 여기서 수정하지 않는다.
 
 ## 0. 현재 선행조건
 
@@ -14,6 +14,7 @@
 | [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20) | MERGED, C2 실행·세션·감사 계약 | 5개 운영 kind의 typed adapter, 저장 전 내용 타입, 8개 포트·무전송 예제 구현. 실제 서비스와 감사 내구성 구현은 후속 |
 | [PR #26](https://github.com/ABC2LAB/abc2lab-dast/pull/26) | MERGED, C3-A 동기 캡처 계약 | 실행 전용 타입·`LocalCapturePort`·무전송 예제 사용 가능. 실제 Gateway/Evidence 캡처 구현은 각 담당자 책임 |
 | [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27) | MERGED, 후속 C3 공유 계약과 리뷰 보완 | Evidence·Comparison·recipe·저장/조회·봉인/복구 포트와 fingerprint 사용 가능. 실제 제공자 구현·통합 검증 완료를 뜻하지 않음 |
+| [PR #30](https://github.com/ABC2LAB/abc2lab-dast/pull/30) | OPEN, C4-A Knowledge 공유 계약 리뷰 중 | 후보·투영·조회 타입, KnowledgePort, typed fingerprint·고정 벡터·무전송 테스트를 PR에서 검토 중. 승인 및 main 병합 전이며 실제 Knowledge 서비스 구현은 후속 |
 | [PR #14](https://github.com/ABC2LAB/abc2lab-dast/pull/14)·[PR #16](https://github.com/ABC2LAB/abc2lab-dast/pull/16) | MERGED, C3·C4 최소 계약 초안과 리뷰 반영 | capture·Judge 소유 경계의 문서 제안. C2나 C3·C4 구현·벡터·fake가 제공된 것은 아님 |
 
 Policy/Gateway 공개 포트와 그 fake의 공유 선행조건인 **C2 실행 경계 계약 PR #20의 병합이 완료됐다.** 각 담당자는 최신 main의 contracts를 사용해 상대 서비스 구현을 기다리지 않고 자기 모듈과 로컬 fake를 개발·시험한다. 폐기된 PR #8을 선행조건으로 삼지 않는다. 공개 계약 대신 임의 Any·dict·서비스별 타입 사본을 만들지 않으며, 추가로 필요한 C3·C4 경계는 작은 계약 PR로 정의한다.
@@ -119,9 +120,9 @@ seal/compare·Evidence 공개 저장/조회·ComparisonProjected·요청 레시�
 
 같은 날 추가 리뷰의 주체 구분·레시피 부재 기준을 [동결안 §6.3·§6.4](evidence-c3-freeze.md#63-owner--evaluated-주체-구분-2026-10-22-보완)에 반영했다. 동일 주체 비교를 NO/UNKNOWN으로 보존하되 같은 identity_ref의 distinct YES는 구조적으로 거부한다. recipe_missing/unsupported/not_exportable의 선택 기준은 생성·공개 능력에 따라 제공자가 판단하며 실제 바인딩 실패와 구분한다. 추가 신원 경계 회귀 **5개**, contracts **235개**·전체 **317개** 테스트와 기존 Ruff·mypy·6개 의존 경계·전체 패키지 빌드·import smoke가 통과했다. 다른 담당 서비스 구현과 fingerprint adapter·고정 벡터는 변경하지 않았다.
 
-## 7. C4-A Knowledge 공유 계약 — 로컬 구현·검증
+## 7. C4-A Knowledge 공유 계약 — PR #30 리뷰 중
 
-`codex/c4-knowledge-contracts`에서 [C4-A 계약](knowledge-c4-contract.md)의 비동기 `KnowledgePort` 3개 메서드, 후보·조회·투영 상태 타입과 폐쇄 `ProjectionEvent`를 추가한다. 선행 의존성 C3 #27이 병합된 최신 main에서 로컬 C4 작업을 이어가며, C4-A의 main 반영·팀 승인 완료는 아니다.
+`codex/c4-knowledge-contracts`에서 [C4-A 계약](knowledge-c4-contract.md)의 비동기 `KnowledgePort` 3개 메서드, 후보·조회·투영 상태 타입과 폐쇄 `ProjectionEvent`를 추가했다. 선행 의존성 C3 [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27)은 병합됐으며 C4-A는 [PR #30](https://github.com/ABC2LAB/abc2lab-dast/pull/30)에서 제공자·소비자 리뷰 중이다. 실제 Knowledge 서비스 구현·팀 승인·main 병합은 아직 완료되지 않았다.
 
 Observation/Verdict payload와 원본 projection, 기존 ExpectedAccessPolicySnapshot의 projection을 최소 공유 자료형으로 정의하고 typed fingerprint wrapper·adapter·고정 벡터를 추가한다. 이 변경은 WebDiag·Judge·Report의 서비스/호출 포트나 Knowledge의 실제 메모리 저장소를 구현하는 범위가 아니다. 무전송 예제는 명시적으로 연결한 한 후보와 Observation으로 등록→조회→검증·투영→재조회를 재생한다. 이경준(Host/WebDiag/Evidence)·최민준(Judge/Policy/Report)의 영향 경계 리뷰가 필요하다.
 
