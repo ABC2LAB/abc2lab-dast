@@ -13,6 +13,7 @@ from dataclasses import replace
 from abc2lab_gateway.core.model import (
     AttemptOutcome,
     CaptureStatus,
+    DecisionCommit,
     DecisionOutcome,
     GatewayReason,
     PreTransportGate,
@@ -41,6 +42,10 @@ def classify_pre_transport(gate: PreTransportGate) -> AttemptOutcome | None:
         return _not_sent(GatewayReason.POLICY_BLOCKED)
     if gate.decision is DecisionOutcome.MISSING:
         return _not_sent(GatewayReason.DECISION_MISSING)
+    if gate.decision_commit is DecisionCommit.INVALID:
+        return _not_sent(GatewayReason.DECISION_UNVERIFIED)
+    if gate.decision_commit is DecisionCommit.UNKNOWN:
+        return _not_sent(GatewayReason.DECISION_VERIFICATION_UNKNOWN)
     if not gate.audit_committed:
         return _not_sent(GatewayReason.AUDIT_COMMIT_FAILED)
     if not gate.recheck.passed:
