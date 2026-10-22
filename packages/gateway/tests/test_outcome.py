@@ -6,6 +6,7 @@ import pytest
 from abc2lab_gateway.core import (
     AttemptOutcome,
     CaptureStatus,
+    DecisionCommit,
     DecisionOutcome,
     GatewayReason,
     PreTransportGate,
@@ -27,6 +28,36 @@ _PROCEED_GATE = PreTransportGate(
 
 def test_gate_allows_proceed_returns_none() -> None:
     assert classify_pre_transport(_PROCEED_GATE) is None
+
+
+def test_decision_commit_default_is_verified() -> None:
+    # 기본값 VERIFIED라 기존 게이트는 그대로 진행한다.
+    assert _PROCEED_GATE.decision_commit is DecisionCommit.VERIFIED
+
+
+def test_invalid_decision_commit_blocks_before_audit() -> None:
+    gate = replace(_PROCEED_GATE, decision_commit=DecisionCommit.INVALID, audit_committed=False)
+    out = classify_pre_transport(gate)
+    assert out is not None
+    assert out.send_status is SendStatus.NOT_SENT
+    assert out.reason_codes == (GatewayReason.DECISION_UNVERIFIED,)
+
+
+def test_unknown_decision_commit_blocks() -> None:
+    gate = replace(_PROCEED_GATE, decision_commit=DecisionCommit.UNKNOWN)
+    out = classify_pre_transport(gate)
+    assert out is not None
+    assert out.reason_codes == (GatewayReason.DECISION_VERIFICATION_UNKNOWN,)
+
+
+def test_decision_outcome_block_precedes_commit_check() -> None:
+    # 결정 자체가 block이면 commit 검증보다 먼저 policy_blocked로 막는다(§10 순서).
+    gate = replace(
+        _PROCEED_GATE, decision=DecisionOutcome.BLOCK, decision_commit=DecisionCommit.INVALID
+    )
+    out = classify_pre_transport(gate)
+    assert out is not None
+    assert out.reason_codes == (GatewayReason.POLICY_BLOCKED,)
 
 
 def test_block_decision_is_not_sent() -> None:

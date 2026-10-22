@@ -2,6 +2,8 @@
 
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from abc2lab_contracts.audit import (
@@ -25,10 +27,15 @@ from abc2lab_gateway.adapters import (
     to_contract_reasons,
     to_decision_outcome,
 )
+from abc2lab_gateway.adapters.translation import _REASON_MAP
 from abc2lab_gateway.core import (
     DecisionOutcome,
     GatewayReason,
+    PreTransportGate,
+    RecheckResult,
     TransportObservation,
+    classify_attempt,
+    classify_pre_transport,
     classify_transport,
 )
 
@@ -87,6 +94,12 @@ def test_decision_outcome_allow_and_block() -> None:
     assert to_decision_outcome(_decision(PolicyOutcome.BLOCK)) is DecisionOutcome.BLOCK
 
 
+def test_decision_outcome_fails_closed_for_future_outcome() -> None:
+    # PolicyOutcome에 새 값이 생겨도 ALLOW 외에는 BLOCK으로 닫힌다(fail-closed).
+    future = cast(PolicyDecision, SimpleNamespace(outcome="future_outcome"))
+    assert to_decision_outcome(future) is DecisionOutcome.BLOCK
+
+
 def test_reason_mapping_and_dedup() -> None:
     reasons = (
         GatewayReason.SESSION_GENERATION_CHANGED,
@@ -106,10 +119,51 @@ def test_informational_reasons_are_dropped() -> None:
     assert to_contract_reasons(dropped) == ()
 
 
-def test_gate_contradiction_maps_to_view_mismatch() -> None:
-    assert to_contract_reasons((GatewayReason.GATE_CONTRADICTION,)) == (
-        ReasonCode.POLICY_VIEW_MISMATCH,
+def test_gate_contradiction_maps_to_internal_error() -> None:
+    assert to_contract_reasons((GatewayReason.GATE_CONTRADICTION,)) == (ReasonCode.INTERNAL_ERROR,)
+
+
+def test_reason_map_covers_every_gateway_reason() -> None:
+    # 사유를 새로 추가하면 실행 중 KeyError가 아니라 이 테스트가 먼저 실패해야 한다.
+    assert set(_REASON_MAP) == set(GatewayReason)
+
+
+def test_decision_commit_reasons_map_to_contract_codes() -> None:
+    assert to_contract_reasons((GatewayReason.DECISION_UNVERIFIED,)) == (
+        ReasonCode.SOURCE_UNVERIFIED,
     )
+    assert to_contract_reasons((GatewayReason.DECISION_VERIFICATION_UNKNOWN,)) == (
+        ReasonCode.AUDIT_VERIFICATION_UNKNOWN,
+    )
+
+
+def test_gate_reason_and_contradiction_both_survive_on_wire() -> None:
+    # 재검사 binding_mismatch로 막혔는데 전송이 일어난 모순: 게이트 사유와 모순 코드가 둘 다 남는다.
+    gate = PreTransportGate(
+        decision=DecisionOutcome.ALLOW,
+        audit_committed=True,
+        recheck=RecheckResult(passed=False, reason=GatewayReason.BINDING_MISMATCH),
+        budget_committed=True,
+    )
+    outcome = classify_attempt(gate, TransportObservation.SENT_CAPTURED)
+    result = to_attempt_result(outcome, replace(_BASE_CONTEXT, capture_ref="capture-1"))
+    assert result.send_status is SendStatus.SENT
+    assert ReasonCode.POLICY_VIEW_MISMATCH in result.reason_codes
+    assert ReasonCode.INTERNAL_ERROR in result.reason_codes
+
+
+def test_missing_decision_distinguished_from_policy_block_by_decision_ref() -> None:
+    # 둘 다 policy_blocked로 매핑되지만 decision_ref로 구분된다.
+    passed = RecheckResult(passed=True)
+    missing = classify_pre_transport(PreTransportGate(DecisionOutcome.MISSING, True, passed, True))
+    blocked = classify_pre_transport(PreTransportGate(DecisionOutcome.BLOCK, True, passed, True))
+    assert missing is not None and blocked is not None
+    missing_result = to_attempt_result(missing, replace(_BASE_CONTEXT, decision_ref=None))
+    blocked_result = to_attempt_result(blocked, _BASE_CONTEXT)
+    assert missing_result.reason_codes == (ReasonCode.POLICY_BLOCKED,)
+    assert blocked_result.reason_codes == (ReasonCode.POLICY_BLOCKED,)
+    assert missing_result.decision_ref is None
+    assert blocked_result.decision_ref == "decision-1"
 
 
 def test_sent_captured_requires_capture_ref() -> None:
@@ -149,4 +203,15 @@ def test_not_sent_outcome_preserves_links() -> None:
     assert result.send_status is SendStatus.NOT_SENT
     assert result.capture_status is CaptureStatus.NOT_APPLICABLE
     assert result.audit_links == links
-    assert result.reason_codes == ()
+
+
+@pytest.mark.xfail(
+    reason="not_sent 미진입 사유 code 부재 — transport_not_entered 스키마 변경 대기",
+    strict=True,
+)
+def test_not_entered_should_carry_a_reason() -> None:
+    # 게이트를 다 통과했는데 전송에 못 들어간 not_sent는 '안 보낸 이유'가 있어야 한다.
+    # 지금은 맞는 ReasonCode가 없어 비어 있으므로 xfail로 구멍을 고정하지 않고 추적한다.
+    outcome = classify_transport(TransportObservation.NOT_ENTERED)
+    result = to_attempt_result(outcome, _BASE_CONTEXT)
+    assert result.reason_codes != ()
