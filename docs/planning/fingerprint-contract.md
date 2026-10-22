@@ -95,7 +95,8 @@ receipt·자체 fingerprint를 제외하는 규칙을 필드명으로 재귀 검
 | `StoredComparison` | `ComparisonPayload` fingerprint를 계산하고, Evidence 두 건과 Comparison 한 건의 완료 receipt를 별도로 검증한다. receipt를 payload에 임의로 넣거나 재귀 이름 필터로 제거하지 않는다. |
 | `RequestIntentRecord` | `record_kind=request_intent`, `schema_version=request_intent.v1`, `record_ref=attempt_ref`, `revision=1` 불변. `run_key`, `request_ref`, `attempt_ref`, `binding_id`, `operation_ref`, `operation_revision`, `purpose`, `account_ref`, `session_generation`, `decision_ref`, `evaluated_view_fingerprint`, `created_at` 전부 포함한다. 실제 private bound request의 raw value/header/body/auth는 포함하지 않으며, binding은 실제 view digest와 Gateway 내부 bound request를 가리키는 검증 metadata다. |
 | `AttemptRecord` | `record_kind=attempt`, `schema_version=attempt.v1`, `record_ref=attempt_ref`. `run_key`, `request_ref`, `attempt_ref`, `revision`, `decision_ref`, `binding_id`, `operation_ref`, `account_ref`, `session_generation`, `send_status`, `capture_status`, `occurred_at`, `reason_codes` 전부 포함한다. revision은 상태 revision이며 capture handle, AuthSignal, raw snapshot, headers/body/auth는 포함하지 않는다. 이후 known state는 새 revision으로 append하며 unknown을 추측해 not_sent로 바꾸지 않는다. |
-| `run`, `task` | 아직 wire schema가 확정되지 않았다. C4에서 각 record의 비밀 없는 frozen payload, typed adapter, schema/kind, golden vector를 확정하기 전에는 record별 wrapper와 운영 fingerprint 발행을 보류한다. |
+| `RunAuditRecord` | `record_kind=run`, `schema_version=run.v1`, `record_ref=run_key.run_ref`, `record_revision=revision`. 등록·제출·상태·시각·사유 업무 필드를 포함하고 audit completeness 파생값·receipt는 포함하지 않는다. |
+| `TaskAuditRecord` | `record_kind=task`, `schema_version=task.v1`, `record_ref=task_ref`, `record_revision=revision`. kind/case/attempt summary·시각·사유 업무 필드를 포함하고 audit completeness 파생값·receipt는 포함하지 않는다. |
 
 업무 record에 새 필드가 생기면 해당 변환자와 golden vector를 같은 계약 PR에서 갱신한다. 알 수 없는 record kind/version이나 필드 누락은 성공 fingerprint로 바꾸지 않는다.
 
@@ -147,7 +148,7 @@ C3 공유 계약 동결 패치에서는 evidence.v1/comparison.v1 typed wrapper�
 | `verdict_fingerprint` | `verdict.Verdict` | verdict / verdict.v2 |
 | `expected_policy_fingerprint` | `registration.ExpectedAccessPolicySnapshot` | expected_policy / expected_policy.v1 |
 
-모든 업무 필드와 nullable 필드를 명시적으로 변환한다. Observation/Verdict의 자체 source_event는 fingerprint 전에 고정하며 payload에 포함한다. 원본 producer는 내용 fingerprint 계산·commit 이후 receipt와 projection을 조립한다. 이 세 payload에는 receipt가 없으므로 별도 precommit Content 타입은 필요하지 않다. wrapper·생성자 통과는 실제 commit·출처의 증명이 아니며 Knowledge가 주입된 생산자를 조회해 독립 검증한다. run/task wrapper와 Host 상태 payload는 후속 계약이다.
+모든 업무 필드와 nullable 필드를 명시적으로 변환한다. Observation/Verdict의 자체 source_event는 fingerprint 전에 고정하며 payload에 포함한다. 원본 producer는 내용 fingerprint 계산·commit 이후 receipt와 projection을 조립한다. 이 세 payload에는 receipt가 없으므로 별도 precommit Content 타입은 필요하지 않다. wrapper·생성자 통과는 실제 commit·출처의 증명이 아니며 Knowledge가 주입된 생산자를 조회해 독립 검증한다. Run/Task wrapper와 상태 payload는 [Host 공개 계약 §5](host-public-contract-v0.1.md#5-runtask-불변-감사-records와-fingerprint)의 별도 계약을 따른다.
 
 ## 4. 고정 벡터와 후속 테스트
 
@@ -156,6 +157,8 @@ C3 공유 계약 동결 패치에서는 evidence.v1/comparison.v1 typed wrapper�
 C4-B는 스키마 변경으로 기존 `verdict-v1-c4` 항목만 `verdict-v2-c4`로 교체한다. 기존 Verdict payload는 유지하고 envelope의 schema_version·정규 bytes·digest를 갱신한다. v1 Verdict 벡터나 운영 호환 경로는 남기지 않는다. 다른 10개 벡터는 그대로이며 파일명과 최상위 `codec_version=canonical-json.v1`은 record별 버전과 별개다. 같은 변경에서 C1/C2 벡터, `VerdictProjected`와 기존 Judge journal의 재계산 경로를 함께 검사한다.
 
 Report·Knowledge·app·eval의 저장 v1 digest/fixture와 Judge journal의 소비 경로를 점검한 결과는 [C4-B §3.1](judge-c4-contract.md#31-v1-지문-소비자저장-자료-점검)에 기록한다. 현재 추적 파일에는 보존한 Verdict v1 digest 소비자가 없으며, 의도적인 v1 거부 시험만 유지한다. 외부 DB나 개인 자료까지 없음을 증명하는 기록은 아니다.
+
+Host의 `RunAuditRecord`·`TaskAuditRecord`는 이 문서의 `canonical-json.v1` codec으로 `run.v1`·`task.v1`을 사용한다. 고정 bytes와 SHA-256은 [Host fingerprint vectors](../examples/host-fingerprint-vectors.json)에 기록하며, C1~C4의 기존 kind/version과 Verdict v2를 변경하지 않는다. Host 서비스가 저장된 실제 payload·binding·receipt를 대조하는 책임은 [Host 공개 계약 §5~§6](host-public-contract-v0.1.md#5-runtask-불변-감사-records와-fingerprint)에 있고, 이 표와 vector는 contracts 구현 제안·검증 입력이지 Host 영속 저장 완료를 뜻하지 않는다.
 
 각 벡터의 validation_path는 다음 경로를 구분하며 fingerprint envelope/payload에 포함하지 않는 시험 metadata다.
 

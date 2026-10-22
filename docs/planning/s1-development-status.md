@@ -1,6 +1,6 @@
 # S1 착수 상태와 계약 PR 순서
 
-확인 기준: **2026-10-22, main `8f6fdd2` (PR #41까지)**. C1·C2·C3·C4-A에 이어 C4-B Judge 공유 계약도 [PR #39](https://github.com/ABC2LAB/abc2lab-dast/pull/39)로 병합됐다. Host↔WebDiag 공유 계약은 PR #38, WebDiag 세션 기반은 PR #40, Judge 사유 코드 매핑은 PR #41로 반영됐다. 공유 계약 병합과 각 서비스의 실제 구현·영속 journal·S1 통합·대상 전송 허가는 서로 구분한다. 현재 서비스 구현과 남은 작업은 [§8](#8-현재-서비스-구현과-남은-작업), 담당 배정은 [모듈 개발 가이드](../module-development.md#담당-배정)를 따른다. 각 팀원의 개인 status.md/plan.md/CLAUDE.md는 이 저장소에 없으므로 여기서 수정하지 않는다.
+확인 기준: **2026-10-23, 최신 main `f649487` (PR #44까지)**. C1·C2·C3·C4-A에 이어 C4-B Judge 공유 계약도 [PR #39](https://github.com/ABC2LAB/abc2lab-dast/pull/39)로 병합됐다. Host↔WebDiag 공유 계약은 PR #38, WebDiag 세션 기반은 PR #40, Judge 사유 코드 매핑은 PR #41, 웹 목업은 PR #44로 반영됐다. 이번 브랜치에는 [Host 공개 계약 v0.1](host-public-contract-v0.1.md)의 contracts 구현 제안과 검증 문서가 추가되어 있으나 아직 병합·팀 승인·Host 서비스 구현 완료가 아니다. 공유 계약 병합과 각 서비스의 실제 구현·영속 journal·S1 통합·대상 전송 허가는 서로 구분한다. 현재 서비스 구현과 남은 작업은 [§8](#8-현재-서비스-구현과-남은-작업), 담당 배정은 [모듈 개발 가이드](../module-development.md#담당-배정)를 따른다. 각 팀원의 개인 status.md/plan.md/CLAUDE.md는 이 저장소에 없으므로 여기서 수정하지 않는다.
 
 ## 0. 현재 선행조건
 
@@ -20,6 +20,7 @@
 | [PR #39](https://github.com/ABC2LAB/abc2lab-dast/pull/39) | MERGED, C4-B Judge 공유 계약 | `JudgeRequest`·`JudgeResult`·`JudgePort`와 app 주입 `JudgePolicyReader`, `verdict.v2`·ALLOWED·ReasonCode 9개 및 실패 사유 분류. 실제 Judge 서비스·등록 저장소·영속 journal 확장은 후속 |
 | [PR #40](https://github.com/ABC2LAB/abc2lab-dast/pull/40) | MERGED, WebDiag 세션 기반 | 바인딩 저장소·상태 전이·context open/close 구현. 발견·whoami·관찰·교차 비교 전체 구현은 후속 |
 | [PR #41](https://github.com/ABC2LAB/abc2lab-dast/pull/41) | MERGED, Judge 사유 코드 매핑 | 미대응 9개를 공개 ReasonCode로 매핑하고 관련 xfail 해소. `JudgePort.judge` 전체 조립·내부 ALLOWED 경로는 후속 |
+| Host 공개 계약 v0.1 | 현재 브랜치의 contracts 구현 제안·문서화, 아직 팀 리뷰 전 | `start_run/get_status/stop`의 요청·결과·`ReadContext`, `FINALIZING`·`NOT_APPLICABLE`, run/task revision, 독립 진단·운영 감사 completeness와 `run.v1`/`task.v1` fingerprint를 기준으로 Host 서비스 인수 테스트를 후속 수행 |
 | [PR #14](https://github.com/ABC2LAB/abc2lab-dast/pull/14)·[PR #16](https://github.com/ABC2LAB/abc2lab-dast/pull/16) | MERGED, C3·C4 최소 계약 초안과 리뷰 반영 | capture·Judge 소유 경계의 문서 제안. C2나 C3·C4 구현·벡터·fake가 제공된 것은 아님 |
 
 Policy/Gateway 공개 포트와 그 fake의 공유 선행조건인 **C2 실행 경계 계약 PR #20의 병합이 완료됐다.** 각 담당자는 최신 main의 contracts를 사용해 상대 서비스 구현을 기다리지 않고 자기 모듈과 로컬 fake를 개발·시험한다. 폐기된 PR #8을 선행조건으로 삼지 않는다. 공개 계약 대신 임의 Any·dict·서비스별 타입 사본을 만들지 않으며, 추가로 필요한 C3·C4 경계는 작은 계약 PR로 정의한다.
@@ -139,7 +140,7 @@ Observation/Verdict payload와 원본 projection, 기존 ExpectedAccessPolicySna
 
 | 영역·담당 | 현재 구현 범위 | 남은 작업 |
 |---|---|---|
-| contracts·이동찬 | C1~C3, C4-A Knowledge, C4-B Judge, WebDiag 공유 타입·포트·fingerprint와 계약 테스트 | Host의 start_run/get_status/stop, ReportInput/ReportResult/build_report 최소 공개 계약을 각 담당자와 확정 |
+| contracts·이동찬 | C1~C3, C4-A Knowledge, C4-B Judge, WebDiag 공유 타입·포트·fingerprint와 계약 테스트. Host 공개 계약 v0.1은 현재 브랜치에서 구현 제안·문서화 | Host 계약 리뷰·병합 후 start_run/get_status/stop 서비스 인수, ReportInput/ReportResult/build_report 최소 공개 계약을 각 담당자와 별도 확정 |
 | knowledge·이동찬 | 패키지 골격과 smoke 테스트 | 메모리 register_candidates/project/get_case_view, 후보 중복·이벤트 연결·snapshot 규칙, 인가·원본 감사 검증. AGE 어댑터는 후속 |
 | app·이동찬 | 조립 루트 골격 | case↔정책 정본·등록 조회 제공자, ReadContext·검증 포트와 구현 주입, 무전송 S1 조립·이후 실제 어댑터 연결 |
 | eval·이동찬 | [담당 범위 안내](../../eval/README.md) | 평가 하네스·데이터/라벨·지표·재현 절차와 CI 실행 경로. GT를 제품 입력에서 격리 |
@@ -148,7 +149,7 @@ Observation/Verdict payload와 원본 projection, 기존 ExpectedAccessPolicySna
 | judge·최민준 | 순수 오라클, VerdictPublisher와 메모리 journal, PR #41의 사유 9개 매핑 | JudgePort.judge에서 정책 reader·신원·Evidence 검증 연결, ALLOWED 서비스 관문, 영속화·멱등성/CAS·시각 검증 |
 | report·최민준 | 패키지 골격과 smoke 테스트 | build_report, 감사 완결성·누락·전송 unknown 보존, Evidence/Comparison/Verdict와 무전송 PoC 보고 |
 | webdiag·이경준 | PR #40의 세션 바인딩·상태 전이·context 생명주기 | 발견·인증/whoami·관찰·교차 비교, Gateway/Policy/Evidence 조정과 원본 이벤트 반환 |
-| host·이경준 | 패키지 골격과 smoke 테스트 | run/task/case 관리, 유한 큐·worker·취소, 후보 등록/조회·투영과 감사 기대 수위 조립 |
+| host·이경준 | 패키지 골격과 smoke 테스트. Host 공개 계약 v0.1은 [계약 문서](host-public-contract-v0.1.md)와 현재 contracts 제안으로 검토 중 | run/task/case 관리, 유한 큐·worker·취소, `FINALIZING`·stop 상태, 일관 snapshot/revision, 후보 등록/조회·투영과 진단·운영 감사 기대 수위 조립 |
 | evidence·이경준 | PR #35·#36의 capture·seal/compare·recover·레시피와 메모리 저장/조회 | 실제 Gateway 연동, 내구 저장·감사와 재시작 복구·인가 통합 검증 |
 
 ### 8.1 이동찬 담당 작업의 착수 우선순위 (제안)
@@ -157,7 +158,7 @@ Observation/Verdict payload와 원본 projection, 기존 ExpectedAccessPolicySna
 
 | 우선 | 작업 | 다음 PR의 완료 기준 | 의존/리뷰 |
 |---|---|---|---|
-| 1 | Host 공개 계약 | `start_run/get_status/stop`의 요청·결과·Protocol·상태/취소/멱등 실패 검증 | Host 이경준과 협의, contracts 이동찬 구현 |
+| 1 | Host 공개 계약 | [Host 공개 계약 v0.1](host-public-contract-v0.1.md)의 요청·결과·Protocol·상태/취소/멱등·감사 기준을 팀 리뷰하고 contracts PR로 병합. 현재 문서는 구현 완료나 Host 서비스 인수 완료를 주장하지 않음 | Host 이경준과 협의, contracts 이동찬 구현 |
 | 1 | Report 공개 계약 | `ReportInput`·`ReportResult`·`build_report` 및 감사·근거·부분 결과 규칙 확정과 테스트 | Report 최민준과 협의, Host 이경준 소비 검토; Host와 **별도 PR** |
 | 2 | Knowledge 메모리 제공자 | `register_candidates/project/get_case_view`의 동일 제출 멱등·충돌·revision·인가·감사 원본 검증·한도 | C4-A #30 사용; Host/Report 계약 없이 병렬 착수 가능 |
 | 3 | app 신뢰된 등록 정본 | `RunRegistration`·run/case↔자원/동작/주체/정책 원본 저장 및 `JudgePolicyReader`의 정상 부재/검증 실패 구분 | C4-B #39 사용; Judge 최민준과 J-ALLOW-02 검토. Knowledge 관찰 자료나 GT로 허용 정책을 만들지 않음 |

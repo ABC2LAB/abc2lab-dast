@@ -1,6 +1,6 @@
-# S1 모듈 간 API 설계 v0.7
+# S1 모듈 간 API 설계 v0.8
 
-상태: **S1 호출 규격 설계 v0.7 / C1·C2·C3·C4-A·C4-B·Host↔WebDiag 일부 공유 계약 병합 / Host·Report 계약 및 S1 전체 서비스 구현 전 (2026-10-22)**. [초안의 흐름·담당·수용 사례](s1-api-draft.md)를 입력·반환 규격으로 구체화한다. 이미 병합된 공개 타입·Protocol은 `contracts`의 실제 코드가 우선하며, 이 명세에 나열된 29개 포트가 모두 구현됐다는 뜻은 아니다. 최신 병합·미완료 구분은 [S1 착수 상태 §8](s1-development-status.md#8-현재-서비스-구현과-남은-작업)를 따른다. 서비스·영속 journal·실제 대상 HTTP·통합과 배포는 단계별로 별도 검증한다.
+상태: **S1 호출 규격 설계 v0.8 / C1·C2·C3·C4-A·C4-B·Host↔WebDiag 일부 공유 계약 병합 / Host·Report 계약 및 S1 전체 서비스 구현 전 (2026-10-23)**. [초안의 흐름·담당·수용 사례](s1-api-draft.md)를 입력·반환 규격으로 구체화한다. 이미 병합된 공개 타입·Protocol은 `contracts`의 실제 코드가 우선하며, 이 명세에 나열된 29개 포트가 모두 구현됐다는 뜻은 아니다. Host 공개 계약 v0.1은 현재 contracts 제안·문서 기준이며 팀 승인·Host 서비스 인수와 구분한다. 최신 병합·미완료 구분은 [S1 착수 상태 §8](s1-development-status.md#8-현재-서비스-구현과-남은-작업)를 따른다. 서비스·영속 journal·실제 대상 HTTP·통합과 배포는 단계별로 별도 검증한다.
 
 목표는 **상대 구현 없이 같은 입력과 실패 사례로 개발·테스트하기**다. Python 직접 호출에서 **I/O 서비스 포트는 비동기, 순수 계산과 제한된 메모리 상태 인계는 동기**로 구분한다. Host는 단일 프로세스의 유한 작업 큐와 S1 worker 1개로 실행한다. REST·MCP·배포 프로토콜은 정의하지 않는다. 상위 [아키텍처](mcp-architecture.md)와 [모듈 설계](module-design-confirmed.md)가 우선한다.
 
@@ -13,6 +13,8 @@ v0.5 변경: Host의 Knowledge 등록·조회·투영 책임, WebDiag의 논리 
 v0.6 변경: C2 실행 경계에서 감사 영수증의 생성 순서를 명시했다. `PolicyDecisionContent`와 `IdentityContent`는 저장 전 fingerprint용 불변 내용이며, 내용 fingerprint → producer commit → `AuditReceipt` → 최종 결과 순서로 조립한다. 최종 `PolicyDecision`의 영수증과 verified `IdentityResult`의 영수증 필수 조건은 유지한다. C2의 contracts 구현·무전송 예제·검증 테스트 현황은 [착수 상태](s1-development-status.md)에 기록한다.
 
 v0.7 변경: C4-B Judge 공유 계약을 반영했다. Judge는 필수 `ReadContext`를 받고, app이 주입한 `JudgePolicyReader`가 case의 정본 기대 정책을 독립 조회한다. `Verdict`는 `ALLOWED`를 포함한 `verdict.v2`만 사용하며 S1 **설계상 호출 수**는 29개(비동기 26, 동기 3)다. 세부 불변식과 case↔정책 검증 경계는 [Judge C4-B 계약](judge-c4-contract.md)을 따른다. C4-A Knowledge(#30), Host↔WebDiag 계약(#38), Judge(#39) 및 Judge 사유 매핑(#41)이 main에 반영됐지만 Host 진입점과 Report 계약, 실제 제공자 서비스 구현은 별도다.
+
+v0.8 변경: [Host 공개 계약 v0.1](host-public-contract-v0.1.md)을 반영했다. Host의 세 공개 호출은 `ReadContext`를 포함한 요청과 명시적인 결과 타입을 사용한다: `start_run(StartRunRequest) -> StartRunResult`, `get_status(GetRunStatusRequest) -> GetRunStatusResult`, `stop(StopRunRequest) -> StopReceipt`. `FINALIZING`, stop의 `NOT_APPLICABLE`, run/task revision, 진단·운영 감사의 독립 completeness, `PARTIAL`/`UNKNOWN` 보존을 고정한다. 이는 contracts 문서·구현 제안과 Host 서비스 인수 기준을 구분하며, 29개(비동기 26, 동기 3) 설계 집계는 유지한다.
 
 ## 1. 이번에 선택한 기준
 
@@ -184,17 +186,21 @@ Python 3.13의 [Task 취소·TaskGroup·timeout](https://docs.python.org/3.13/li
 
 ## 3. Host와 WebDiag의 공개 경계
 
+Host의 정본 공개 계약과 N-01~N-30 추적표는 [Host 공개 계약 v0.1](host-public-contract-v0.1.md)을 따른다. 아래 표는 S1 흐름에서의 위치만 요약하며, Host 서비스 내부의 `plan/submit/lease/complete/cancel`, worker·queue·CAS·outbox·journal 저장소는 공개 contracts 포트가 아니다.
+
 | 제공자 → 소비자 | 비동기 시그니처 |
 |---|---|
-| Host → 진입점 | `async def start_run(StartRunRequest) -> StartRunResult`, `async def get_status(RunKey) -> RunStatus`, `async def stop(RunKey) -> StopReceipt` |
+| Host → 진입점 | `async def start_run(StartRunRequest) -> StartRunResult`, `async def get_status(GetRunStatusRequest) -> GetRunStatusResult`, `async def stop(StopRunRequest) -> StopReceipt` |
 | WebDiag → Host | `async def collect(DiscoveryRequest) -> DiscoveryResult`, `async def http_observe(ObserveRequest) -> ObserveResult`, `async def access_compare(AccessCompareRequest) -> AccessCompareResult` |
 | WebDiag → Host/자체 관찰 흐름 | `async def acquire_session(SessionRequest) -> SessionResult`, `async def whoami(IdentityRequest) -> IdentityResult` |
 
-S1 WebDiag는 **HTTP 단일 경로**이며 web_observe는 브라우저 후속 어댑터다. Host의 plan, submit/lease/complete/cancel은 host 패키지 내부 Protocol이며 S1 contracts에 넣지 않는다. tools_for/call Broker와 MCP/LLM 도구 라우팅은 S1에 구현·호출하지 않는다. Host가 서비스 포트를 직접 await하며 위 내부 이름은 아래 27포트 집계에서 제외한다.
+S1 WebDiag는 **HTTP 단일 경로**이며 web_observe는 브라우저 후속 어댑터다. Host의 plan, submit/lease/complete/cancel은 host 패키지 내부 Protocol이며 S1 contracts에 넣지 않는다. tools_for/call Broker와 MCP/LLM 도구 라우팅은 S1에 구현·호출하지 않는다. Host가 서비스 포트를 직접 await하며 위 내부 이름은 아래 29포트 집계에서 제외한다.
 
 | 입력 record | 필수 필드 |
 |---|---|
-| `StartRunRequest` | `organization_ref`, `target_ref`, `environment_ref`, `registration_ref: Ref`, `submission_ref: Ref`. 진입점은 검증된 등록 구성을 선택하고 호출 멱등 키를 제공하며, 비밀번호나 임의 URL을 제출하지 않음 |
+| `StartRunRequest` | `organization_ref`, `target_ref`, `environment_ref`, `registration_ref: Ref`, `submission_ref: Ref`, `context: ReadContext`. 진입점은 검증된 등록 구성을 선택하고 호출 멱등 키를 제공하며, 비밀번호나 임의 URL을 제출하지 않음 |
+| `GetRunStatusRequest` | `run_key: RunKey`, `context: ReadContext` |
+| `StopRunRequest` | `run_key: RunKey`, `context: ReadContext` |
 | `DiscoveryRequest` | `run_key`, `seed_operation_refs: tuple[Ref]`, `account_ref: Ref`, `max_candidates: int` |
 | `ObserveRequest` | `run_key`, `candidate: Candidate`, `account_ref`, `observation_profile_ref: Ref` |
 | `AccessCompareRequest` | `run_key`, `case_ref: Ref`, `candidate: Candidate`, `owner_account_ref`, `evaluated_account_ref`, `expected_policy: ExpectedAccessPolicySnapshot?`, `cross_confirmation: CrossExecutionConfirmation?` |
@@ -205,17 +211,18 @@ Host가 §8의 get_case_view로 선택한 후보를 읽고 작업에 기록된 c
 
 | 출력 record | 필수 필드/상태 |
 |---|---|
-| `StartRunResult` | `status`, `run: RunHandle?`, `reason_codes`. 수락 시 complete이고, 수락하지 않으면 failed/None |
+| `StartRunResult` | `status`, `run: RunHandle?`, `reason_codes`. 수락 commit이 확인되면 complete, 수락 여부가 불명하면 partial/None, 명백한 거절이면 failed/None |
 | `RunHandle` | `run_key`, `created_at: UtcTime` |
-| `RunStatus` | `run_key`, `state: queued/running/stopping/completed/failed/stopped`, `tasks: tuple[TaskSummary]`, `send_counts: SendCounts`, `audit_completeness: complete/unknown`, `reason_codes` |
-| `TaskSummary` | `task_ref`, `kind: collect/observe/compare/judge/report`, `state: queued/running/complete/partial/failed/cancelled`, `attempt_summaries: tuple[AttemptSummary]`, `reason_codes` |
-| `StopReceipt` | `run_key`, `status`, `stop_state: requested/stopped/unknown`, `requested_at: UtcTime`, `reason_codes`. requested는 이미 종료되었다는 뜻이 아님 |
+| `GetRunStatusResult` | `run_key`, `status`, `run_status: RunStatus?`, `reason_codes`. 조회 권한이 없거나 없는 run은 `failed + (NOT_FOUND,)`로 동일하게 공개 |
+| `RunStatus` | `run_key`, `revision: Revision`, `state: queued/running/finalizing/stopping/completed/failed/stopped`, `tasks: tuple[TaskSummary, ...]`, `send_counts: SendCounts`, `audit_completeness`, `operations_audit_completeness`, `reason_codes` |
+| `TaskSummary` | `task_ref`, `revision: Revision`, `kind`, `case_ref: Ref?`, `state`, `attempt_summaries`, `reason_codes` |
+| `StopReceipt` | `run_key`, `status`, `stop_state: requested/stopped/not_applicable/unknown`, `requested_at: UtcTime?`, `reason_codes`. `requested`는 이미 종료되었다는 뜻이 아니며, 취소 없이 끝난 `completed/failed`에는 `not_applicable`을 사용 |
 | `DiscoveryResult` | `run_key`, `status`, `hints: tuple[CandidateHint]`, `attempt_summaries`, `reason_codes`. Knowledge 등록 전의 민감값 제거 단서이며 ID/revision을 발급하지 않음 |
 | `ObserveResult` | `run_key`, `status`, `observation: Observation?`, `projection_events: tuple[ObservationProjected]`, `attempt_summaries`, `reason_codes` |
 | `AccessCompareResult` | `run_key`, `case_ref`, `status`, `owner_identity: IdentityResult?`, `evaluated_identity: IdentityResult?`, `owner_observation: Observation?`, `stored_comparison: StoredComparison?`, `stored_evidence_refs: tuple[Ref]`, `projection_events: tuple[WebDiagProjectionEvent]`, `attempt_summaries`, `reason_codes` |
 | `Observation` | `run_key`, `observation_ref`, `candidate_ref`, `resource_ref`, `operation_ref`, `account_ref`, `session_generation: int`, `identity_ref: Ref`, `response_class: ResponseClass`, `evidence_ref: Ref`, `source_event: AuditLink`, `observed_at: UtcTime`, `reason_codes` |
 
-`Observation`은 공개 Evidence가 저장된 경우에만 존재한다. `complete`는 관찰/비교 작업이 완료되었다는 뜻이며, 권한이 올바르거나 취약점이 존재한다는 뜻은 아니다. `AccessCompareResult.complete`에는 `stored_comparison`이 있어야 한다. partial은 저장된 한쪽 결과를 보존할 수 있고, failed도 이미 발생한 attempt를 보존해야 한다. collect의 인증/발견 요청도 attempt_summaries에 포함한다.
+`Observation`은 공개 Evidence가 저장된 경우에만 존재한다. `complete`는 관찰/비교 작업이 완료되었다는 뜻이며, 권한이 올바르거나 취약점이 존재한다는 뜻은 아니다. `AccessCompareResult.complete`에는 `stored_comparison`이 있어야 한다. partial은 저장된 한쪽 결과를 보존할 수 있고, failed도 이미 발생한 attempt를 보존해야 한다. collect의 인증/발견 요청도 attempt_summaries에 포함한다. Host `start_run/get_status/stop`의 `PARTIAL`은 수락·조회·cleanup·감사 범위가 일부 미확정임을 보존하며, `UNKNOWN` 전송을 `not_sent`로 낮추지 않는다. `FINALIZING`은 진단 task와 보고 확정 이후 운영 감사·최종 상태를 저장하는 구간이며, 보고 task가 실행 중일 때 진입하지 않는다.
 
 `WebDiagProjectionEvent = ObservationProjected | ComparisonProjected`라는 폐쇄 union을 사용한다. Observation을 반환하면 해당 원본 ObservationProjected도 함께 반환한다. CompareOutcome.complete와 AccessCompareResult.complete에는 완료된 ComparisonProjected가 필요하다. 원본 감사 commit 실패는 partial/사유로 남기고 완료된 artifact·receipt·이벤트를 보존한다. 이벤트를 완성하려고 같은 대상 요청을 재전송하지 않는다.
 
@@ -237,7 +244,7 @@ S1 Host는 같은 사례의 A 기준 요청과 B가 A 객체에 수행하는 교
 | app이 주입하는 등록 조회 경계 | read_case_policy (1) | — |
 | 생산자 감사 Protocol | verify_committed, read_audit (2) | — |
 
-현재 집계는 C3의 `recover_submission`과 C4-B의 `read_case_policy`를 포함한 **설계상 총 29개(비동기 26개, 동기 3개)**다. 위 v0.3·v0.5 변경 이력의 27개는 두 호출 추가 전 기준이다. `Host.start_run/get_status/stop` 및 `Report.build_report`는 현재 문서에 명세되어 있지만 `contracts`의 공개 요청/결과 타입·Protocol로는 아직 구현되지 않았다. 이 미구현 경계는 각 제공자 담당자(Host 이경준, Report 최민준)와 별도 계약 PR로 확정한다. 실제 서비스의 호출 가능 여부는 [S1 상태 §8](s1-development-status.md#8-현재-서비스-구현과-남은-작업)을 따른다.
+현재 집계는 C3의 `recover_submission`과 C4-B의 `read_case_policy`를 포함한 **설계상 총 29개(비동기 26개, 동기 3개)**다. 위 v0.3·v0.5 변경 이력의 27개는 두 호출 추가 전 기준이다. `Host.start_run/get_status/stop`의 공개 요청·결과 타입과 `HostPort`는 이번 [Host 계약 제안](host-public-contract-v0.1.md)에서 구현했으며, 아직 팀 승인·병합·Host 서비스 구현 완료를 뜻하지 않는다. `Report.build_report`의 공개 요청/결과 타입·Protocol은 Report 최민준과 별도 계약 PR로 확정한다. 실제 서비스의 호출 가능 여부는 [S1 상태 §8](s1-development-status.md#8-현재-서비스-구현과-남은-작업)을 따른다.
 
 ### 3.2 C2 contracts 포트 범위
 

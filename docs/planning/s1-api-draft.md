@@ -1,6 +1,6 @@
 # S1 API 설계 개요 v0.5 — 상대 구현 없이 개발·테스트하기
 
-상태: **S1 흐름·책임·로컬 fake 개발 설명의 설계 개요 (v0.5 문서) / 2026-10-22 구현 현황은 별도 추적**. 이 문서는 당시 D1~D7 협의와 개발 사례의 기록이다. 최신 필드·상태·포트 집계는 [S1 API 상세 규격 v0.7](s1-api-spec.md), 실제 계약 병합·서비스 구현·미완료 항목은 [S1 상태 §8](s1-development-status.md#8-현재-서비스-구현과-남은-작업)를 우선한다. 문서의 설계 흐름은 실제 대상 통신 또는 S1 E2E 검증 완료를 뜻하지 않는다.
+상태: **S1 흐름·책임·로컬 fake 개발 설명의 설계 개요 (v0.5 문서) / 구현 현황은 별도 추적**. 이 문서는 당시 D1~D7 협의와 개발 사례의 기록이다. 최신 필드·상태·포트 집계는 [S1 API 상세 규격 v0.8](s1-api-spec.md), 실제 계약 병합·서비스 구현·미완료 항목은 [S1 상태 §8](s1-development-status.md#8-현재-서비스-구현과-남은-작업)를 우선한다. Host 진입점의 시그니처는 [공개 계약 v0.1 제안](host-public-contract-v0.1.md)으로 맞췄으며, 팀 승인·Host 서비스 구현을 뜻하지 않는다. 문서의 설계 흐름은 실제 대상 통신 또는 S1 E2E 검증 완료를 뜻하지 않는다.
 
 목표: **상대 모듈의 완성을 기다리지 않고도 내 모듈을 개발·테스트할 수 있게 한다.** 제공자와 소비자는 아래의 작은 경계와 사례를 함께 검토한다. 모듈 내부 모델·저장 구조·클래스 구성은 각 담당자가 소유한다.
 
@@ -64,9 +64,9 @@
 
 | API 제안 | 최소 입력 | 결과·실패 의미 | 제공자 / 소비자 |
 |---|---|---|---|
-| `async def start_run(request: StartRunRequest) -> StartRunResult` | 대상/환경·검증된 등록 설정 참조·submission_ref 멱등 키. 범위·계정·프로필·예산·기대 정책은 app이 주입 | 수락한 실행 참조 또는 시작 거부. 같은 키로 수락 여부 재확인, 중복 생성/배정 없음 | Host / 진입점 |
-| `async def get_status(run: RunKey) -> RunStatus` | 실행 키 | 대기·실행·종료 작업과 실패·중지·미확인 범위, 전송 3상태를 구분한 집계 | Host / 진입점 |
-| `async def stop(run: RunKey) -> StopReceipt` | 실행 키 | 중지 접수와 실제 종료를 구분. 이미 진행 중인 전송의 불명을 지우지 않음 | Host / 진입점 |
+| `async def start_run(request: StartRunRequest) -> StartRunResult` | 대상/환경·등록 설정 참조·submission_ref·필수 ReadContext. 범위·계정·프로필·예산·기대 정책은 app이 주입 | complete 수락/partial 수락 미확정/failed 거절. 같은 키로 수락 여부 재확인, 중복 생성/배정 없음 | Host / 진입점 |
+| `async def get_status(request: GetRunStatusRequest) -> GetRunStatusResult` | 실행 키·필수 ReadContext | 일관 상태 snapshot 또는 partial/failed. 전송 3상태·진단/운영 감사 상태를 보존하고 호출마다 현재 권한을 재검증 | Host / 진입점 |
+| `async def stop(request: StopRunRequest) -> StopReceipt` | 실행 키·필수 ReadContext | 접수/실제 정리 종료/적용 대상 아님/불명을 구분하고 requested_at 존재 조건을 따른다. 진행 중 전송의 불명을 지우지 않음 | Host / 진입점 |
 | `async def collect(request: DiscoveryRequest) -> DiscoveryResult` | 실행 키·허가된 seed·계정·유한 탐색 상한 | CandidateHint 단서·출처·관찰 필요 조건·모든 전송 시도·complete/partial/failed. 후보 ID/revision은 Host가 Knowledge 등록 후 받음 | WebDiag / Host |
 | `async def http_observe(request: ObserveRequest) -> ObserveResult` | 실행 키·Host가 조회한 자기 자원 Candidate 값·계정·관찰 프로필 | 아래 Observation·원본 projection_events 또는 차단·실패·부분 결과. 교차 자원 관찰로 전환하지 않음 | WebDiag / Host |
 | `async def access_compare(request: AccessCompareRequest) -> AccessCompareResult` | 실행 키·case_ref·Candidate 값·소유자/평가 계정·선택한 등록 기대 정책/교차 확인 | 저장 완료 비교·원본 projection_events·근거 참조와 미충족 조건. 실제 교차 요청은 이 기능 내부에서만 조정 | WebDiag / Host |
