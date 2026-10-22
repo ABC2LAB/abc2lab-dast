@@ -19,6 +19,7 @@ from abc2lab_contracts.audit import (
     PolicyOutcome,
     RequestIntentRecord,
 )
+from abc2lab_contracts.evidence import ComparisonPayload, ComparisonSignals, EvidenceSummary
 from abc2lab_contracts.execution import (
     PolicyAttributes,
     PolicyDecision,
@@ -30,14 +31,19 @@ from abc2lab_contracts.primitives import (
     AttemptSummary,
     AuditLink,
     CaptureStatus,
+    CheckState,
+    ParameterLocation,
     Purpose,
     ReasonCode,
+    ResponseClass,
     RunKey,
     SendStatus,
     SourceVersion,
 )
+from abc2lab_contracts.recipe import RecipeParameter, RegisteredRequestRecipe
 from abc2lab_contracts.registration import (
     BudgetSnapshot,
+    ComparisonRules,
     CrossExecutionConfirmation,
     ExecutionProfileSnapshot,
     ExpectedAccess,
@@ -108,6 +114,26 @@ _RECORD_FIELDS: Mapping[type[ContractRecord], str] = MappingProxyType(
         RunKey: "organization_ref target_ref environment_ref run_ref",
         SourceVersion: "issuer source_ref revision",
         AuditLink: "producer event_ref",
+        RecipeParameter: "name location value_placeholder",
+        RegisteredRequestRecipe: (
+            "schema_version operation_ref operation_revision resource_ref "
+            "resource_binding_ref resource_binding_revision method origin_placeholder "
+            "path_template parameters authentication source"
+        ),
+        ComparisonRules: "source normalizer_ref oracle_ref canary_profile_ref",
+        ComparisonSignals: (
+            "same_resource distinct_verified_subjects owner_normal_data cross_normal_data "
+            "nontrivial_data_match reflection_excluded template_excluded"
+        ),
+        EvidenceSummary: (
+            "run_key evidence_ref attempt_ref operation_ref resource_ref account_ref "
+            "session_generation identity_ref response_class http_status observed_at "
+            "redaction_version source_event request_recipe recipe_reason_codes"
+        ),
+        ComparisonPayload: (
+            "run_key comparison_ref case_ref resource_ref operation_ref owner_evidence_ref "
+            "cross_evidence_ref owner_identity_ref evaluated_identity_ref signals rules"
+        ),
         ScopeSnapshot: "source allowed_origins allowed_operation_refs valid_from valid_until",
         ExecutionProfileSnapshot: (
             "source allowed_methods allowed_purposes allow_redirects valid_until"
@@ -362,6 +388,97 @@ def _attempt_payload(value: AttemptRecord) -> CanonicalValue:
     )
 
 
+def _recipe_parameter_payload(value: RecipeParameter) -> dict[str, object]:
+    return {
+        "name": value.name,
+        "location": _enum(value.location, ParameterLocation),
+        "value_placeholder": value.value_placeholder,
+    }
+
+
+def _recipe_payload(value: RegisteredRequestRecipe) -> dict[str, object]:
+    return {
+        "schema_version": value.schema_version,
+        "operation_ref": value.operation_ref,
+        "operation_revision": value.operation_revision,
+        "resource_ref": value.resource_ref,
+        "resource_binding_ref": value.resource_binding_ref,
+        "resource_binding_revision": value.resource_binding_revision,
+        "method": value.method,
+        "origin_placeholder": value.origin_placeholder,
+        "path_template": value.path_template,
+        "parameters": tuple(_recipe_parameter_payload(item) for item in value.parameters),
+        "authentication": value.authentication,
+        "source": _source(value.source),
+    }
+
+
+def _evidence_payload(value: EvidenceSummary) -> CanonicalValue:
+    if type(value) is not EvidenceSummary:
+        raise TypeError("expected EvidenceSummary")
+    return freeze_object(
+        {
+            "run_key": _run_key(value.run_key),
+            "evidence_ref": value.evidence_ref,
+            "attempt_ref": value.attempt_ref,
+            "operation_ref": value.operation_ref,
+            "resource_ref": value.resource_ref,
+            "account_ref": value.account_ref,
+            "session_generation": value.session_generation,
+            "identity_ref": value.identity_ref,
+            "response_class": _enum(value.response_class, ResponseClass),
+            "http_status": value.http_status,
+            "observed_at": value.observed_at,
+            "redaction_version": _source(value.redaction_version),
+            "source_event": {
+                "producer": value.source_event.producer,
+                "event_ref": value.source_event.event_ref,
+            },
+            "request_recipe": (
+                None if value.request_recipe is None else _recipe_payload(value.request_recipe)
+            ),
+            "recipe_reason_codes": tuple(
+                _enum(item, ReasonCode) for item in value.recipe_reason_codes
+            ),
+        }
+    )
+
+
+def _comparison_payload(value: ComparisonPayload) -> CanonicalValue:
+    if type(value) is not ComparisonPayload:
+        raise TypeError("expected ComparisonPayload")
+    signals = value.signals
+    rules = value.rules
+    return freeze_object(
+        {
+            "run_key": _run_key(value.run_key),
+            "comparison_ref": value.comparison_ref,
+            "case_ref": value.case_ref,
+            "resource_ref": value.resource_ref,
+            "operation_ref": value.operation_ref,
+            "owner_evidence_ref": value.owner_evidence_ref,
+            "cross_evidence_ref": value.cross_evidence_ref,
+            "owner_identity_ref": value.owner_identity_ref,
+            "evaluated_identity_ref": value.evaluated_identity_ref,
+            "signals": {
+                "same_resource": _enum(signals.same_resource, CheckState),
+                "distinct_verified_subjects": _enum(signals.distinct_verified_subjects, CheckState),
+                "owner_normal_data": _enum(signals.owner_normal_data, CheckState),
+                "cross_normal_data": _enum(signals.cross_normal_data, CheckState),
+                "nontrivial_data_match": _enum(signals.nontrivial_data_match, CheckState),
+                "reflection_excluded": _enum(signals.reflection_excluded, CheckState),
+                "template_excluded": _enum(signals.template_excluded, CheckState),
+            },
+            "rules": {
+                "source": _source(rules.source),
+                "normalizer_ref": rules.normalizer_ref,
+                "oracle_ref": rules.oracle_ref,
+                "canary_profile_ref": rules.canary_profile_ref,
+            },
+        }
+    )
+
+
 def _attempt_summary(value: AttemptSummary) -> dict[str, object]:
     return {
         "run_key": _run_key(value.run_key),
@@ -584,6 +701,20 @@ _REGISTERED_RECORDS: tuple[_RecordRegistration, ...] = (
         AttemptRecord,
         cast(Callable[[object], CanonicalValue], _attempt_payload),
     ),
+    _RecordRegistration(
+        CODEC_VERSION,
+        "evidence",
+        "evidence.v1",
+        EvidenceSummary,
+        cast(Callable[[object], CanonicalValue], _evidence_payload),
+    ),
+    _RecordRegistration(
+        CODEC_VERSION,
+        "comparison",
+        "comparison.v1",
+        ComparisonPayload,
+        cast(Callable[[object], CanonicalValue], _comparison_payload),
+    ),
 )
 
 
@@ -659,4 +790,18 @@ def attempt_fingerprint(value: AttemptRecord) -> str:
     """Fingerprint an exact AttemptRecord."""
     if type(value) is not AttemptRecord:
         raise TypeError("expected exact AttemptRecord")
+    return _registered_record_fingerprint(value)
+
+
+def evidence_fingerprint(value: EvidenceSummary) -> str:
+    """Fingerprint exact, fully redacted evidence.v1 business content."""
+    if type(value) is not EvidenceSummary:
+        raise TypeError("expected exact EvidenceSummary")
+    return _registered_record_fingerprint(value)
+
+
+def comparison_fingerprint(value: ComparisonPayload) -> str:
+    """Fingerprint exact receipt-free comparison.v1 business content."""
+    if type(value) is not ComparisonPayload:
+        raise TypeError("expected exact ComparisonPayload")
     return _registered_record_fingerprint(value)

@@ -9,6 +9,17 @@ from abc2lab_contracts.audit import (
     AuditVerifyResult,
 )
 from abc2lab_contracts.capture import CaptureRequest, CaptureResult, ReleaseCapturesRequest
+from abc2lab_contracts.evidence import (
+    CompareOutcome,
+    CompareRequest,
+    EvidenceReadRequest,
+    EvidenceReadResult,
+    RecoverSubmissionRequest,
+    RedactedBundle,
+    SealRequest,
+    SealResult,
+    StoreOutcome,
+)
 from abc2lab_contracts.execution import (
     AttemptResult,
     ExecuteRequest,
@@ -78,6 +89,36 @@ class LocalCapturePort(Protocol):
 
         해제 실패 시 사용 가능한 핸들을 남기지 않는다. 이 결과는 전송 상태를 바꾸지 않는다.
         """
+        ...
+
+
+class ExecutionEvidencePort(Protocol):
+    """WebDiag-only sealing and idempotent reconciliation without public raw access."""
+
+    async def seal(self, request: SealRequest) -> SealResult:
+        """Consume the one-shot capture and verify its Evidence store/audit commits."""
+        ...
+
+    async def compare_and_seal(self, request: CompareRequest) -> CompareOutcome:
+        """Consume A/B captures and verify three stores and producer audits."""
+        ...
+
+    async def recover_submission(
+        self, request: RecoverSubmissionRequest
+    ) -> SealResult | CompareOutcome:
+        """Recheck without replay; validate_recovery_result enforces kind/run agreement."""
+        ...
+
+
+class EvidencePort(Protocol):
+    """Authorized redacted storage and summary reads; no executable capture handles."""
+
+    async def store_evidence(self, request: RedactedBundle) -> StoreOutcome:
+        """Commit only typed redacted artifacts with independent source checks."""
+        ...
+
+    async def evidence_read_summary(self, request: EvidenceReadRequest) -> EvidenceReadResult:
+        """Read only permitted committed summaries and comparisons."""
         ...
 
 
