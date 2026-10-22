@@ -27,6 +27,7 @@ from abc2lab_contracts.execution import (
     PolicyIdentityStatus,
     PolicyInput,
 )
+from abc2lab_contracts.observation import Observation
 from abc2lab_contracts.primitives import (
     AttemptSummary,
     AuditLink,
@@ -57,6 +58,7 @@ from abc2lab_contracts.session import (
     IdentityResult,
     IdentityStatus,
 )
+from abc2lab_contracts.verdict import Verdict, VerdictValue
 
 CODEC_VERSION = "canonical-json.v1"
 _MIN_INT64 = -(2**63)
@@ -133,6 +135,16 @@ _RECORD_FIELDS: Mapping[type[ContractRecord], str] = MappingProxyType(
         ComparisonPayload: (
             "run_key comparison_ref case_ref resource_ref operation_ref owner_evidence_ref "
             "cross_evidence_ref owner_identity_ref evaluated_identity_ref signals rules"
+        ),
+        Observation: (
+            "run_key observation_ref candidate_ref resource_ref operation_ref account_ref "
+            "session_generation identity_ref response_class evidence_ref source_event "
+            "observed_at reason_codes"
+        ),
+        Verdict: (
+            "run_key verdict_ref revision case_ref value policy_check identity_check data_check "
+            "expected_policy_source comparison_ref evidence_refs oracle_version source_event "
+            "reason_codes"
         ),
         ScopeSnapshot: "source allowed_origins allowed_operation_refs valid_from valid_until",
         ExecutionProfileSnapshot: (
@@ -229,6 +241,10 @@ def _source(value: SourceVersion) -> dict[str, object]:
     return {"issuer": value.issuer, "source_ref": value.source_ref, "revision": value.revision}
 
 
+def _audit_link(value: AuditLink) -> dict[str, object]:
+    return {"producer": value.producer, "event_ref": value.event_ref}
+
+
 def _enum(value: Enum, expected: type[Enum]) -> str:
     if type(value) is not expected:
         raise TypeError("unexpected enum type")
@@ -304,6 +320,61 @@ def _policy_input_payload(value: PolicyInput) -> CanonicalValue:
             "subject_ref": value.subject_ref,
         }
     )
+
+
+def _observation_payload(value: Observation) -> CanonicalValue:
+    if type(value) is not Observation:
+        raise TypeError("expected Observation")
+    return freeze_object(
+        {
+            "run_key": _run_key(value.run_key),
+            "observation_ref": value.observation_ref,
+            "candidate_ref": value.candidate_ref,
+            "resource_ref": value.resource_ref,
+            "operation_ref": value.operation_ref,
+            "account_ref": value.account_ref,
+            "session_generation": value.session_generation,
+            "identity_ref": value.identity_ref,
+            "response_class": _enum(value.response_class, ResponseClass),
+            "evidence_ref": value.evidence_ref,
+            "source_event": _audit_link(value.source_event),
+            "observed_at": value.observed_at,
+            "reason_codes": tuple(_enum(item, ReasonCode) for item in value.reason_codes),
+        }
+    )
+
+
+def _verdict_payload(value: Verdict) -> CanonicalValue:
+    if type(value) is not Verdict:
+        raise TypeError("expected Verdict")
+    return freeze_object(
+        {
+            "run_key": _run_key(value.run_key),
+            "verdict_ref": value.verdict_ref,
+            "revision": value.revision,
+            "case_ref": value.case_ref,
+            "value": _enum(value.value, VerdictValue),
+            "policy_check": _enum(value.policy_check, CheckState),
+            "identity_check": _enum(value.identity_check, CheckState),
+            "data_check": _enum(value.data_check, CheckState),
+            "expected_policy_source": (
+                None
+                if value.expected_policy_source is None
+                else _source(value.expected_policy_source)
+            ),
+            "comparison_ref": value.comparison_ref,
+            "evidence_refs": value.evidence_refs,
+            "oracle_version": _source(value.oracle_version),
+            "source_event": _audit_link(value.source_event),
+            "reason_codes": tuple(_enum(item, ReasonCode) for item in value.reason_codes),
+        }
+    )
+
+
+def _expected_policy_payload(value: ExpectedAccessPolicySnapshot) -> CanonicalValue:
+    if type(value) is not ExpectedAccessPolicySnapshot:
+        raise TypeError("expected ExpectedAccessPolicySnapshot")
+    return freeze_object(_expected_policy(value))
 
 
 def _decision_payload(value: PolicyDecision | PolicyDecisionContent) -> CanonicalValue:
@@ -715,6 +786,27 @@ _REGISTERED_RECORDS: tuple[_RecordRegistration, ...] = (
         ComparisonPayload,
         cast(Callable[[object], CanonicalValue], _comparison_payload),
     ),
+    _RecordRegistration(
+        CODEC_VERSION,
+        "observation",
+        "observation.v1",
+        Observation,
+        cast(Callable[[object], CanonicalValue], _observation_payload),
+    ),
+    _RecordRegistration(
+        CODEC_VERSION,
+        "verdict",
+        "verdict.v1",
+        Verdict,
+        cast(Callable[[object], CanonicalValue], _verdict_payload),
+    ),
+    _RecordRegistration(
+        CODEC_VERSION,
+        "expected_policy",
+        "expected_policy.v1",
+        ExpectedAccessPolicySnapshot,
+        cast(Callable[[object], CanonicalValue], _expected_policy_payload),
+    ),
 )
 
 
@@ -804,4 +896,25 @@ def comparison_fingerprint(value: ComparisonPayload) -> str:
     """Fingerprint exact receipt-free comparison.v1 business content."""
     if type(value) is not ComparisonPayload:
         raise TypeError("expected exact ComparisonPayload")
+    return _registered_record_fingerprint(value)
+
+
+def observation_fingerprint(value: Observation) -> str:
+    """Fingerprint exact observation.v1 content before or after its audit commit."""
+    if type(value) is not Observation:
+        raise TypeError("expected exact Observation")
+    return _registered_record_fingerprint(value)
+
+
+def verdict_fingerprint(value: Verdict) -> str:
+    """Fingerprint exact verdict.v1 content, including the preallocated source link."""
+    if type(value) is not Verdict:
+        raise TypeError("expected exact Verdict")
+    return _registered_record_fingerprint(value)
+
+
+def expected_policy_fingerprint(value: ExpectedAccessPolicySnapshot) -> str:
+    """Fingerprint an exact expected_policy.v1 registration snapshot."""
+    if type(value) is not ExpectedAccessPolicySnapshot:
+        raise TypeError("expected exact ExpectedAccessPolicySnapshot")
     return _registered_record_fingerprint(value)

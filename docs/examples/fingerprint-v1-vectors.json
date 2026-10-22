@@ -302,6 +302,105 @@
       },
       "canonical_utf8": "{\"codec_version\":\"canonical-json.v1\",\"payload\":{\"account_ref\":\"account-a\",\"attempt_ref\":\"attempt-demo\",\"binding_id\":\"binding-demo\",\"capture_status\":\"captured\",\"decision_ref\":\"decision-demo\",\"occurred_at\":\"2026-10-21T00:00:04.000000Z\",\"operation_ref\":\"operation-read\",\"reason_codes\":[],\"request_ref\":\"request-demo\",\"revision\":1,\"run_key\":{\"environment_ref\":\"env-demo\",\"organization_ref\":\"org-demo\",\"run_ref\":\"run-demo\",\"target_ref\":\"target-demo\"},\"send_status\":\"sent\",\"session_generation\":3},\"record_kind\":\"attempt\",\"schema_version\":\"attempt.v1\"}",
       "sha256": "7ffea2f0d5d4f70907dc2885a898e2fa057968dde8d4f2b7cb1e1a4fd7bde021"
+    },
+    {
+      "id": "observation-v1-c4",
+      "validation_path": "production_adapter",
+      "record_kind": "observation",
+      "schema_version": "observation.v1",
+      "payload": {
+        "run_key": {
+          "organization_ref": "org-c4",
+          "target_ref": "target-c4",
+          "environment_ref": "env-c4",
+          "run_ref": "run-c4"
+        },
+        "observation_ref": "observation-a",
+        "candidate_ref": "candidate-a",
+        "resource_ref": "resource-a",
+        "operation_ref": "op-read",
+        "account_ref": "account-owner",
+        "session_generation": 2,
+        "identity_ref": "identity-owner",
+        "response_class": "normal",
+        "evidence_ref": "evidence-owner",
+        "source_event": {
+          "producer": "webdiag-producer",
+          "event_ref": "event-observation"
+        },
+        "observed_at": "2026-10-21T00:00:00.000000Z",
+        "reason_codes": []
+      },
+      "canonical_utf8": "{\"codec_version\":\"canonical-json.v1\",\"payload\":{\"account_ref\":\"account-owner\",\"candidate_ref\":\"candidate-a\",\"evidence_ref\":\"evidence-owner\",\"identity_ref\":\"identity-owner\",\"observation_ref\":\"observation-a\",\"observed_at\":\"2026-10-21T00:00:00.000000Z\",\"operation_ref\":\"op-read\",\"reason_codes\":[],\"resource_ref\":\"resource-a\",\"response_class\":\"normal\",\"run_key\":{\"environment_ref\":\"env-c4\",\"organization_ref\":\"org-c4\",\"run_ref\":\"run-c4\",\"target_ref\":\"target-c4\"},\"session_generation\":2,\"source_event\":{\"event_ref\":\"event-observation\",\"producer\":\"webdiag-producer\"}},\"record_kind\":\"observation\",\"schema_version\":\"observation.v1\"}",
+      "sha256": "5c701899691d845e2bbcb2130dec6d01afcf1d30c51dbf452515b382f8dd2df5"
+    },
+    {
+      "id": "verdict-v1-c4",
+      "validation_path": "production_adapter",
+      "record_kind": "verdict",
+      "schema_version": "verdict.v1",
+      "payload": {
+        "run_key": {
+          "organization_ref": "org-c4",
+          "target_ref": "target-c4",
+          "environment_ref": "env-c4",
+          "run_ref": "run-c4"
+        },
+        "verdict_ref": "verdict-a",
+        "revision": 3,
+        "case_ref": "case-a",
+        "value": "UNDECIDABLE",
+        "policy_check": "unknown",
+        "identity_check": "yes",
+        "data_check": "unknown",
+        "expected_policy_source": null,
+        "comparison_ref": "comparison-a",
+        "evidence_refs": [
+          "evidence-owner",
+          "evidence-cross"
+        ],
+        "oracle_version": {
+          "issuer": "app",
+          "source_ref": "comparison-rules",
+          "revision": 2
+        },
+        "source_event": {
+          "producer": "judge-producer",
+          "event_ref": "event-verdict"
+        },
+        "reason_codes": [
+          "comparison_incomplete"
+        ]
+      },
+      "canonical_utf8": "{\"codec_version\":\"canonical-json.v1\",\"payload\":{\"case_ref\":\"case-a\",\"comparison_ref\":\"comparison-a\",\"data_check\":\"unknown\",\"evidence_refs\":[\"evidence-owner\",\"evidence-cross\"],\"expected_policy_source\":null,\"identity_check\":\"yes\",\"oracle_version\":{\"issuer\":\"app\",\"revision\":2,\"source_ref\":\"comparison-rules\"},\"policy_check\":\"unknown\",\"reason_codes\":[\"comparison_incomplete\"],\"revision\":3,\"run_key\":{\"environment_ref\":\"env-c4\",\"organization_ref\":\"org-c4\",\"run_ref\":\"run-c4\",\"target_ref\":\"target-c4\"},\"source_event\":{\"event_ref\":\"event-verdict\",\"producer\":\"judge-producer\"},\"value\":\"UNDECIDABLE\",\"verdict_ref\":\"verdict-a\"},\"record_kind\":\"verdict\",\"schema_version\":\"verdict.v1\"}",
+      "sha256": "886a6d6a6117d5fc4d0239023a3dd2993017d82df7ddc007d74a11ee064f7476"
+    },
+    {
+      "id": "expected-policy-v1-c4",
+      "validation_path": "production_adapter",
+      "record_kind": "expected_policy",
+      "schema_version": "expected_policy.v1",
+      "payload": {
+        "source": {
+          "issuer": "app",
+          "source_ref": "expected-policy",
+          "revision": 2
+        },
+        "policy_ref": "policy-a",
+        "target_ref": "target-c4",
+        "environment_ref": "env-c4",
+        "resource_ref": "resource-a",
+        "operation_ref": "op-read",
+        "owner_subject_ref": "subject-owner",
+        "evaluated_subject_ref": "subject-cross",
+        "expected_access": "deny",
+        "sharing": "resolved_none",
+        "delegation": "resolved_none",
+        "valid_from": "2026-10-21T00:00:00.000000Z",
+        "valid_until": "2026-10-21T01:00:00.000000Z"
+      },
+      "canonical_utf8": "{\"codec_version\":\"canonical-json.v1\",\"payload\":{\"delegation\":\"resolved_none\",\"environment_ref\":\"env-c4\",\"evaluated_subject_ref\":\"subject-cross\",\"expected_access\":\"deny\",\"operation_ref\":\"op-read\",\"owner_subject_ref\":\"subject-owner\",\"policy_ref\":\"policy-a\",\"resource_ref\":\"resource-a\",\"sharing\":\"resolved_none\",\"source\":{\"issuer\":\"app\",\"revision\":2,\"source_ref\":\"expected-policy\"},\"target_ref\":\"target-c4\",\"valid_from\":\"2026-10-21T00:00:00.000000Z\",\"valid_until\":\"2026-10-21T01:00:00.000000Z\"},\"record_kind\":\"expected_policy\",\"schema_version\":\"expected_policy.v1\"}",
+      "sha256": "ba80e4e71572ff3c2e32cc19564ec0edba31c390db44e33bb32e8756c298dd71"
     }
   ]
 }

@@ -28,6 +28,14 @@ from abc2lab_contracts.execution import (
     PolicyInput,
     PrepareResult,
 )
+from abc2lab_contracts.knowledge import (
+    CandidateAck,
+    CandidateSubmission,
+    CaseReadRequest,
+    CaseReadResult,
+    ProjectionAck,
+    ProjectionSubmission,
+)
 from abc2lab_contracts.primitives import CloseResult, Ref, RunKey
 from abc2lab_contracts.session import (
     SessionBindingResult,
@@ -35,6 +43,22 @@ from abc2lab_contracts.session import (
     SessionContextRequest,
     SessionContextResult,
 )
+
+
+class KnowledgePort(Protocol):
+    """Expose Host-coordinated candidate registration, projection and snapshot reads."""
+
+    async def register_candidates(self, request: CandidateSubmission) -> CandidateAck:
+        """Normalize/deduplicate hints and retain accepted candidates on partial results."""
+        ...
+
+    async def project(self, request: ProjectionSubmission) -> ProjectionAck:
+        """Verify producer records and dependencies before applying one source event."""
+        ...
+
+    async def get_case_view(self, request: CaseReadRequest) -> CaseReadResult:
+        """Read an authorized bounded snapshot without silently replacing its revision."""
+        ...
 
 
 class GatewayPort(Protocol):
