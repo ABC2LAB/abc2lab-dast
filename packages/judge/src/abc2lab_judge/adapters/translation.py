@@ -47,30 +47,27 @@ _WIRE_EVIDENCE_DROPPED: frozenset[JudgeReason] = frozenset(
     }
 )
 
-# 이름이 같은 미확정 사유만 공개 `ReasonCode`로 대응한다.
+# 공개 가능한(YES 근거가 아닌) 모든 판정 사유를 같은 이름의 공개 `ReasonCode`로 대응한다.
+# C4-B(#39)로 judge용 사유 9개가 contracts에 추가돼, 비워 뒀던 사유를 전부 여기로 옮겼다.
 _REASON_MAP: dict[JudgeReason, ReasonCode] = {
     JudgeReason.EXPECTED_ACCESS_POLICY_MISSING: ReasonCode.EXPECTED_ACCESS_POLICY_MISSING,
     JudgeReason.EXPECTED_ACCESS_POLICY_INVALID: ReasonCode.EXPECTED_ACCESS_POLICY_INVALID,
+    JudgeReason.EXPECTED_ACCESS_UNKNOWN: ReasonCode.EXPECTED_ACCESS_UNKNOWN,
+    JudgeReason.POLICY_ALLOWS: ReasonCode.POLICY_ALLOWS,
+    JudgeReason.SHARING_OR_DELEGATION_ALLOWS: ReasonCode.SHARING_OR_DELEGATION_ALLOWS,
     JudgeReason.SHARING_OR_DELEGATION_UNKNOWN: ReasonCode.SHARING_OR_DELEGATION_UNKNOWN,
+    JudgeReason.SUBJECT_NOT_VERIFIED: ReasonCode.SUBJECT_NOT_VERIFIED,
+    JudgeReason.SUBJECTS_NOT_DISTINCT: ReasonCode.SUBJECTS_NOT_DISTINCT,
+    JudgeReason.DATA_NO_MATCH: ReasonCode.DATA_NO_MATCH,
+    JudgeReason.DATA_REFLECTION_PRESENT: ReasonCode.DATA_REFLECTION_PRESENT,
+    JudgeReason.DATA_TEMPLATE_PRESENT: ReasonCode.DATA_TEMPLATE_PRESENT,
+    JudgeReason.DATA_UNVERIFIABLE: ReasonCode.DATA_UNVERIFIABLE,
 }
 
-# 계약에 의미가 맞는 코드가 아직 없는 사유. 기존 코드로 억지 대응하지 않고 비운다(의미 왜곡 방지).
-# 이 사유만 남은 미확정 판정은 wire 사유가 비어 `Verdict` 생성자가 거부한다(시끄러운 실패).
-# contracts에 judge용 사유 코드가 추가되면 여기서 `_REASON_MAP`으로 옮긴다. 추적은 xfail 테스트가
-# 한다.
-_UNMAPPED: frozenset[JudgeReason] = frozenset(
-    {
-        JudgeReason.POLICY_ALLOWS,
-        JudgeReason.SHARING_OR_DELEGATION_ALLOWS,
-        JudgeReason.EXPECTED_ACCESS_UNKNOWN,
-        JudgeReason.SUBJECT_NOT_VERIFIED,
-        JudgeReason.SUBJECTS_NOT_DISTINCT,
-        JudgeReason.DATA_NO_MATCH,
-        JudgeReason.DATA_REFLECTION_PRESENT,
-        JudgeReason.DATA_TEMPLATE_PRESENT,
-        JudgeReason.DATA_UNVERIFIABLE,
-    }
-)
+# 의미가 맞는 공개 코드가 아직 없어 wire에서 비우는 사유. C4-B(#39)가 judge용 9개를 모두 추가해 현재
+# 비어 있다. 새 내부 사유가 생겼는데 대응 `ReasonCode`가 없으면 억지로 기존 코드에 맞추지 말고 다시
+# 여기에 둔다 — 그 사유만 남은 미확정 판정은 wire 사유가 비어 `Verdict` 생성자가 시끄럽게 거부한다.
+_UNMAPPED: frozenset[JudgeReason] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,8 +115,8 @@ def to_verdict(
 
     `source_event`는 미리 정한 `event_ref`를 가리킨다(fingerprint에 포함되므로 commit 전에
     고정한다).
-    미확정 판정인데 매핑되는 사유가 하나도 없으면 `Verdict` 생성자가 `ValueError`로 거부한다. 이는
-    채움용 코드로 막지 않고 그대로 전파한다(contracts 사유 코드 부재를 시끄럽게 드러낸다).
+    미확정 판정인데 wire 사유가 하나도 남지 않으면(사유가 전부 YES 근거 드롭이면) `Verdict` 생성자가
+    `ValueError`로 거부한다. 채움용 코드로 막지 않고 그대로 전파한다.
     """
     return Verdict(
         run_key=context.run_key,
