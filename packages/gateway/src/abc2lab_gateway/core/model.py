@@ -40,6 +40,14 @@ class DecisionOutcome(StrEnum):
     MISSING = "missing"
 
 
+class DecisionCommit(StrEnum):
+    """받은 Policy 결정의 저장 commit 검증 결과(§10 ①). Gateway 자기 감사와 별개다."""
+
+    VERIFIED = "verified"
+    INVALID = "invalid"
+    UNKNOWN = "unknown"
+
+
 class TransportObservation(StrEnum):
     """transport 단계에서 관찰한 결과. 전송·캡처 입증 상태를 구분한다."""
 
@@ -55,6 +63,8 @@ class GatewayReason(StrEnum):
 
     POLICY_BLOCKED = "policy_blocked"
     DECISION_MISSING = "decision_missing"
+    DECISION_UNVERIFIED = "decision_unverified"
+    DECISION_VERIFICATION_UNKNOWN = "decision_verification_unknown"
     AUDIT_COMMIT_FAILED = "audit_commit_failed"
     SESSION_GENERATION_CHANGED = "session_generation_changed"
     SCOPE_MISMATCH = "scope_mismatch"
@@ -110,12 +120,18 @@ class RecheckResult:
 
 @dataclass(frozen=True, slots=True)
 class PreTransportGate:
-    """transport 진입 전 게이트 사실. 순서: 결정 → 감사 commit → 재검사 → 예산."""
+    """transport 진입 전 게이트 사실.
+
+    순서(§10): 결정 → 결정 commit 검증 → Gateway 자기 감사 commit → 재검사 → 예산.
+    `decision_commit`은 받은 Policy 결정의 저장 검증 결과(§10 ①)이고, `audit_committed`는 Gateway
+    자신의 intent 기록 commit(②)이다.
+    """
 
     decision: DecisionOutcome
     audit_committed: bool
     recheck: RecheckResult
     budget_committed: bool
+    decision_commit: DecisionCommit = DecisionCommit.VERIFIED
 
 
 @dataclass(frozen=True, slots=True)
