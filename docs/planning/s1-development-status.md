@@ -1,6 +1,6 @@
 # S1 착수 상태와 계약 PR 순서
 
-확인 기준: 2026-10-21, C1 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)·C2 [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)·C3-A [PR #26](https://github.com/ABC2LAB/abc2lab-dast/pull/26) 병합, 후속 C3 [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27) 구현·리뷰 시점. 병합된 공유 계약을 사용하는 독립 개발의 선행조건은 충족됐으며 #27의 추가 계약은 아직 리뷰 중이다. 실제 서비스·영속 journal·S1 실행이나 대상 전송 허가의 완료를 뜻하지 않는다. 현재 담당 배정은 [모듈 개발 가이드](../module-development.md#담당-배정)를 따른다. 각 팀원의 개인 status.md/plan.md/CLAUDE.md는 이 저장소에 없으므로 여기서 수정하지 않는다.
+확인 기준: 2026-10-22, C1 [PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15)·C2 [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)·C3-A [PR #26](https://github.com/ABC2LAB/abc2lab-dast/pull/26) 병합, 후속 C3 [PR #27](https://github.com/ABC2LAB/abc2lab-dast/pull/27) 감사 연결·비교 진단 리뷰 보완 시점. 병합된 공유 계약을 사용하는 독립 개발의 선행조건은 충족됐으며 #27의 추가 계약은 아직 리뷰 중이다. 실제 서비스·영속 journal·S1 실행이나 대상 전송 허가의 완료를 뜻하지 않는다. 현재 담당 배정은 [모듈 개발 가이드](../module-development.md#담당-배정)를 따른다. 각 팀원의 개인 status.md/plan.md/CLAUDE.md는 이 저장소에 없으므로 여기서 수정하지 않는다.
 
 ## 0. 현재 선행조건
 
@@ -112,3 +112,7 @@ seal/compare·Evidence 공개 저장/조회·ComparisonProjected·요청 레시�
 리뷰 보완으로 결과와 receipt의 run·상태·사유, 함께 제공된 payload의 fingerprint, Evidence/recipe의 동작·자원 일치와 경로 형태를 검증한다. 이동찬 확인에 따라 일부 저장 성공 후 나머지 복구가 불가능해도 성공 receipt는 `PARTIAL`에 보존한다. 무전송 fake는 등록과 다른 recipe가 저장 전에 거부됨을 검사하며 실제 인가·저장 서비스의 검증을 대신하지 않는다.
 
 2026-10-21 로컬 검증: `scripts/dev.py check contracts`의 Ruff lint/format·mypy 25개 파일·테스트 **172개**, 전체 기본 pytest **254개**·mypy **51개 파일**, Import Linter **6개 경계 유지·위반 0개**, contracts wheel·sdist 빌드 모두 통과했다. 실제 제출 내구 기록·감사·Lease/Fencing·재시작 복구는 Evidence 제공자의 후속 구현·검증 범위이며 이 결과에 포함하지 않는다.
+
+2026-10-22 리뷰 보완: [동결안 §6](evidence-c3-freeze.md#6-감사-연결비교-진단과-남은-리스크)에 EVIDENCE binding.attempt_ref → 주입된 Gateway ATTEMPT 감사 조회/검증 경로를 고정했다. 공개 AuditPage에 전체 AttemptRecord가 없다는 검증 한계를 명시하고, Gateway가 원본 digest·전송 metadata를 보장하도록 구분한다. 비교 UNKNOWN의 신호별 사유와 canary 3상태는 Evidence COMPARISON 감사 metadata에서 확인한다. `validate_evidence_audit`·`validate_comparison_audit`와 복구 kind/반환 타입/run을 검사하는 `validate_recovery_result`를 추가했다. evidence.v1/comparison.v1 payload와 기존 고정 벡터, capture 입력 및 서비스 포트 시그니처는 유지한다. 이 보완은 영향 담당자의 승인 대기이며 서비스 구현 완료가 아니다.
+
+보완 후 로컬 검증: `scripts/dev.py check contracts`에서 Ruff lint/format·mypy **26개 파일**·테스트 **230개 통과**(추가 회귀 사례 58개), `scripts/dev.py check all`에서 전체 pytest **312개**·mypy **51개 파일**·Import Linter **6개 경계 유지/위반 0개**, 전체 패키지 wheel·sdist 빌드와 외부 라이브러리 import smoke가 통과했다. 테스트는 순수 계약 검증이며 실제 Gateway/Evidence 감사 조회·commit·전송 증명의 통합 검증은 후속 제공자 책임이다. GitHub CI와 사람의 PR 승인은 이 로컬 검증과 별도로 확인한다.

@@ -31,7 +31,7 @@ Gateway transport
 → AttemptResult
 ```
 
-응답의 원인인 Gateway attempt와 Evidence의 artifact 이벤트는 구분한다. 생산자 간 원인 연결은 `AuditEvent.causal_links`에서 표현한다. 필요한 Gateway 링크의 전달·조회 방식은 후속 Evidence/Gateway 경계 리뷰에서 고정하며, 이 문서만으로 SealRequest/CompareRequest에 새 필드나 새 감사 조회 포트를 추가하지 않는다. 어떤 방식이든 원문 인계 전에 Gateway 결과 commit을 기다리게 하지 않고, caller가 준 링크 자체를 commit 증명으로 취급하지 않는다.
+응답의 원인인 Gateway attempt와 Evidence의 artifact 이벤트는 구분한다. **2026-10-22 확정:** EVIDENCE binding.attempt_ref로 app이 주입한 Gateway의 ATTEMPT를 read_audit·verify_committed로 확인하고, 확인된 링크를 EVIDENCE AuditEvent.causal_links에 넣는다. ATTEMPT binding에는 같은 record_ref/attempt_ref와 request_ref가 필수다. EVIDENCE binding은 summary에서 재구성할 수 있도록 request_ref/binding_id=None이다. 전체 AttemptRecord를 받지 않는 이 경로는 신뢰된 생산자 원본 확인이며, 소비자가 전송 레코드 전체를 독립 재해시한 것으로 취급하지 않는다. snapshot·revision 충돌·unknown 처리와 Judge/Report 소비 절차는 [동결안 §6.1](evidence-c3-freeze.md#61-evidence와-실제-전송의-연결-2026-10-22-확정)을 따른다. 새 필드/포트를 추가하지 않으며 원문 인계 전에 Gateway 결과 commit을 기다리게 하지 않는다.
 
 ## 3. 이번 contracts 구현 범위
 
@@ -66,6 +66,7 @@ Gateway transport
 - `ComparisonProjected`의 event_ref/producer/run/source_revision은 원본 comparison 감사 영수증과 결합한다. source_revision은 artifact record revision이며 감사 sequence나 규칙 버전으로 대체하지 않는다.
 - complete에는 저장·필수 감사 확인과 비교·원본 이벤트가 모두 필요하다. 일부 확인 실패·불명에는 성공한 receipt를 보존하고 완료 StoredComparison/Projection을 새로 발행하지 않는다. 감사 저장 불명은 같은 식별자로 재조회하며 대상 요청을 재전송하지 않는다.
 - Evidence는 기존 `AuditVerifier`·`AuditReader`를 구현한다. 새 범용 commit 서비스 포트는 추가하지 않으며 자기 journal의 쓰기는 Evidence 내부 구현 책임이다.
+- UNKNOWN인 비교 신호의 원인과 canary 3상태는 원본 COMPARISON AuditEvent.reason_codes에서 확인한다. payload에 필드를 추가하지 않는다. 생산자·소비자는 `validate_comparison_audit`로 신호/사유·case/근거 참조·내용 지문을 대조하고 실제 감사 commit을 별도 확인한다. 상세 코드와 불변 metadata 규칙은 [동결안 §6.2](evidence-c3-freeze.md#62-unknown-사유와-canary-2026-10-22-확정)를 따른다.
 
 ## 5. 담당과 후속 확인
 

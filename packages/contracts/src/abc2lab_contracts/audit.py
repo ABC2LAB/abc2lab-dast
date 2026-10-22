@@ -116,6 +116,15 @@ class AuditRecordBinding(ContractRecord):
 
     def _validate_invariants(self) -> None:
         require_fingerprint(self.record_fingerprint)
+        if self.event_kind is AuditEventKind.ATTEMPT:
+            if self.attempt_ref != self.record_ref or self.request_ref is None:
+                raise ValueError("attempt audit binding requires matching attempt and request refs")
+        if self.event_kind is AuditEventKind.EVIDENCE and self.attempt_ref is None:
+            raise ValueError("Evidence audit binding requires an attempt ref")
+        if self.event_kind is AuditEventKind.COMPARISON and any(
+            value is not None for value in (self.request_ref, self.attempt_ref, self.binding_id)
+        ):
+            raise ValueError("comparison audit binding cannot carry request/attempt/binding refs")
 
 
 @dataclass(frozen=True, slots=True)

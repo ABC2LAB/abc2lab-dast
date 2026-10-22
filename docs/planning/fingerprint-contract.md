@@ -99,6 +99,8 @@ receipt·자체 fingerprint를 제외하는 규칙을 필드명으로 재귀 검
 
 업무 record에 새 필드가 생기면 해당 변환자와 golden vector를 같은 계약 PR에서 갱신한다. 알 수 없는 record kind/version이나 필드 누락은 성공 fingerprint로 바꾸지 않는다.
 
+**C3 리뷰 보완(2026-10-22):** Gateway ATTEMPT와 Evidence의 연결은 AuditEvent.causal_links, 비교 신호의 UNKNOWN 사유와 canary 상태는 원본 COMPARISON AuditEvent.reason_codes에 둔다. 이 metadata는 EvidenceSummary/ComparisonPayload에 추가하지 않으므로 evidence.v1/comparison.v1의 bytes·고정 벡터는 그대로다. payload digest가 감사 metadata까지 암호학적으로 포함한다고 주장하지 않는다. 소비자는 주입된 생산자의 원본 reader·commit 검증과 불변 journal을 통해 metadata를 확인한다. 순수 `validate_evidence_audit`·`validate_comparison_audit`는 내용/참조/사유의 로컬 일관성 검사이며 실제 저장 증명이 아니다. 전체 AttemptRecord가 없는 소비자의 확인 범위와 담당 책임은 [C3 동결안 §6](evidence-c3-freeze.md#6-감사-연결비교-진단과-남은-리스크)을 따른다.
+
 ### 3.1 C2 precommit 내용과 최종 결과의 lifecycle
 
 `PolicyDecisionContent`는 최종 결정과 동일한 9개 업무 필드를, `IdentityContent`는 `IdentityResult`의 12개 감사 제외 필드를 보유한다. 두 타입은 producer가 저장하기 전 fingerprint를 계산하는 불변 값이다. 정상 경로는 `content → typed fingerprint → producer commit → AuditReceipt → from_content(content, receipt) → consumer recompute/verify` 순서다. `from_content`는 구조적으로 receipt를 붙일 뿐 실제 journal 내구성이나 commit 성공을 증명하지 않는다.

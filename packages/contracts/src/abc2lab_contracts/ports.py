@@ -106,7 +106,7 @@ class ExecutionEvidencePort(Protocol):
     async def recover_submission(
         self, request: RecoverSubmissionRequest
     ) -> SealResult | CompareOutcome:
-        """Recheck an immutable committed submission; never replay target/capture."""
+        """Recheck without replay; validate_recovery_result enforces kind/run agreement."""
         ...
 
 

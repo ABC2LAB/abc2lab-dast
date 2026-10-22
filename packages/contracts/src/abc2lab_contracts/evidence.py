@@ -10,8 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from abc2lab_contracts._validation import ContractRecord, require_fingerprint, require_positive
-from abc2lab_contracts.audit import AuditEventKind, AuditReceipt
+from abc2lab_contracts._validation import (
+    ContractRecord,
+    require_fingerprint,
+    require_positive,
+    validate_record,
+)
+from abc2lab_contracts.audit import AuditEvent, AuditEventKind, AuditReceipt, AuditRecordBinding
 from abc2lab_contracts.primitives import (
     AuditLink,
     CheckState,
@@ -376,3 +381,108 @@ class RecoverSubmissionRequest(ContractRecord):
     run_key: RunKey
     submission_ref: Ref
     kind: EvidenceSubmissionKind
+
+
+def validate_recovery_result(
+    request: RecoverSubmissionRequest, result: SealResult | CompareOutcome
+) -> None:
+    """Reject a recovery kind/type or run mismatch without performing recovery I/O."""
+    if type(request) is not RecoverSubmissionRequest:
+        raise TypeError("expected exact RecoverSubmissionRequest")
+    validate_record(request)
+    expected_type = SealResult if request.kind is EvidenceSubmissionKind.SEAL else CompareOutcome
+    if type(result) is not expected_type:
+        raise TypeError("recovery kind/result type mismatch")
+    validate_record(result)
+    if result.run_key != request.run_key:
+        raise ValueError("recovery result run mismatch")
+
+
+def validate_evidence_audit(summary: EvidenceSummary, event: AuditEvent) -> None:
+    """Check local Evidence/audit coherence; producer lookup still proves the commit."""
+    if type(summary) is not EvidenceSummary or type(event) is not AuditEvent:
+        raise TypeError("expected exact EvidenceSummary and AuditEvent")
+    validate_record(summary)
+    validate_record(event)
+    from abc2lab_contracts.fingerprint import evidence_fingerprint
+
+    expected = AuditRecordBinding(
+        AuditEventKind.EVIDENCE,
+        summary.evidence_ref,
+        1,
+        evidence_fingerprint(summary),
+        None,
+        summary.attempt_ref,
+        None,
+    )
+    receipt = event.receipt
+    if (
+        receipt.run_key != summary.run_key
+        or receipt.producer != summary.source_event.producer
+        or receipt.event_ref != summary.source_event.event_ref
+        or receipt.binding != expected
+        or event.account_ref != summary.account_ref
+        or event.session_generation != summary.session_generation
+        or event.evidence_refs != (summary.evidence_ref,)
+        or event.verdict_refs != ()
+        or event.policy_outcome is not None
+        or event.send_status is not None
+    ):
+        raise ValueError("Evidence audit binding mismatch")
+
+
+def validate_comparison_audit(payload: ComparisonPayload, event: AuditEvent) -> None:
+    """Check comparison digest and diagnostic metadata, not journal authenticity."""
+    if type(payload) is not ComparisonPayload or type(event) is not AuditEvent:
+        raise TypeError("expected exact ComparisonPayload and AuditEvent")
+    validate_record(payload)
+    validate_record(event)
+    from abc2lab_contracts.fingerprint import comparison_fingerprint
+
+    binding = event.receipt.binding
+    if (
+        event.receipt.run_key != payload.run_key
+        or binding.event_kind is not AuditEventKind.COMPARISON
+        or binding.record_ref != payload.comparison_ref
+        or binding.record_revision != 1
+        or binding.record_fingerprint != comparison_fingerprint(payload)
+        or binding.request_ref is not None
+        or binding.attempt_ref is not None
+        or binding.binding_id is not None
+        or event.case_ref != payload.case_ref
+        or event.evidence_refs != (payload.owner_evidence_ref, payload.cross_evidence_ref)
+        or event.account_ref is not None
+        or event.session_generation is not None
+        or event.policy_outcome is not None
+        or event.verdict_refs != ()
+        or event.send_status is not None
+    ):
+        raise ValueError("comparison audit binding mismatch")
+    _validate_comparison_reasons(payload.signals, event.reason_codes)
+
+
+def _validate_comparison_reasons(
+    signals: ComparisonSignals, reasons: tuple[ReasonCode, ...]
+) -> None:
+    canary_states = (
+        ReasonCode.COMPARISON_CANARY_PASSED,
+        ReasonCode.COMPARISON_CANARY_FAILED,
+        ReasonCode.COMPARISON_CANARY_UNKNOWN,
+    )
+    if sum(reason in canary_states for reason in reasons) != 1:
+        raise ValueError("comparison audit requires exactly one canary state")
+    if ReasonCode.COMPARISON_CANARY_PASSED not in reasons:
+        if signals.nontrivial_data_match is not CheckState.UNKNOWN:
+            raise ValueError("unverified canary requires unknown data match")
+    unknown_reasons = (
+        (signals.same_resource, ReasonCode.COMPARISON_SAME_RESOURCE_UNKNOWN),
+        (signals.distinct_verified_subjects, ReasonCode.COMPARISON_SUBJECTS_UNKNOWN),
+        (signals.owner_normal_data, ReasonCode.COMPARISON_OWNER_DATA_UNKNOWN),
+        (signals.cross_normal_data, ReasonCode.COMPARISON_CROSS_DATA_UNKNOWN),
+        (signals.nontrivial_data_match, ReasonCode.COMPARISON_DATA_MATCH_UNKNOWN),
+        (signals.reflection_excluded, ReasonCode.COMPARISON_REFLECTION_UNKNOWN),
+        (signals.template_excluded, ReasonCode.COMPARISON_TEMPLATE_UNKNOWN),
+    )
+    for state, reason in unknown_reasons:
+        if (state is CheckState.UNKNOWN) != (reason in reasons):
+            raise ValueError("comparison unknown signal/reason mismatch")
