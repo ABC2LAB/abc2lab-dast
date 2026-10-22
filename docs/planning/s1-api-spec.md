@@ -417,6 +417,8 @@ ExecutedRequestView·RegisteredRequestRecipe는 [PoC 계약 §3](poc-report-desi
 
 at_revision=None이면 현재 일관된 snapshot을 가져온다. 지정한 revision이 없거나 더 이상 읽을 수 없으면 failed/revision_unavailable을 반환하며 최신 값으로 조용히 바꾸지 않는다. limit를 초과하면 partial/truncated를 반환하고, 한 번의 limit 범위는 1–100이다. S1은 모든 메모리 snapshot의 무기한 보존을 약속하지 않으며, 이력 저장소가 없을 때는 현재 revision만 지원하고 이전 값을 명시적으로 거부한다.
 
+**C4-A 공유 계약 명확화(2026-10-21):** 세 메서드는 `contracts.ports.KnowledgePort`로 정의한다. [C4-A 계약](knowledge-c4-contract.md)은 후보/조회/투영의 상태·사유·run 불변식과 네 종류의 폐쇄 `ProjectionEvent`를 구현한다. 원본 Observation/Comparison revision은 1, Verdict는 verdict.revision, PolicyRegistered는 policy.source.revision이며 감사 sequence·graph revision과 구분한다. 초기 빈 graph revision은 1이고, applied/duplicate는 적용 revision, deferred/rejected는 revision None을 반환한다. duplicate는 최초 적용 revision을 보존한다. 조회 limit은 candidates+events 합계 상한이고 절단은 partial/truncated·result_limit_exceeded다. 실제 후보 병합·관련 이벤트 선택·인가·저장/감사 검증은 Knowledge 서비스 책임이며, 명시적으로 연결한 무전송 fixture의 통과를 해당 서비스 구현 완료로 집계하지 않는다.
+
 ## 9. Judge와 Report
 
 | 시그니처 | 입력 | 출력 |
@@ -503,7 +505,7 @@ TTL과 deadline에는 단조 시계를 사용하고 모듈 간 기록에는 명�
 
 | 사유 코드 그룹 | 초기 코드 |
 |---|---|
-| 입력/읽기 | `configuration_missing`, `not_found`, `access_denied`, `revision_conflict`, `revision_unavailable`, `snapshot_expired`, `idempotency_conflict`, `unsupported_authentication`, `queue_full` |
+| 입력/읽기 | `configuration_missing`, `not_found`, `access_denied`, `revision_conflict`, `revision_unavailable`, `result_limit_exceeded`, `snapshot_expired`, `idempotency_conflict`, `unsupported_authentication`, `queue_full` |
 | 계약 버전 | `unsupported_schema_version`. 문서 판번호로 대체하거나 알 수 없는 codec/kind/schema를 추측하지 않음 |
 | 준비/정책 | `policy_blocked`, `policy_view_mismatch`, `prepared_handle_invalid`, `prepared_handle_expired`, `prepared_handle_foreign_scope`, `prepared_handle_consumed`, `scope_mismatch`, `expected_access_policy_missing`, `expected_access_policy_invalid`, `cross_confirmation_missing`, `sharing_or_delegation_unknown` |
 | 세션/중지 | `identity_unknown`, `identity_mismatch`, `session_expired`, `session_generation_changed`, `session_busy`, `recovery_exhausted`, `cancelled`, `budget_exhausted`, `deadline_exceeded`, `cleanup_timeout`, `internal_error`, `scheduler_failed` |

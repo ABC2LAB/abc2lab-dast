@@ -81,6 +81,7 @@ class ReasonCode(StrEnum):
     ACCESS_DENIED = "access_denied"
     REVISION_CONFLICT = "revision_conflict"
     REVISION_UNAVAILABLE = "revision_unavailable"
+    RESULT_LIMIT_EXCEEDED = "result_limit_exceeded"
     SNAPSHOT_EXPIRED = "snapshot_expired"
     IDEMPOTENCY_CONFLICT = "idempotency_conflict"
     UNSUPPORTED_AUTHENTICATION = "unsupported_authentication"
