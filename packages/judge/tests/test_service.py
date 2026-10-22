@@ -96,3 +96,16 @@ async def test_publish_raises_on_unknown_verification(
     with pytest.raises(JournalCommitError) as error:
         await _publisher(journal).publish(confirmed_oracle, confirmed_context)
     assert error.value.reason_code is ReasonCode.AUDIT_VERIFICATION_UNKNOWN
+
+
+@pytest.mark.asyncio
+async def test_publish_allowed_commits_and_verifies(
+    publisher: VerdictPublisher,
+    journal: InMemoryVerdictJournal,
+    allowed_oracle: OracleVerdict,
+    allowed_context: VerdictContext,
+) -> None:
+    projected = await publisher.publish(allowed_oracle, allowed_context)
+    assert projected.verdict.value is VerdictValue.ALLOWED
+    assert projected.verdict.reason_codes == (ReasonCode.POLICY_ALLOWS,)
+    assert journal.committed(allowed_context.run_key)[0].receipt == projected.source_receipt

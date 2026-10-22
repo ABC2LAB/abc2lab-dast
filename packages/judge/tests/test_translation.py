@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from abc2lab_contracts.primitives import AuditLink, CheckState, ReasonCode
 from abc2lab_contracts.verdict import VerdictValue
 from abc2lab_judge.adapters import VerdictContext, to_check_state, to_contract_reasons, to_verdict
@@ -127,3 +128,41 @@ def test_data_unverifiable_only_undecidable_is_publishable(
     )
     assert verdict.value is VerdictValue.UNDECIDABLE
     assert verdict.reason_codes == (ReasonCode.DATA_UNVERIFIABLE,)
+
+
+def test_oracle_allowed_publishes_with_policy_source_only(
+    allowed_oracle: OracleVerdict, allowed_context: VerdictContext
+) -> None:
+    verdict = to_verdict(allowed_oracle, allowed_context, producer="judge", event_ref="judge:e1")
+    assert verdict.value is VerdictValue.ALLOWED
+    assert verdict.policy_check is CheckState.NO
+    # A/B 구별·교차 노출 축은 확인하지 않았어도 ALLOWED가 된다.
+    assert verdict.identity_check is CheckState.UNKNOWN
+    assert verdict.data_check is CheckState.UNKNOWN
+    assert verdict.reason_codes == (ReasonCode.POLICY_ALLOWS,)
+
+
+def test_oracle_allowed_without_policy_source_fails_loudly(
+    allowed_oracle: OracleVerdict, undetermined_context: VerdictContext
+) -> None:
+    with pytest.raises(ValueError):
+        to_verdict(allowed_oracle, undetermined_context, producer="judge", event_ref="judge:e1")
+
+
+def test_oracle_suspected_publishes_with_comparison(
+    suspected_oracle: OracleVerdict, suspected_context: VerdictContext
+) -> None:
+    # C4-B 전 오라클의 SUSPECTED는 policy_check가 UNKNOWN일 수 없어 발행이 불가능했다.
+    verdict = to_verdict(
+        suspected_oracle, suspected_context, producer="judge", event_ref="judge:e1"
+    )
+    assert verdict.value is VerdictValue.SUSPECTED
+    assert verdict.policy_check is CheckState.UNKNOWN
+    assert verdict.reason_codes == (ReasonCode.EXPECTED_ACCESS_UNKNOWN,)
+
+
+def test_oracle_suspected_without_comparison_fails_loudly(
+    suspected_oracle: OracleVerdict, undetermined_context: VerdictContext
+) -> None:
+    with pytest.raises(ValueError):
+        to_verdict(suspected_oracle, undetermined_context, producer="judge", event_ref="judge:e1")
