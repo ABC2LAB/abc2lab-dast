@@ -30,6 +30,9 @@ class Verdict(ContractRecord):
 
     Judge independently verifies signals and excludes verified allow policies
     from SUSPECTED. A reason label alone does not prove policy provenance.
+    ALLOWED also requires service-verified B identity and registered permission;
+    identity_check measures distinct A/B subjects, not B verification alone,
+    and data_check measures cross-data exposure, not policy authorization.
     """
 
     run_key: RunKey

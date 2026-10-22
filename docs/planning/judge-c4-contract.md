@@ -43,6 +43,31 @@ ALLOWED의 구조 조건은 서로 다른 A/B 주체나 교차 노출의 확인�
 
 생성자는 CheckState·참조·사유 존재와 ALLOWED의 필수 허용 사유를 검사한다. 사유 라벨 자체를 검증된 정책 근거로 인정하지 않으며, SUSPECTED의 허용 정책 배제와 신호·사유의 실제 의미 대조는 Judge 서비스 책임이다. 타입 생성 성공만으로 정책·신원·교차 데이터가 검증됐다고 취급하지 않는다.
 
+### 2.1 ALLOWED 발행 전 Judge 서비스 불변식
+
+`identity_check`는 **A/B가 검증된 서로 다른 주체인지**, `data_check`는 **비자명한 교차 데이터 노출이 있는지**를 나타낸다. 평가 주체 B의 신원이 확인됐는지를 단독으로 표현하는 필드가 아니다. 따라서 B가 검증됐어도 A·비교 근거가 없으면 두 check는 UNKNOWN일 수 있다. ALLOWED는 이 교차 노출을 주장하지 않는 정책상 허용 판정이며, SUSPECTED보다 강한 ‘실제 접근 정상’ 판정이 아니다.
+
+생성자의 정책 출처·허용 사유 존재는 **구조적 필요조건**이다. `POLICY_ALLOWS`나 `SHARING_OR_DELEGATION_ALLOWS` 라벨만으로는 실제 정책 출처·신원·인가를 증명하지 않는다. 아래 조건은 후속 `JudgePort.judge` 제공자 구현이 ALLOWED를 발행하기 전에 집행해야 한다. 계약 생성 성공이나 PR #34의 journal/publisher 통과로 이를 충족했다고 표시하지 않는다.
+
+| 추적 ID | 서비스 불변식과 책임 |
+|---|---|
+| `J-ALLOW-01` | Judge가 평가 주체 B의 `IdentityResult` 원본·신원 Evidence·WebDiag 감사 commit을 독립 확인한다. run·subject·정책의 evaluated_subject와 판정 기준 시각의 유효성이 일치해야 한다. A/B 구별 check가 UNKNOWN이어도 **B의 검증은 생략하지 않는다**. |
+| `J-ALLOW-02` | app 등록 경계와 Judge가 독립적인 case↔정책 정본, policy_ref·SourceVersion·전체 내용·target/environment/resource/operation/subject·provenance를 확인한다. Host의 snapshot·임의 SourceVersion·reason label만으로 허용하지 않는다. |
+| `J-ALLOW-03` | Judge 오라클은 검증된 직접 ALLOW 또는 적용 가능한 공유/위임 ALLOW에서만 허용 사유를 도출한다. 명시적 DENY에 유효한 허용 예외가 없으면 ALLOWED를 발행하지 않는다. 허용을 무효화할 수 있는 UNKNOWN은 UNDECIDABLE로 보존한다. |
+| `J-ALLOW-04` | Judge가 정책과 B 신원을 같은 신뢰된 기준 시각에서 검증한다. 비교 없는 현재 판정은 한 번 고정한 시각을 occurred_at에 보존하며 committed_at으로 대신하지 않는다. 기준 시각에서 정상적으로 확인된 만료·UNKNOWN은 ALLOWED가 아니다. |
+| `J-ALLOW-05` | 매 호출 현재 ReadContext를 재인가하고, 캐시된 결과에도 적용한다. 새 현재 시점 요청에 과거 ALLOWED를 재사용하지 않으며 정책·시각·submission 멱등 규칙은 §4를 따른다. |
+| `J-ALLOW-06` | 앞선 입력 검증을 마친 판정만 v2 fingerprint→자기 감사 commit→verify_committed→Projection 순서로 발행한다. 입력 관문 미충족은 **ALLOWED commit/publish 0건**이어야 한다. 정상 근거 부족의 UNDECIDABLE commit과 검증 실패의 FAILED를 구분한다. |
+
+후속 Judge 서비스 PR의 담당자는 최민준(`mminjun`)이며, case↔정책 정본 구현은 app 담당 이동찬과 연결한다. 다음은 아직 구현 완료가 아닌 **서비스 PR의 필수 검증 항목**이다. `_UNMAPPED` 매핑이나 내부 ALLOWED enum 추가만으로 완료 처리하지 않는다.
+
+- [ ] `J-ALLOW-01/04`: B 신원 부재·UNKNOWN·기준 시각에서 만료 → COMPLETE/UNDECIDABLE + `subject_not_verified`; ALLOWED 발행 없음. 신원 원본 변조·감사/run/subject 불일치·검증 장애 → FAILED.
+- [ ] `J-ALLOW-02/03`: 정상 등록됐지만 다른 case의 ALLOW → UNDECIDABLE/`expected_access_policy_invalid`; 위조 원본·검증/조회 장애 → FAILED. 실제 DENY 사례에 다른 ALLOW를 붙여 결과를 숨기지 못함.
+- [ ] `J-ALLOW-03`: 허용 라벨만 전달하거나 유효한 허용 예외 없는 DENY → ALLOWED 없음. 기존 CONFIRMED/SUSPECTED/UNDECIDABLE 조건을 보존.
+- [ ] `J-ALLOW-01..04`: B 신원·정본·유효기간·직접/공유 허용이 모두 검증되면 A/비교/교차 노출이 없어도 ALLOWED 가능. 이때 identity_check/data_check UNKNOWN은 검증 면제가 아닌 서로 다른 축의 상태임을 확인.
+- [ ] `J-ALLOW-05/06`: 캐시 반환의 현재 권한 거부, 원본 감사 검증 실패, 새 현재 시점의 재판정을 각각 검사하고 실패한 관문을 ALLOWED로 우회하지 않음.
+
+이 서비스 관문과 테스트가 구현·검증되기 전에는 ALLOWED 발행 경로를 실제 app 조립에서 활성화하지 않는다. 이번 C4-B는 그 전제와 추적 항목을 고정하며 Judge 내부 구현은 변경하지 않는다.
+
 ### ReasonCode 분리
 
 이번 공유 계약에 추가하는 정확한 9개는 다음과 같다.
@@ -61,6 +86,20 @@ Verdict payload 필드는 기존 집합을 유지하고 `record_kind=verdict`, `
 
 비교 근거가 있으면 검증된 Evidence의 `observed_at`, 없는 ALLOWED는 Judge가 주입받은 하나의 신뢰된 판정 시각을 정책 평가 기준으로 사용하고 같은 값을 감사 `occurred_at`으로 보존한다. `AuditReceipt.committed_at`과 `occurred_at`은 임의로 동일시하지 않는다. 여러 비교 관찰 시각을 하나로 선택하는 규칙, occurred_at 영속화는 후속 구현에서 확정한다.
 
+### 3.1 v1 지문 소비자·저장 자료 점검
+
+2026-10-22, PR #39의 `da8ad05` 추적 파일을 점검했다. `verdict.v1`, 구 벡터 ID와 교체 전 Verdict golden SHA-256, 지문 소비 경로·데이터 fixture를 확인했으며 결과는 다음과 같다.
+
+| 범위 | 확인한 상태 |
+|---|---|
+| Report·Knowledge의 src/tests | 패키지 scaffold이며 Verdict journal·저장 지문·v1 digest 하드코딩 소비자가 없다. |
+| app·루트 eval | app은 scaffold이고 eval은 README만 있다. v1 Verdict 평가 fixture나 저장 지문이 없다. |
+| Judge journal | 현재 메모리 어댑터가 업무 내용으로 `verdict_fingerprint`를 호출해 binding을 만들고 검증 시 다시 계산한다. v1 digest 상수나 추적된 영속 journal 자료는 없다. |
+| 고정 벡터 | `fingerprint-v1-vectors.json`의 Verdict 항목은 `verdict-v2-c4` 1개다. 파일명·codec의 v1은 Verdict schema와 별개다. 교체 전 Verdict digest는 현재 추적 파일에서 발견되지 않았다. |
+| 남은 v1 표기 | 설계 문서의 교체 설명과 `test_verdict_projection_rejects_same_payload_with_legacy_v1_digest`의 의도적인 거부 시험이다. 운영 v1 호환 경로나 보존한 v1 golden 항목이 아니다. |
+
+따라서 현재 저장소의 구현된 소비자가 저장된 v1 지문에 의존하는 사례는 확인되지 않았다. 이는 CI green에서 추정한 결론이 아니라 소스·추적 자료 점검 결과다. Git 이력, 개인 로컬/untracked 자료, 실행 중 프로세스, 외부 DB·배포 journal의 상태까지 확인한 것은 아니다. 그런 v1 자료가 실제로 있다면 별도 이관을 확정해야 하며 원본 v1 영수증의 digest를 v2 값으로 덮어쓰지 않는다.
+
 ## 4. 멱등성·revision·감사
 
 동일 `(run_key, case_ref)`에는 안정적인 `verdict_ref`를 사용한다. Verdict revision은 불변 판정의 버전이고 감사 sequence는 producer journal의 순번이므로 서로 대체하지 않는다. 같은 `submission_ref`와 정규 의미 입력이면 최초 해결한 정책·SourceVersion·판정 기준 시각·결과·projection·receipt를 재사용한다. `ReadContext` 자체는 의미 입력에서 제외하되 현재 권한은 매번 재검사한다. 같은 submission인데 의미 입력이 다르면 `FAILED + idempotency_conflict`다. 다른 submission이라도 과거의 동일 비교 Evidence·의미 입력·oracle_version에 대한 결과는 재사용할 수 있다. 반면 비교 없는 현재 시점 정책 평가는 독립적인 새 판정이므로 동일한 ALLOWED라도 새 revision과 감사 이벤트를 발행한다. 현재 revision은 Judge 내부 저장소에서 읽고 `JudgeRequest`에 expected_revision을 추가하지 않는다. 동시 새 revision 선점 충돌은 `FAILED + revision_conflict`이며 CAS 자동 재시도나 자동 재판정은 하지 않는다.
@@ -70,6 +109,8 @@ Verdict payload 필드는 기존 집합을 유지하고 `record_kind=verdict`, `
 ## 5. 범위와 후속 구현 경계
 
 이번 계약은 네트워크·DB·대상 HTTP 호출 없이 타입·binding·스크립트형 포트 예제를 검증한다. PR #34의 `VerdictPublisher`, `VerdictJournal`, memory adapter와 fingerprint 소비 경로는 이미 존재하며 이번 변경에서 재구현하지 않는다. 정책 정본 생성·case mapping 영속화는 app 등록 경계의 후속 구현이고, 새 Judge 포트 조립·오라클/사유 매핑은 Judge 담당자의 후속 PR이다. 내부/public enum 통합을 선택하면 담당자가 기존 변환 테스트를 유지해 항등과 전체 값 대응을 확인한다. S1 포트 집계는 `29개(비동기 26, 동기 3)`이며 이 문서는 그중 Judge와 정책 등록 조회 경계를 정의한다.
+
+ALLOWED의 실제 서비스 발행 조건과 미완료 인수 테스트는 [§2.1의 J-ALLOW-01~06](#21-allowed-발행-전-judge-서비스-불변식)으로 추적한다. 계약 생성자의 UNKNOWN 허용을 신원·정책 검증 면제로 해석하지 않는다. v2 교체의 현재 소비자 점검 결과와 확인 범위는 §3.1에 기록한다.
 
 현재 구현과 별개로 남은 원래 네 가지 구현 공백은 다음과 같다: 비교 Evidence 없이 ALLOWED를 판정할 때 case와 정책 resource/operation 대응을 신뢰된 등록 조회에서 검증하는 방법, owner/cross Evidence의 서로 다른 `observed_at` 선택, `occurred_at`의 journal 영속화, 안정적인 verdict_ref·submission 멱등성·CAS·감사 commit의 원자적 조정. 이 문서는 이를 임의 필드나 서비스 의존성으로 해결했다고 주장하지 않는다.
 

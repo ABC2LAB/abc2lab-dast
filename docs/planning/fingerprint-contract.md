@@ -155,6 +155,8 @@ C3 공유 계약 동결 패치에서는 evidence.v1/comparison.v1 typed wrapper�
 
 C4-B는 스키마 변경으로 기존 `verdict-v1-c4` 항목만 `verdict-v2-c4`로 교체한다. 기존 Verdict payload는 유지하고 envelope의 schema_version·정규 bytes·digest를 갱신한다. v1 Verdict 벡터나 운영 호환 경로는 남기지 않는다. 다른 10개 벡터는 그대로이며 파일명과 최상위 `codec_version=canonical-json.v1`은 record별 버전과 별개다. 같은 변경에서 C1/C2 벡터, `VerdictProjected`와 기존 Judge journal의 재계산 경로를 함께 검사한다.
 
+Report·Knowledge·app·eval의 저장 v1 digest/fixture와 Judge journal의 소비 경로를 점검한 결과는 [C4-B §3.1](judge-c4-contract.md#31-v1-지문-소비자저장-자료-점검)에 기록한다. 현재 추적 파일에는 보존한 Verdict v1 digest 소비자가 없으며, 의도적인 v1 거부 시험만 유지한다. 외부 DB나 개인 자료까지 없음을 증명하는 기록은 아니다.
+
 각 벡터의 validation_path는 다음 경로를 구분하며 fingerprint envelope/payload에 포함하지 않는 시험 metadata다.
 
 - canonical_bytes_only: C1의 demo.record/demo.v1. 구현된 테스트는 tuple·허용된 불변 mapping으로 fixture를 구성하고 `canonical_json_bytes()`의 정확한 bytes와 **테스트 안의 stdlib hashlib.sha256** digest를 검증한다. 같은 demo는 운영 등록 검증기에서 거부되며 테스트용 운영 등록은 하지 않는다.

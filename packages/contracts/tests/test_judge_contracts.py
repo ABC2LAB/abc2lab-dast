@@ -338,6 +338,9 @@ def test_confirmed_requires_all_positive_evidence(field: str, value: object) -> 
 
 
 def test_allowed_requires_policy_source_no_check_and_allow_reason_only() -> None:
+    # These are shape requirements, not sufficient evidence of permission.
+    # UNKNOWN A/B distinctness or cross-data exposure does not waive service
+    # verification of B's identity and the registered policy (J-ALLOW-01..06).
     for reason in (ReasonCode.POLICY_ALLOWS, ReasonCode.SHARING_OR_DELEGATION_ALLOWS):
         valid = _verdict(
             value=VerdictValue.ALLOWED,

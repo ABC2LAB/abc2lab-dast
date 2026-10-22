@@ -57,6 +57,11 @@ class JudgePort(Protocol):
     ReadContext is excluded from semantic idempotency input, but cached results
     still require current read authorization. Providers match result run/case to
     the request and verify source records; constructor checks do not prove this.
+    Before publishing ALLOWED, verify B's identity, canonical case/policy binding,
+    applicability and validity at the evaluation time, then derive allow reasons
+    from that verified policy. Neither a reason label nor unknown A/B-distinctness
+    or cross-data checks establishes permission. Normal B identity absence is
+    UNDECIDABLE; forged sources and failed verification/read boundaries fail the call.
     """
 
     async def judge(self, request: JudgeRequest) -> JudgeResult:
