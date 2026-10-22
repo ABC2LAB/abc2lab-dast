@@ -9,10 +9,13 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 import pytest
+from abc2lab_contracts.audit import AuditEventKind, AuditReceipt, AuditRecordBinding
 from abc2lab_contracts.fingerprint import (
+    _REGISTERED_RECORDS,
     _registered_record_envelope,
     canonical_json_bytes,
     expected_policy_fingerprint,
+    freeze_object,
     observation_fingerprint,
     verdict_fingerprint,
 )
@@ -25,6 +28,7 @@ from abc2lab_contracts.primitives import (
     RunKey,
     SourceVersion,
 )
+from abc2lab_contracts.projection import VerdictProjected
 from abc2lab_contracts.registration import (
     ExpectedAccess,
     ExpectedAccessPolicySnapshot,
@@ -146,13 +150,13 @@ def _verdict() -> Verdict:
         VerdictValue.SUSPECTED,
         CheckState.UNKNOWN,
         CheckState.YES,
-        CheckState.UNKNOWN,
+        CheckState.YES,
         None,
-        None,
-        (),
+        "comparison-1",
+        ("evidence-owner", "evidence-cross"),
         SourceVersion("judge", "oracle", 4),
         AuditLink("judge", "event-2"),
-        (ReasonCode.POC_VERDICT_UNCONFIRMED,),
+        (ReasonCode.EXPECTED_ACCESS_POLICY_MISSING,),
     )
 
 
@@ -212,7 +216,7 @@ def test_observation_fingerprint_changes_for_nested_and_scalar_tampering() -> No
 
 
 def test_verdict_fingerprint_distinguishes_null_from_present_optional_fields() -> None:
-    value = _verdict()
+    value = replace(_c4_verdict(), comparison_ref=None)
     absent_digest = verdict_fingerprint(value)
     present = replace(value, expected_policy_source=SourceVersion("registration", "policy", 3))
     assert verdict_fingerprint(present) != absent_digest
@@ -253,25 +257,107 @@ def test_fingerprint_rejects_missing_nullable_field_and_nested_type_tampering() 
 
 
 @pytest.mark.parametrize(
-    ("vector_id", "factory", "fingerprint"),
+    ("vector_id", "factory", "fingerprint", "kind", "version"),
     [
-        ("observation-v1-c4", _c4_observation, observation_fingerprint),
-        ("verdict-v1-c4", _c4_verdict, verdict_fingerprint),
-        ("expected-policy-v1-c4", _c4_policy, expected_policy_fingerprint),
+        ("observation-v1-c4", _c4_observation, observation_fingerprint, "observation", "v1"),
+        ("verdict-v2-c4", _c4_verdict, verdict_fingerprint, "verdict", "v2"),
+        ("expected-policy-v1-c4", _c4_policy, expected_policy_fingerprint, "expected_policy", "v1"),
     ],
 )
 def test_c4_golden_vectors_pin_canonical_bytes_and_wrapper_digest(
     vector_id: str,
     factory: Callable[[], object],
     fingerprint: Callable[[object], str],
+    kind: str,
+    version: str,
 ) -> None:
     vector = _vector(vector_id)
     assert vector["validation_path"] == "production_adapter"
-    expected_kind = vector_id.removesuffix("-v1-c4").replace("-", "_")
-    assert vector["record_kind"] == expected_kind
-    assert vector["schema_version"] == f"{expected_kind}.v1"
+    assert vector["record_kind"] == kind
+    assert vector["schema_version"] == f"{kind}.{version}"
     record = factory()
     canonical = canonical_json_bytes(_registered_record_envelope(record))
     assert canonical.decode("utf-8") == vector["canonical_utf8"]
     assert sha256(canonical).hexdigest() == vector["sha256"]
     assert fingerprint(record) == vector["sha256"]
+
+
+def test_verdict_has_only_one_operational_version_and_golden_vector() -> None:
+    registrations = [
+        (item.schema_version, item.record_type)
+        for item in _REGISTERED_RECORDS
+        if item.record_kind == "verdict"
+    ]
+    assert registrations == [("verdict.v2", Verdict)]
+    assert [item["id"] for item in VECTORS if item["record_kind"] == "verdict"] == ["verdict-v2-c4"]
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("run_key", RunKey("org", "target", "environment", "other-run")),
+        ("verdict_ref", "other-verdict"),
+        ("revision", 3),
+        ("case_ref", "other-case"),
+        ("value", VerdictValue.UNDECIDABLE),
+        ("expected_policy_source", SourceVersion("app", "policy", 2)),
+        ("comparison_ref", "other-comparison"),
+        ("evidence_refs", ("other-evidence",)),
+        ("oracle_version", SourceVersion("judge", "oracle", 5)),
+        ("source_event", AuditLink("other-producer", "event-2")),
+        ("source_event", AuditLink("judge", "other-event")),
+        ("reason_codes", (ReasonCode.DATA_UNVERIFIABLE,)),
+    ],
+)
+def test_verdict_fingerprint_covers_business_fields(field: str, replacement: object) -> None:
+    verdict = _verdict()
+    changed = replace(verdict, **{field: replacement})  # type: ignore[arg-type]
+    assert verdict_fingerprint(changed) != verdict_fingerprint(verdict)
+
+
+@pytest.mark.parametrize("field", ["policy_check", "identity_check", "data_check"])
+def test_verdict_fingerprint_covers_each_check(field: str) -> None:
+    verdict = _c4_verdict()
+    changed = replace(verdict, **{field: CheckState.NO})  # type: ignore[arg-type]
+    assert verdict_fingerprint(changed) != verdict_fingerprint(verdict)
+
+
+def test_verdict_fingerprint_rejects_dict_other_record_and_invalid_bypassed_content() -> None:
+    invalid: tuple[object, ...] = ({}, _observation())
+    for value in invalid:
+        with pytest.raises(TypeError, match="exact Verdict"):
+            verdict_fingerprint(cast(Verdict, value))
+    verdict = _verdict()
+    object.__setattr__(verdict, "data_check", CheckState.UNKNOWN)
+    with pytest.raises(ValueError, match="suspected"):
+        verdict_fingerprint(verdict)
+
+
+def test_verdict_projection_rejects_same_payload_with_legacy_v1_digest() -> None:
+    verdict = _c4_verdict()
+    # A downgraded envelope is test data only; production exposes no v1 wrapper.
+    old_envelope = dict(_registered_record_envelope(verdict).entries)
+    old_envelope["schema_version"] = "verdict.v1"
+    old_digest = sha256(canonical_json_bytes(freeze_object(old_envelope))).hexdigest()
+    assert old_digest != verdict_fingerprint(verdict)
+    binding = AuditRecordBinding(
+        AuditEventKind.VERDICT, verdict.verdict_ref, verdict.revision, old_digest, None, None, None
+    )
+    receipt = AuditReceipt(
+        verdict.run_key,
+        verdict.source_event.producer,
+        verdict.source_event.event_ref,
+        1,
+        binding,
+        datetime(2026, 10, 21, tzinfo=UTC),
+    )
+    with pytest.raises(ValueError, match="binding mismatch"):
+        VerdictProjected(
+            AuditEventKind.VERDICT,
+            verdict.source_event.event_ref,
+            verdict.run_key,
+            verdict.source_event.producer,
+            verdict.revision,
+            receipt,
+            verdict,
+        )

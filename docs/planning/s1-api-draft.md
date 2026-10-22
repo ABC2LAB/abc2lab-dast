@@ -169,7 +169,8 @@ S1은 `store_memory`로 테스트한다. 다른 서비스의 작업/정책/근�
 
 | API 제안 | 최소 입력 | 결과·실패 의미 |
 |---|---|---|
-| `async def judge(request: JudgeRequest) -> JudgeResult` | 실행 키·사례 참조·등록 기대 접근 정책 snapshot 또는 부재·A/B 주체 확인·저장 완료 비교 참조 | `Verdict` 또는 판정 자체의 처리 실패. Verdict는 `CONFIRMED/SUSPECTED/UNDECIDABLE`·조건·근거·버전·사유·revision |
+| `async def judge(request: JudgeRequest) -> JudgeResult` | 실행 키·호출자 `ReadContext`·사례 참조·등록 기대 접근 정책 snapshot 또는 부재·A/B 주체 확인·저장 완료 비교 참조 | `Verdict` 또는 판정 자체의 처리 실패. Verdict는 `CONFIRMED/SUSPECTED/ALLOWED/UNDECIDABLE`·조건·근거·버전·사유·revision |
+| `async def read_case_policy(request: JudgePolicyReadRequest) -> JudgePolicyReadResult` | 실행 키·호출자 `ReadContext`·사례 참조·선택적 기대 정책 대조 값 | app이 주입한 등록 정본 정책 또는 정상 부재/조회 실패. Host의 값만으로 정책을 신뢰하지 않음 |
 | `async def build_report(request: ReportInput) -> ReportResult` | 실행 키·관찰/판정/작업 요약·생산자별 기대 기록. 근거/요청 레시피·감사는 주입된 읽기 포트로 조회 | DiagnosisReport와 PoC 상태/절차 또는 생성 실패. Report는 재전송 없이 제한·전송 불명·감사 완전성을 보존 |
 | `async def read_audit(request: AuditReadRequest) -> AuditPage` | 실행 키·호출자 권한·producer/cursor·유한 반환 상한 | 각 생산자의 허용 이벤트·순번·연결 참조·다음 cursor·완전성/실패. 각 소유 서비스가 제공 |
 

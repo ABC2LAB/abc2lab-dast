@@ -88,7 +88,7 @@ receipt·자체 fingerprint를 제외하는 규칙을 필드명으로 재귀 검
 | `PolicyDecision` | `record_kind=policy_decision`, `schema_version=policy_decision.v1`. `decision_ref`, `binding_id`, `evaluated_view_fingerprint`, `outcome`, `policy_version`, `issued_at`, `expires_at`, `reason_codes`, `run_key` **9개 업무 필드 전체**를 포함하고 최상위 `audit_receipt` 하나만 제외한다. |
 | `IdentityResult` | `record_kind=identity`, `schema_version=identity.v1`. `run_key`, `identity_ref`, `status`, `session_ref`, `account_ref`, `generation`, `subject_ref`, `evidence_ref`, `verified_at`, `valid_until`, `attempt_summaries`, `reason_codes`를 모두 포함하고 최상위 `audit_receipt` 하나만 제외한다. |
 | `Observation` | `record_kind=observation`, `schema_version=observation.v1`. 모든 business field를 포함한다. |
-| `Verdict` | `record_kind=verdict`, `schema_version=verdict.v1`. 모든 business field를 포함한다. |
+| `Verdict` | `record_kind=verdict`, `schema_version=verdict.v2`. 모든 business field를 포함한다. v1 발행·검증 경로는 두지 않는다. |
 | `ExpectedAccessPolicySnapshot` | `record_kind=expected_policy`, `schema_version=expected_policy.v1`. 모든 business field를 포함한다. |
 | `EvidenceSummary` | `record_kind=evidence`, `schema_version=evidence.v1`. fingerprint 전에 고정한 Evidence 자체 `source_event: AuditLink`와 nullable recipe 필드를 포함한 모든 business field를 포함한다. 링크는 commit 증명이 아니며 아래 §3.3의 수명주기를 따른다. |
 | `ComparisonPayload` | `record_kind=comparison`, `schema_version=comparison.v1`. 모든 business field를 포함한다. |
@@ -144,7 +144,7 @@ C3 공유 계약 동결 패치에서는 evidence.v1/comparison.v1 typed wrapper�
 | 함수 | 정확한 입력 | record kind/schema |
 |---|---|---|
 | `observation_fingerprint` | `observation.Observation` | observation / observation.v1 |
-| `verdict_fingerprint` | `verdict.Verdict` | verdict / verdict.v1 |
+| `verdict_fingerprint` | `verdict.Verdict` | verdict / verdict.v2 |
 | `expected_policy_fingerprint` | `registration.ExpectedAccessPolicySnapshot` | expected_policy / expected_policy.v1 |
 
 모든 업무 필드와 nullable 필드를 명시적으로 변환한다. Observation/Verdict의 자체 source_event는 fingerprint 전에 고정하며 payload에 포함한다. 원본 producer는 내용 fingerprint 계산·commit 이후 receipt와 projection을 조립한다. 이 세 payload에는 receipt가 없으므로 별도 precommit Content 타입은 필요하지 않다. wrapper·생성자 통과는 실제 commit·출처의 증명이 아니며 Knowledge가 주입된 생산자를 조회해 독립 검증한다. run/task wrapper와 Host 상태 payload는 후속 계약이다.
@@ -152,6 +152,10 @@ C3 공유 계약 동결 패치에서는 evidence.v1/comparison.v1 typed wrapper�
 ## 4. 고정 벡터와 후속 테스트
 
 정적 벡터는 [fingerprint-v1-vectors.json](../examples/fingerprint-v1-vectors.json)에 있다. C1의 `primitive-v1`과 C2 운영 벡터 5개 모두 정확한 `canonical_utf8`·SHA-256 일치를 테스트로 검증했다. 벡터 파일의 기존 내용은 유지하며, 이 일치가 실행 관문 통과나 실제 감사 내구성을 증명하지는 않는다.
+
+C4-B는 스키마 변경으로 기존 `verdict-v1-c4` 항목만 `verdict-v2-c4`로 교체한다. 기존 Verdict payload는 유지하고 envelope의 schema_version·정규 bytes·digest를 갱신한다. v1 Verdict 벡터나 운영 호환 경로는 남기지 않는다. 다른 10개 벡터는 그대로이며 파일명과 최상위 `codec_version=canonical-json.v1`은 record별 버전과 별개다. 같은 변경에서 C1/C2 벡터, `VerdictProjected`와 기존 Judge journal의 재계산 경로를 함께 검사한다.
+
+Report·Knowledge·app·eval의 저장 v1 digest/fixture와 Judge journal의 소비 경로를 점검한 결과는 [C4-B §3.1](judge-c4-contract.md#31-v1-지문-소비자저장-자료-점검)에 기록한다. 현재 추적 파일에는 보존한 Verdict v1 digest 소비자가 없으며, 의도적인 v1 거부 시험만 유지한다. 외부 DB나 개인 자료까지 없음을 증명하는 기록은 아니다.
 
 각 벡터의 validation_path는 다음 경로를 구분하며 fingerprint envelope/payload에 포함하지 않는 시험 metadata다.
 

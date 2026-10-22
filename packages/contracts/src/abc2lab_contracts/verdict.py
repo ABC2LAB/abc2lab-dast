@@ -16,16 +16,24 @@ from abc2lab_contracts.primitives import (
 
 
 class VerdictValue(StrEnum):
-    """Keep an unresolved diagnostic conclusion distinct from confirmed findings."""
+    """Separate findings, unresolved conclusions and verified policy permission."""
 
     CONFIRMED = "CONFIRMED"
     SUSPECTED = "SUSPECTED"
     UNDECIDABLE = "UNDECIDABLE"
+    ALLOWED = "ALLOWED"
 
 
 @dataclass(frozen=True, slots=True)
 class Verdict(ContractRecord):
-    """Carry immutable verdict content before and after its producer audit commit."""
+    """Carry verdict.v2 structure without authenticating policy or reason claims.
+
+    Judge independently verifies signals and excludes verified allow policies
+    from SUSPECTED. A reason label alone does not prove policy provenance.
+    ALLOWED also requires service-verified B identity and registered permission;
+    identity_check measures distinct A/B subjects, not B verification alone,
+    and data_check measures cross-data exposure, not policy authorization.
+    """
 
     run_key: RunKey
     verdict_ref: Ref
@@ -43,6 +51,8 @@ class Verdict(ContractRecord):
     reason_codes: tuple[ReasonCode, ...]
 
     def _validate_invariants(self) -> None:
+        if self.value is not VerdictValue.CONFIRMED and not self.reason_codes:
+            raise ValueError("unconfirmed verdict requires a reason")
         if self.value is VerdictValue.CONFIRMED:
             if any(
                 check is not CheckState.YES
@@ -55,5 +65,24 @@ class Verdict(ContractRecord):
                 or not self.evidence_refs
             ):
                 raise ValueError("confirmed verdict requires policy, comparison and Evidence refs")
-        elif not self.reason_codes:
-            raise ValueError("unconfirmed verdict requires a reason")
+        elif self.value is VerdictValue.SUSPECTED:
+            if (
+                self.policy_check is not CheckState.UNKNOWN
+                or self.identity_check is not CheckState.YES
+                or self.data_check is not CheckState.YES
+            ):
+                raise ValueError(
+                    "suspected verdict requires unknown policy and verified identity/data"
+                )
+            if self.comparison_ref is None or not self.evidence_refs:
+                raise ValueError("suspected verdict requires comparison and Evidence refs")
+        elif self.value is VerdictValue.ALLOWED:
+            if self.policy_check is not CheckState.NO or self.expected_policy_source is None:
+                raise ValueError("allowed verdict requires no policy violation and a policy source")
+            if not any(
+                reason in (ReasonCode.POLICY_ALLOWS, ReasonCode.SHARING_OR_DELEGATION_ALLOWS)
+                for reason in self.reason_codes
+            ):
+                raise ValueError(
+                    "allowed verdict requires a policy/sharing/delegation allow reason"
+                )

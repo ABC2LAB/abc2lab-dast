@@ -79,13 +79,13 @@ def _verdict() -> Verdict:
         VerdictValue.SUSPECTED,
         CheckState.UNKNOWN,
         CheckState.YES,
-        CheckState.UNKNOWN,
+        CheckState.YES,
         None,
-        None,
-        (),
+        "comparison-1",
+        ("evidence-owner", "evidence-cross"),
         SourceVersion("judge", "oracle", 4),
         AuditLink("judge", "verdict-event"),
-        (ReasonCode.POC_VERDICT_UNCONFIRMED,),
+        (ReasonCode.EXPECTED_ACCESS_POLICY_MISSING,),
     )
 
 
