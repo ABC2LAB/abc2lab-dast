@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from abc2lab_contracts._validation import ContractRecord
 from abc2lab_contracts.primitives import ReadContext, ReasonCode, Ref, ResultStatus, RunKey
 from abc2lab_contracts.projection import VerdictProjected
+from abc2lab_contracts.reason_codes import CALL_AUDIT_FAILURE_REASON_CODES
 from abc2lab_contracts.registration import ExpectedAccessPolicySnapshot
 from abc2lab_contracts.session import IdentityResult
 from abc2lab_contracts.verdict import Verdict
@@ -36,7 +37,7 @@ class JudgeRequest(ContractRecord):
 
 @dataclass(frozen=True, slots=True)
 class JudgeResult(ContractRecord):
-    """Publish a verdict and matching source projection, or a reasoned call failure."""
+    """Publish a matching verdict/projection pair or fail using failure-class reasons."""
 
     run_key: RunKey
     status: ResultStatus
@@ -61,8 +62,7 @@ class JudgeResult(ContractRecord):
         else:
             if self.verdict is not None or self.projection_event is not None:
                 raise ValueError("failed Judge result cannot publish verdict or projection")
-            if not self.reason_codes:
-                raise ValueError("failed Judge result requires a reason")
+            _validate_failure_reasons(self.reason_codes)
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +80,7 @@ class JudgePolicyReadRequest(ContractRecord):
 
 @dataclass(frozen=True, slots=True)
 class JudgePolicyReadResult(ContractRecord):
-    """Distinguish a case's canonical policy, known absence and failed source reads."""
+    """Return a policy, exact known-absence marker or failure-class read reasons."""
 
     run_key: RunKey
     case_ref: Ref
@@ -94,15 +94,23 @@ class JudgePolicyReadResult(ContractRecord):
         if self.status is ResultStatus.FAILED:
             if self.expected_policy is not None:
                 raise ValueError("failed Judge policy read cannot publish a policy")
-            if not self.reason_codes:
-                raise ValueError("failed Judge policy read requires a reason")
+            _validate_failure_reasons(self.reason_codes)
         elif self.expected_policy is None:
-            if ReasonCode.EXPECTED_ACCESS_POLICY_MISSING not in self.reason_codes:
-                raise ValueError("known policy absence requires expected_access_policy_missing")
+            if self.reason_codes != (ReasonCode.EXPECTED_ACCESS_POLICY_MISSING,):
+                raise ValueError(
+                    "known policy absence requires exactly one expected_access_policy_missing"
+                )
         else:
             _validate_policy_scope(self.run_key, self.expected_policy)
             if self.reason_codes:
                 raise ValueError("complete Judge policy read with a policy cannot contain reasons")
+
+
+def _validate_failure_reasons(reason_codes: tuple[ReasonCode, ...]) -> None:
+    if not reason_codes:
+        raise ValueError("failed Judge call requires a reason")
+    if any(reason not in CALL_AUDIT_FAILURE_REASON_CODES for reason in reason_codes):
+        raise ValueError("failed Judge call accepts only call/audit failure reasons")
 
 
 def _validate_policy_scope(run_key: RunKey, policy: ExpectedAccessPolicySnapshot | None) -> None:

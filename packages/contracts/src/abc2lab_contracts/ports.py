@@ -62,6 +62,7 @@ class JudgePort(Protocol):
     from that verified policy. Neither a reason label nor unknown A/B-distinctness
     or cross-data checks establishes permission. Normal B identity absence is
     UNDECIDABLE; forged sources and failed verification/read boundaries fail the call.
+    FAILED accepts only explicit call/audit failure reasons, never diagnostic reasons.
     """
 
     async def judge(self, request: JudgeRequest) -> JudgeResult:
@@ -80,6 +81,8 @@ class JudgePolicyReader(Protocol):
     Missing policy on a known case is distinct from an unknown case, forgery or
     read failure. Only the latter fail the read. Match returned run/case to the
     request. No constructor proves provenance, authorization or an audit commit.
+    Known absence returns exactly (EXPECTED_ACCESS_POLICY_MISSING,); FAILED uses
+    only explicit call/audit failure reasons, without that normal-absence marker.
     """
 
     async def read_case_policy(self, request: JudgePolicyReadRequest) -> JudgePolicyReadResult:

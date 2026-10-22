@@ -81,11 +81,13 @@ class JudgePort(Protocol):
 | Record | 필드 |
 |---|---|
 | `JudgeRequest` | `run_key: RunKey`, `context: ReadContext`, `case_ref: Ref`, `submission_ref: Ref`, `expected_policy: ExpectedAccessPolicySnapshot?`, `owner_identity: IdentityResult?`, `evaluated_identity: IdentityResult?`, `comparison_ref: Ref?` |
-| `JudgeResult` | `run_key: RunKey`, `status: ResultStatus`, `verdict: Verdict?`, `projection_event: VerdictProjected?`, `reason_codes: tuple[ReasonCode, ...]`. complete는 판정과 원본 이벤트를 함께 반환, failed는 둘 다 None |
+| `JudgeResult` | `run_key: RunKey`, `status: ResultStatus`, `verdict: Verdict?`, `projection_event: VerdictProjected?`, `reason_codes: tuple[ReasonCode, ...]`. complete는 판정과 원본 이벤트를 함께 반환하고 호출 사유는 비움. failed는 둘 다 None이며 명시적 호출·감사 실패 허용목록의 사유만 하나 이상 요구 |
 | `Verdict` | `run_key, verdict_ref: Ref, revision: Revision, case_ref, value: CONFIRMED/SUSPECTED/ALLOWED/UNDECIDABLE, policy_check: CheckState, identity_check: CheckState, data_check: CheckState, expected_policy_source: SourceVersion?, comparison_ref: Ref?, evidence_refs: tuple[Ref, ...], oracle_version: SourceVersion, source_event: AuditLink, reason_codes` |
 | `VerdictProjected` | `kind=verdict`, `event_ref, run_key, producer: Ref, source_revision: Revision, source_receipt: AuditReceipt, verdict: Verdict`. Judge가 원본 생산자, 전달자가 소유권을 바꾸지 않음(§8) |
 
 **입력 경계:** Judge는 `comparison_ref`로 저장된 `StoredComparison`을 Evidence 읽기 포트로 **직접 가져와** 주체·유효기간·자원·정책 대응을 재검증하며, 호출자가 구성한 StoredComparison이나 원문·`CaptureRef`를 입력으로 받지 않는다. **기대 정책 신뢰(이동찬 리뷰 A):** `expected_policy`는 app이 주입한 `JudgePolicyReader`에 선택적 대조 값으로 전달한다. Reader는 등록 원본과 독립 대조하고 case의 정본을 조회한다. 다른 case에 속한 진짜 정책은 `UNDECIDABLE + expected_access_policy_invalid`, 위조·출처 검증·조회 장애는 `FAILED`로 구분한다. 호출자가 구성해 전달한 정책 내용을 그대로 믿지 않으며, Knowledge resolver나 다른 모듈 DB를 직접 읽지 않는다. Evidence 읽기는 기존 `ReadContext` 접근 권한 검사를 유지한다. `ComparisonRules`(정규화·canary)는 Judge가 소유·정의하고 `app`이 로컬 Evidence에 주입한다(§13-6). 주체/정책 유효성은 각 근거의 `observed_at` 당시로 판단하고, 판정 시각 TTL 경과만으로 당시 유효 근거를 버리지 않는다.
+
+등록 Reader의 정상 부재는 정확히 `(EXPECTED_ACCESS_POLICY_MISSING,)`이며 중복·추가 사유를 허용하지 않는다. 이 정상 부재 마커를 포함한 진단 12개와 canary 성공 마커는 두 Judge 결과의 FAILED에서 금지한다. enum 전수 분류와 실패 허용목록은 [C4-B Judge 계약 §2](judge-c4-contract.md#reasoncode-분리)를 따른다.
 
 **판정 규칙(§7, §9):** 세 `CheckState`가 모두 `yes`일 때만 `value=CONFIRMED`. `SUSPECTED`는 정책 UNKNOWN·서로 다른 검증 주체·비자명 교차 데이터·비교/근거·반사/템플릿 제외를 모두 요구한다. `ALLOWED`는 정책상 직접 또는 실제 공유/위임 허용이 검증된 경우이며 관련 없는 UNKNOWN이 직접 ALLOW를 막지 않는다. 다만 허용 여부를 무효화할 수 있는 UNKNOWN은 `UNDECIDABLE`이다. 세부 구조 조건과 등록 정책 reader는 [C4-B Judge 계약](judge-c4-contract.md)을 정본으로 한다.
 - (a) `policy_check`: 신뢰된 등록 정책이 B를 명시적 금지(`expected_access=deny`)하고 `sharing/delegation=resolved_none`. 표시 문구·owner 필드·목록 차이를 정책으로 승격하지 않음. 미해소·불명은 `no`/`unknown`.

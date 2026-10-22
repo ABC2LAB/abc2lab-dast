@@ -20,14 +20,14 @@ async def read_case_policy(request: JudgePolicyReadRequest) -> JudgePolicyReadRe
 
 `JudgePolicyReadRequest`는 정확히 `run_key: RunKey`, `context: ReadContext`, `case_ref: Ref`, `expected_policy: ExpectedAccessPolicySnapshot | None`을 가진다. `JudgePolicyReadResult`는 정확히 `run_key: RunKey`, `case_ref: Ref`, `status: ResultStatus`, `expected_policy: ExpectedAccessPolicySnapshot | None`, `reason_codes: tuple[ReasonCode, ...]`를 가진다. Reader는 선택값을 권한 부여 입력으로 신뢰하지 않고 등록 원본의 정확한 `policy_ref`, `SourceVersion`, 전체 불변 내용을 인증한 뒤 case의 정본 정책을 독립 조회한다. `None`이면 정본에서 해결한다. 진짜 등록 정책이 다른 case에 적용된 경우에는 case 정본을 반환하고 Judge가 `COMPLETE + UNDECIDABLE + expected_access_policy_invalid`로 남긴다. 위조된 source/full content, source 검증 실패는 `FAILED + source_unverified`, 조회 장애는 해당 실패 사유로 남긴다. 등록된 case에 정책이 없으면 `COMPLETE`와 `expected_access_policy_missing`, 미등록 case는 `FAILED + not_found`다. Reader는 요청의 run/case를 결과에 그대로 반영하고, 제공자는 그 run에 묶인 불변 mapping과 provenance를 검증할 의무가 있다. `policy.source`만으로 case mapping의 정본성을 증명했다고 간주하지 않는다. Knowledge의 case resolver나 다른 서비스 DB 직접 조회를 사용하지 않는다.
 
-Reader의 정상 결과는 `COMPLETE` 또는 `FAILED`뿐이다. 정상 정책 결과는 사유가 비어 있고, 정상 부재는 누락 사유가 있어야 한다. 실패 결과에는 정책이 없고 하나 이상의 사유가 있어야 한다. 등록 원본의 생성·영속화와 case 연결은 후속 app 저장 경계가 소유한다. 등록 변경은 새 revision/run으로 반영한다. 동일 결과를 cache에서 재사용할 때도 `ReadContext`의 현재 접근 권한을 다시 검사한다.
+Reader의 결과 상태는 `COMPLETE` 또는 `FAILED`뿐이다. 정상 정책 결과는 사유가 비어 있고, 정상 부재는 **`reason_codes == (ReasonCode.EXPECTED_ACCESS_POLICY_MISSING,)`**만 허용한다. 중복·다른 사유 추가·빈 사유는 거부한다. 실패 결과에는 정책이 없고 §2의 명시적 호출·감사 실패 허용목록에 속하는 사유가 하나 이상 있어야 한다. 정상 부재 마커는 실패 설명으로 쓸 수 없다. 등록 원본의 생성·영속화와 case 연결은 후속 app 저장 경계가 소유한다. 등록 변경은 새 revision/run으로 반영한다. 동일 결과를 cache에서 재사용할 때도 `ReadContext`의 현재 접근 권한을 다시 검사한다.
 
 ## 2. 결과와 판정 불변식
 
 `JudgeResult`는 `run_key: RunKey`, `status: ResultStatus`, `verdict: Verdict | None`, `projection_event: VerdictProjected | None`, `reason_codes: tuple[ReasonCode, ...]`를 가진다. 제공자는 요청과 결과의 run·case 대응도 확인한다. 결과 생성자만으로 원래 요청을 알 수는 없다.
 
 - `COMPLETE`: Verdict와 일치하는 같은 run의 `VerdictProjected`가 필수이고 호출 실패 사유는 빈 tuple이다. projection의 verdict와 receipt/fingerprint binding은 기존 C4-A 계약을 만족해야 한다. 지역 타입 검사는 실제 감사 commit 증명이 아니다.
-- `FAILED`: Verdict와 projection은 모두 `None`이고 실패 사유가 하나 이상이다.
+- `FAILED`: Verdict와 projection은 모두 `None`이고 명시적 호출·감사 실패 허용목록의 사유가 하나 이상이다. 판정 진단 사유를 단독으로 사용하거나 실패 사유와 섞으면 거부한다.
 - `PARTIAL`: Judge 결과에서는 허용하지 않는다.
 
 공개 `Verdict`는 `verdict.v2`만 발행·검증한다. 값은 `CONFIRMED`, `SUSPECTED`, `UNDECIDABLE`, `ALLOWED`다.
@@ -75,6 +75,18 @@ ALLOWED의 구조 조건은 서로 다른 A/B 주체나 교차 노출의 확인�
 `policy_allows`, `sharing_or_delegation_allows`, `expected_access_unknown`, `subject_not_verified`, `subjects_not_distinct`, `data_no_match`, `data_reflection_present`, `data_template_present`, `data_unverifiable`.
 
 기존 `expected_access_policy_missing`, `expected_access_policy_invalid`, `sharing_or_delegation_unknown`은 재사용한다. `policy_deny_resolved`, `subjects_distinct_verified`, `data_nontrivial_match` 같은 긍정 근거는 ReasonCode에 추가하지 않고 CheckState·구조 조건으로 표현한다. `Verdict.reason_codes`는 판정 이유이고 `JudgeResult.reason_codes`는 호출·권한·revision·감사 실패 이유다. COMPLETE JudgeResult의 호출 사유는 비어 있어야 한다. PR #34의 journal/publisher와 memory adapter는 이번 문서에서 재구현하지 않으며, 기존 미대응 9개 매핑과 ALLOWED 매핑·strict xfail은 후속 Judge PR이다. `data_unverifiable`가 shared enum에 추가되어도 adapter mapping이 완료된 것은 아니다. 내부/public enum을 합칠 때 기존 변환 테스트는 삭제하지 않고 항등과 전체 값 대응을 검증한다.
+
+`abc2lab_contracts.reason_codes`는 사유 역할과 FAILED 허용목록을 불변 `frozenset`으로 공개한다.
+
+| 집합 | 용도와 범위 |
+|---|---|
+| `JUDGE_DIAGNOSTIC_REASON_CODES` | 위 신규 9개와 재사용 3개, 정확히 12개. 두 Judge 결과의 FAILED에서는 모두 금지한다. |
+| `CALL_AUDIT_REASON_CODES` | 나머지 호출·감사 사유군. 감사의 긍정 상태인 `COMPARISON_CANARY_PASSED`도 포함하므로 전체를 실패 허용목록으로 사용하지 않는다. |
+| `CALL_AUDIT_FAILURE_REASON_CODES` | 명시적으로 열거한 실패 사유 허용목록. 현재 60개이며 두 Judge 결과의 FAILED가 이 목록만 허용한다. `COMPARISON_CANARY_PASSED`는 제외한다. |
+
+2026-10-22 기준 enum 73개는 진단 12개와 호출·감사 61개로 중복 없이 전수 분류된다. 테스트가 두 역할군의 합집합과 `set(ReasonCode)`의 동등성·교집합 부재를 검사하므로 enum 추가 시 분류도 함께 갱신해야 한다. 실패 허용목록은 enum의 여집합으로 계산하지 않는다. 새 코드가 명시적으로 허용되기 전에는 FAILED 사유가 될 수 없다. `EXPECTED_ACCESS_POLICY_MISSING`을 포함한 진단 사유나 canary 성공 마커는 유효한 실패 사유와 섞여도 거부한다.
+
+이 변경은 `JudgeResult`·`JudgePolicyReadResult`의 실패 경계를 강화한다. 다른 결과 타입·Evidence 감사와 기존 Verdict의 사유 허용 범위를 일괄 변경하지 않으며 enum 값·fingerprint payload·golden vector도 변경하지 않는다.
 
 Verdict 사유는 판정 의미를, `JudgeResult.reason_codes`는 호출·저장·권한·감사 실패를 표현한다. 같은 submission의 정규 의미 입력은 최초 해결한 정책·SourceVersion·판정 기준 시각을 보존해 재사용하되 매 호출 권한을 다시 검사한다. 다른 submission의 새 시점 ALLOWED는 새 revision과 감사 이벤트를 만든다. revision CAS 충돌과 감사 불확실성은 자동 재시도·재전송 없이 실패로 남긴다.
 
@@ -133,10 +145,11 @@ ALLOWED의 실제 서비스 발행 조건과 미완료 인수 테스트는 [§2.
 
 | 실행 명령 | 실제 결과 |
 |---|---|
-| `uv run --no-project --python 3.13.15 scripts/dev.py check contracts` | Ruff lint/format·strict mypy 39개 파일·테스트 **339개 통과** |
+| `uv run --no-project --python 3.13.15 scripts/dev.py check contracts` | Ruff lint/format·strict mypy 41개 파일·테스트 **422개 통과** |
 | `uv run --no-project --python 3.13.15 scripts/dev.py check judge` | Ruff lint/format·strict mypy 14개 파일·**43개 통과, 기존 xfail 1개**. 실제 journal·publisher 회귀 포함 |
 | `uv run --locked --no-sync lint-imports` (`check all`에서도 실행) | **6개 경계 유지·위반 0개** |
-| `uv run --no-project --python 3.13.15 scripts/dev.py check all` | pre-commit Ruff·mypy 72개 소스·전체 **584개 통과, 기존 xfail 2개**·전체 패키지 wheel/sdist·외부 라이브러리 import smoke 통과 |
+| `uv run --no-project --python 3.13.15 scripts/dev.py check all` | pre-commit Ruff·mypy 73개 소스·전체 **667개 통과, 기존 xfail 2개**·전체 패키지 wheel/sdist·외부 라이브러리 import smoke 통과 |
+| `test_judge_reason_codes.py` (contracts/전체 검사에 포함) | **83개 통과**. enum 전수 분류·실패 허용목록·진단/실패 혼합 거부·정상 부재에 모든 enum 사유 추가/중복 거부 |
 | 고정 벡터·변경 범위 | Verdict 1개만 v2로 교체, 다른 10개 보존. Judge 및 타 서비스·루트 설정·lock 변경 없음 |
 
 모든 명령은 로컬 uv cache를 `/tmp`에 두고 실행했다. 새 xfail을 추가하거나 기존 테스트를 삭제하지 않았다. 남은 Judge xfail은 미대응 ReasonCode 매핑, 다른 하나는 Gateway의 기존 전송 사유 매핑이다. 이 검증은 정책 등록 정본·case mapping 구현, 실제 인가·영속 감사·대상 전송·S1 통합의 완료나 GitHub CI/팀 승인 결과를 의미하지 않는다.
