@@ -911,3 +911,107 @@ def test_partial_lookup_rejects_invalid_missing_task_reference_types(missing_ref
             (ReasonCode.INTERNAL_ERROR,),
             missing_refs,  # type: ignore[arg-type]
         )
+
+
+def _attempt_task(task_ref: str, attempt: AttemptSummary) -> TaskSummary:
+    return TaskSummary(task_ref, 1, TaskKind.OBSERVE, None, TaskState.COMPLETE, (attempt,), ())
+
+
+def test_run_status_rejects_cross_task_conflicting_attempt_send_status() -> None:
+    sent = replace(_attempt(), send_status=SendStatus.SENT)
+    not_sent = replace(sent, send_status=SendStatus.NOT_SENT)
+    first = _attempt_task("observe", sent)
+    second = _attempt_task("compare", not_sent)
+    with pytest.raises(ValueError, match="conflicting attempt_ref"):
+        replace(_snapshot(), tasks=(first, second), send_counts=SendCounts(1, 1, 0))
+
+
+@pytest.mark.parametrize(
+    "changed_field",
+    ("request_ref", "audit_links", "reason_codes"),
+)
+def test_run_status_rejects_cross_task_conflicting_attempt_metadata(changed_field: str) -> None:
+    first_attempt = replace(_attempt(), send_status=SendStatus.SENT)
+    if changed_field == "request_ref":
+        second_attempt = replace(first_attempt, request_ref="other-request")
+    elif changed_field == "audit_links":
+        second_attempt = replace(first_attempt, audit_links=(AuditLink("gateway", "other-event"),))
+    else:
+        second_attempt = replace(first_attempt, reason_codes=(ReasonCode.AUDIT_GAP,))
+    with pytest.raises(ValueError, match="conflicting attempt_ref"):
+        replace(
+            _snapshot(),
+            tasks=(
+                _attempt_task("observe", first_attempt),
+                _attempt_task("compare", second_attempt),
+            ),
+            send_counts=SendCounts(1, 0, 0),
+        )
+
+
+def test_run_status_reuses_identical_attempt_only_once_across_tasks() -> None:
+    sent = replace(_attempt(), send_status=SendStatus.SENT)
+    repeated = (_attempt_task("observe", sent), _attempt_task("compare", sent))
+    snapshot = replace(_snapshot(), tasks=repeated, send_counts=SendCounts(1, 0, 0))
+    result = GetRunStatusResult(_run(), ResultStatus.COMPLETE, snapshot, ())
+    assert result.run_status is snapshot
+    # Both task summaries remain visible; reuse does not erase provenance.
+    assert snapshot.tasks == repeated
+    assert result.run_status.send_counts.sent == 1
+
+
+@pytest.mark.parametrize(
+    ("send_status", "counts"),
+    [
+        (SendStatus.SENT, SendCounts(0, 0, 0)),
+        (SendStatus.NOT_SENT, SendCounts(0, 0, 0)),
+        (SendStatus.UNKNOWN, SendCounts(0, 0, 0)),
+    ],
+)
+def test_run_status_rejects_visible_attempts_exceeding_counts(
+    send_status: SendStatus, counts: SendCounts
+) -> None:
+    attempt = replace(_attempt(), send_status=send_status)
+    with pytest.raises(ValueError, match="visible attempts exceed"):
+        replace(_snapshot(), tasks=(_attempt_task("observe", attempt),), send_counts=counts)
+
+
+def test_complete_lookup_requires_exact_counts_for_all_distinct_attempts() -> None:
+    sent = replace(_attempt(), send_status=SendStatus.SENT)
+    task = _attempt_task("observe", sent)
+    # RunStatus alone cannot know whether more tasks are missing from the lookup.
+    snapshot = replace(_snapshot(), tasks=(task,), send_counts=SendCounts(2, 0, 0))
+    with pytest.raises(ValueError, match="complete lookup send_counts"):
+        GetRunStatusResult(_run(), ResultStatus.COMPLETE, snapshot, ())
+    # No other tasks or attempts are missing: the exact count is accepted.
+    matching = replace(snapshot, send_counts=SendCounts(1, 0, 0))
+    assert GetRunStatusResult(_run(), ResultStatus.COMPLETE, matching, ()).run_status == matching
+
+
+def test_partial_lookup_accepts_authoritative_counts_above_visible_lower_bound() -> None:
+    sent = replace(_attempt(), send_status=SendStatus.SENT)
+    snapshot = replace(
+        _snapshot(), tasks=(_attempt_task("observe", sent),), send_counts=SendCounts(2, 1, 1)
+    )
+    partial = GetRunStatusResult(
+        _run(), ResultStatus.PARTIAL, snapshot, (ReasonCode.INTERNAL_ERROR,), ("missing-task",)
+    )
+    assert partial.run_status is snapshot
+    with pytest.raises(ValueError, match="complete lookup send_counts"):
+        GetRunStatusResult(_run(), ResultStatus.COMPLETE, snapshot, ())
+
+
+def test_complete_lookup_counts_multiple_send_classes_and_deduplicates_reuse() -> None:
+    sent = replace(_attempt(), attempt_ref="sent", send_status=SendStatus.SENT)
+    not_sent = replace(_attempt(), attempt_ref="not-sent", send_status=SendStatus.NOT_SENT)
+    unknown = replace(_attempt(), attempt_ref="unknown", send_status=SendStatus.UNKNOWN)
+    tasks = (
+        _attempt_task("collect", sent),
+        TaskSummary("observe", 1, TaskKind.OBSERVE, None, TaskState.COMPLETE, (sent, not_sent), ()),
+        _attempt_task("compare", unknown),
+    )
+    snapshot = replace(_snapshot(), tasks=tasks, send_counts=SendCounts(1, 1, 1))
+    assert (
+        GetRunStatusResult(_run(), ResultStatus.COMPLETE, snapshot, ()).status
+        is ResultStatus.COMPLETE
+    )

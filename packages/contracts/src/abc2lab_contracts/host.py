@@ -19,6 +19,7 @@ from abc2lab_contracts.primitives import (
     ResultStatus,
     Revision,
     RunKey,
+    SendStatus,
     UtcTime,
 )
 
@@ -205,7 +206,7 @@ class GetRunStatusRequest(ContractRecord):
 
 @dataclass(frozen=True, slots=True)
 class SendCounts(ContractRecord):
-    """Count known sent/not_sent/unknown attempts without conflating states."""
+    """Count distinct attempt_ref values across the entire run, not task occurrences."""
 
     sent: int
     not_sent: int
@@ -244,12 +245,36 @@ class TaskSummary(ContractRecord):
             raise ValueError("duplicate task attempt")
 
 
+def _visible_attempt_counts(tasks: tuple[TaskSummary, ...]) -> SendCounts:
+    """Count each attempt once across tasks; reject conflicting reused refs.
+
+    A producer may repeat an identical attempt in another task for provenance.
+    Different content under the same attempt_ref is never reconciled by choosing
+    one task or one send status. Public tuple order is left unchanged.
+    """
+    by_ref: dict[Ref, AttemptSummary] = {}
+    for task in tasks:
+        for attempt in task.attempt_summaries:
+            previous = by_ref.get(attempt.attempt_ref)
+            if previous is not None and previous != attempt:
+                raise ValueError("conflicting attempt_ref across run tasks")
+            by_ref[attempt.attempt_ref] = attempt
+    return SendCounts(
+        sent=sum(item.send_status is SendStatus.SENT for item in by_ref.values()),
+        not_sent=sum(item.send_status is SendStatus.NOT_SENT for item in by_ref.values()),
+        unknown=sum(item.send_status is SendStatus.UNKNOWN for item in by_ref.values()),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class RunStatus(ContractRecord):
     """Separate the run business revision from the complete public snapshot version.
 
     Host assigns snapshot_revision consistently with task, count and audit
     changes, returned missing-task coverage and the adopted operations watermark.
+    A repeated attempt_ref across tasks must carry an identical AttemptSummary;
+    one logical attempt contributes once to whole-run send_counts. The visible
+    attempt counts are a lower bound until lookup completeness is established.
     Local validation cannot prove version history or completed cleanup.
     """
 
@@ -272,6 +297,13 @@ class RunStatus(ContractRecord):
             for attempt in task.attempt_summaries
         ):
             raise ValueError("task attempt run mismatch")
+        visible = _visible_attempt_counts(self.tasks)
+        if (
+            visible.sent > self.send_counts.sent
+            or visible.not_sent > self.send_counts.not_sent
+            or visible.unknown > self.send_counts.unknown
+        ):
+            raise ValueError("visible attempts exceed whole-run send_counts")
         if self.state in (RunState.FAILED, RunState.STOPPING) and not self.reason_codes:
             raise ValueError("failed/stopping run requires reason codes")
         if self.state in (
@@ -291,6 +323,8 @@ class GetRunStatusResult(ContractRecord):
     PARTIAL requires exact missing_task_refs from the same versioned task
     manifest; send counts still cover the whole run. Unavailable coverage,
     counts or snapshot version means FAILED with REVISION_UNAVAILABLE.
+    COMPLETE requires the whole-run counts to equal unique visible attempts;
+    PARTIAL preserves authoritative whole-run counts with a visible lower bound.
     Audit UNKNOWN or unfinished/failed tasks alone do not make lookup PARTIAL.
     Local validation cannot prove the provider read its authoritative manifest.
     """
@@ -330,6 +364,8 @@ class GetRunStatusResult(ContractRecord):
         if self.status is ResultStatus.COMPLETE:
             if self.missing_task_refs:
                 raise ValueError("complete lookup cannot omit tasks")
+            if _visible_attempt_counts(self.run_status.tasks) != self.run_status.send_counts:
+                raise ValueError("complete lookup send_counts must match all unique task attempts")
         else:
             if not self.missing_task_refs:
                 raise ValueError("partial lookup requires explicit missing task refs")

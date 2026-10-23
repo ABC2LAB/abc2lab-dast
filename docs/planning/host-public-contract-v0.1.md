@@ -2,7 +2,7 @@
 
 > **검토용 스키마 변경 제안** · 기준 `ABC2LAB/abc2lab-dast` `main` @ `0a13f6e` (2026-10-23). 계약 구현은 `contracts` 담당, 실제 Host 서비스는 Host 담당(이경준)이 구현한다. `Report` 공개 계약은 별도 PR. 이 문서는 팀 합의/서비스 구현/실제 HTTP 검증의 완료를 뜻하지 않는다.
 >
-> **설계 근거·책임:** [S1 API 명세](s1-api-spec.md), [fingerprint 계약](fingerprint-contract.md), [스키마 변경·리뷰 규칙](../../CONTRIBUTING.md) 및 [PR #45 검토](https://github.com/ABC2LAB/abc2lab-dast/pull/45)를 따른다. 공개 계약의 작성·보완은 contracts 담당(이동찬), 실제 Host 구현 검토는 이경준, Report 감사 소비 경계 검토는 최민준이 담당한다. N-01~N-34는 본 문서의 검수 항목 번호다. **담당자 승인과 병합 여부는 PR의 실제 리뷰 기록으로 확인**하며, 이 문서만으로 팀 전체 승인 또는 서비스 구현 완료를 주장하지 않는다.
+> **설계 근거·책임:** [S1 API 명세](s1-api-spec.md), [fingerprint 계약](fingerprint-contract.md), [스키마 변경·리뷰 규칙](../../CONTRIBUTING.md) 및 [PR #45 검토](https://github.com/ABC2LAB/abc2lab-dast/pull/45)를 따른다. 공개 계약의 작성·보완은 contracts 담당(이동찬), 실제 Host 구현 검토는 이경준, Report 감사 소비 경계 검토는 최민준이 담당한다. N-01~N-38은 본 문서의 검수 항목 번호다. **담당자 승인과 병합 여부는 PR의 실제 리뷰 기록으로 확인**하며, 이 문서만으로 팀 전체 승인 또는 서비스 구현 완료를 주장하지 않는다.
 
 설계 입력은 위 기준 커밋이며, 이번 구현의 기준은 PR #44까지 병합된 `main` `f649487`이다. `feat/contracts-host-public`에서 검토용 변경을 구현하며 실제 Host 서비스와 공유 계약의 검증을 구분한다.
 
@@ -31,6 +31,10 @@
 `RunStatus.revision`은 `RunAuditRecord.revision`과 같은 **Run 업무 revision**이고, `TaskSummary.revision`은 개별 Task의 불변 업무 revision이다. `RunStatus.snapshot_revision`은 반환된 RunStatus, 바깥 `GetRunStatusResult.missing_task_refs`, 채택한 운영 감사 검증 범위 `W`를 함께 식별한다. 공개 값이나 이 검증 범위가 바뀌면 증가하고, 모두 같으면 재사용한다. 업무 revision과 snapshot revision은 서로 대신하지 않는다.
 
 Host는 같은 저장소 snapshot에서 전체 Task 목록과 전송 집계를 확인한다. 반환 Task 참조와 `missing_task_refs`의 합집합은 그 전체 목록과 정확히 일치해야 하며, 누락 참조는 중복이 없고 반환 Task와 겹치지 않아야 한다. COMPLETE/FAILED의 누락 목록은 빈 tuple이고, PARTIAL에는 하나 이상이 필요하다. `send_counts`는 반환된 Task 일부가 아닌 **전체 Run의 전송 집계**다. 전체 목록·집계·일관된 version을 확인할 수 없으면 0이나 추측한 누락 목록을 넣지 않고 `REVISION_UNAVAILABLE`을 포함한 `FAILED + None`을 반환한다. 생성자는 목록의 정합성만 검사하며 실제 저장소의 완전성을 증명하지 않는다. 임의 상한으로 Task를 잘라 반환하지 않는다. `case_ref`는 사례에 귀속된 작업에 지정하고 collect 등에서는 None이 가능하며, 실제 사례·등록 원본 대응은 Host가 검증한다.
+
+**Run-wide Attempt 및 전송 집계 계약:** 모든 실행 Attempt는 `attempt_ref`로 식별되는 하나의 논리 시도이며, Run의 전체 Task manifest에 속한 `TaskSummary.attempt_summaries` 중 적어도 한 곳에 있어야 한다. 이전 인증·주체 확인 결과를 다른 Task에서 재사용하여 **동일한 `AttemptSummary`를 다시 실을 수 있으나**, 같은 `attempt_ref`에 `send_status`, `request_ref`, 감사 링크 또는 사유 등 어떤 내용 차이가 있으면 충돌로 거부한다. 공개 Task tuple 순서와 원본 provenance는 보존하고, `send_counts`는 Task 출현 횟수가 아니라 **고유 `attempt_ref`당 정확히 1회** 집계한다. 해당 시도에 대한 UNKNOWN은 별도 정본 갱신 없이 `NOT_SENT`로 바꾸지 않는다.
+
+`RunStatus` 생성자는 반환된 Task들의 충돌·중복 상태와 `send_counts`의 **관찰 하한**을 검사한다. `GetRunStatusResult.COMPLETE`는 전체 Task·전체 시도를 반환했다는 약속이므로 각 `SendStatus`별 고유 Attempt 수가 `send_counts`와 **정확히 같아야** 한다. `PARTIAL`은 누락 Task의 Attempt가 보이지 않아 정확한 대응을 생성자에서 증명할 수 없으므로, 전체 Run 정본 `send_counts`를 유지하면서 반환된 Attempt들의 고유 상태별 수가 이를 초과하지 않게 한다. 고정된 전체 manifest·집계·snapshot을 확보하지 못하면 `REVISION_UNAVAILABLE`을 포함한 `FAILED + None`이며, Host는 Report가 감사 공백인지 정상 재사용인지 구별하도록 이 규칙을 소비자 인수 테스트로 검증한다.
 
 ## 2. 호출 결과와 실패 분류
 
@@ -83,6 +87,8 @@ Host는 같은 저장소 snapshot에서 전체 Task 목록과 전송 집계를 �
 
 중요: `RunStatus`가 단일 snapshot이라도 진단 감사·운영 감사 completeness는 snapshot의 **관찰값**이다. UNKNOWN→COMPLETE로 검증 결과가 갱신될 수 있으며 Run 생명주기 불필요 회귀를 만들지 않는다. `revision`은 업무 revision, `snapshot_revision`은 전체 공개 snapshot version이며 둘 다 명시한다. 상태 snapshot revision과 진단 journal sequence·운영 audit sequence·개별 task revision은 별개다.
 
+**Report cutoff Task revision:** `ReportInput.tasks`는 Report 생성 당시의 최신 공개 Task 목록이 아니라, **진단 cutoff 시점에 진단 journal에 마지막으로 기록된 각 진단 Task의 확정 업무 `revision`**의 `TaskSummary` snapshot이다. Host는 cutoff 전 확정된 진단 journal·Task manifest와 그 revision을 함께 고정한다. cutoff 이후 cleanup/stop/finalization 등으로 업무 revision이 추가돼도 Report 입력을 최신 revision으로 교체하거나 봉인된 진단 journal에 뒤늦게 기록하지 않는다. cutoff 기준 revision을 증명할 수 없다면 새 revision을 추정하지 않고 감사 UNKNOWN/공백을 유지한다. `REPORT` Task 자체는 입력에서 제외하지만 현재 공개 `RunStatus.tasks`에는 남긴다.
+
 ## 4. 진단 감사와 운영 감사 — 독립 경계
 
 - `audit_completeness`: Gateway/Policy/WebDiag/Evidence/Judge/Host 등 producer의 진단 evidence/intent/attempt/판정/Run·Task journal을 **등록된 전 생산자** 기준으로 확인. expected ref 누락, prefix/중간 sequence gap, 미봉인, snapshot expiry, 검증 reader 실패, reference 충돌 중 하나라도 있으면 `UNKNOWN`. `UNKNOWN`을 `not_sent`나 빈 결과로 바꾸지 않는다.
@@ -108,6 +114,7 @@ Host는 같은 저장소 snapshot에서 전체 Task 목록과 전송 집계를 �
 - 공개 `TaskSummary`는 입력 tuple 순서를 보존하며 감사용 정렬을 강제하지 않는다. `attempt_ref` 중복은 거부한다. 반면 `TaskAuditRecord`는 결정적인 fingerprint 입력이므로 Host가 생성 전에 `normalize_attempt_summaries`와 `normalize_reason_codes`를 명시적으로 적용한다. 공개 요약의 정렬까지 강제하는 규칙은 아니며, 공개 tuple 순서를 바꾸면 관찰 가능한 snapshot 내용도 바뀌므로 `snapshot_revision` 규칙은 적용한다.
 - 생성자 및 typed fingerprint는 미정규화된 Run/Task 감사 record를 거부한다. 서로 다른 의미를 같은 revision/ref 아래 재기록할 수 없다. heartbeat, 단순 정렬 차이나 journal 조회만으로 업무 revision을 불필요하게 증가시키지 않는다.
 - Host service가 `AuditRecordBinding(RUN/TASK)`·`AuditReceipt`를 저장된 실제 payload와 비교해야 하며, 호출자가 준 digest나 receipt 사본만으로 VERIFY 완료를 주장할 수 없다.
+- **Report 소비자의 검증 수위:** `TaskSummary`에는 `TaskAuditRecord`의 `created_at`·`updated_at`이 없고, 공개 `RunStatus`에는 `RunAuditRecord`의 `registration_ref`·`submission_ref`·시각이 없다. 따라서 Report는 공개 요약만으로 `run.v1`/`task.v1`의 digest를 **독립 재계산할 수 없다**. Report는 진단 cutoff의 versioned `AuditReader`에서 읽은 실제 `AuditEvent.receipt.binding`과 영수증·sequence/producer/ref/revision을 교차 대조한 뒤, **그 binding 그대로** Host 소유 `AuditVerifier.verify_committed(AuditVerifyRequest)`로 저장 원본·fingerprint의 commit 확인을 요청한다. `VerificationState.VERIFIED` 및 범위·연속성 검증을 모두 충족할 때만 **Host 제공자 확인(attestation)**으로 인정한다. 이를 독립 digest 재계산으로 표시하지 않는다. INVALID·UNKNOWN·read 실패·revision 불일치·gap은 완전성 UNKNOWN/부분 보고 사유이며, 공개 필드나 `run.v1`/`task.v1` payload를 임의로 확대하지 않는다.
 
 ## 6. Host 구현 및 인수 테스트 의무 (contracts 외)
 
@@ -117,7 +124,7 @@ Host는 같은 저장소 snapshot에서 전체 Task 목록과 전송 집계를 �
 - Stop: 즉시 제어 경로에서 취소 intent를 정본 기록하고 신규 queue allocation/transport를 차단. 기존 transport에 진입한 Attempt는 `SENT`/`UNKNOWN` 상태 그대로. cleanup lease/capture 완료까지 `STOPPED` 금지. worker `join`/empty queue는 실제 정리/봉인의 증명이 아님.
 - Read: Host `get_status/stop`은 막힌 transport semaphore/worker를 기다리지 않고 응답하며 같은 run/task revision snapshot 읽기. ACL 재검증/스코프 은닉은 fake auth로 검증.
 - 존재 은닉 인수: 같은 RunKey·ReadContext 요청에 대해 run이 없는 저장소와 run이 있지만 조회 무권한인 저장소를 각각 구성하고, 실제 Host handler의 공개 결과가 모두 `FAILED + None + (NOT_FOUND,)`로 같은지 검사한다. 실제 원인은 private operations audit에만 보존한다. 이번 생성자 테스트는 이 표현과 잘못된 사유를 검사하며, 실제 ACL 분기·저장소 동작을 검증한 것은 아니다.
-- Integration: no-send S1 fake에서 두 번 start, 결과 유실, 큐 포화, 동시 stop 2회, CAS 충돌, partial 보고서, 원본 시도 보존, 진단/운영 감사 독립 UNKNOWN, bounded seal deadline/owner ack 실패, UNKNOWN 재시작 시 재전송 금지, missing task refs/full-run send counts, operations W-prefix, registration existence masking, shutdown/recovery를 시험한다. 실제 HTTP/영속 감사·Gate D-0는 별도 검증이 필요하다.
+- Integration: no-send S1 fake에서 두 번 start, 결과 유실, 큐 포화, 동시 stop 2회, CAS 충돌, partial 보고서, 원본 시도 보존, 진단/운영 감사 독립 UNKNOWN, bounded seal deadline/owner ack 실패, UNKNOWN 재시작 시 재전송 금지, **Task 간 동일 attempt_ref의 동일 재사용/상충 내용 거부, COMPLETE 정확 집계와 PARTIAL 관찰 하한**, missing task refs/full-run send counts, **cutoff 당시 확정 Task revision과 post-cutoff revision 분리, Report의 Host verify_committed attestation(독립 재계산 아님)**, operations W-prefix, registration existence masking, shutdown/recovery를 시험한다. 실제 HTTP/영속 감사·Gate D-0는 별도 검증이 필요하다.
 
 ## 7. 변경 추적/검수 체크리스트 — **신규 N 번호**
 
@@ -157,10 +164,14 @@ Host는 같은 저장소 snapshot에서 전체 Task 목록과 전송 집계를 �
 | N-32 | GetStatus missing_task_refs와 전체 run send_counts의 동일 snapshot/version 의미 | contracts + Host |
 | N-33 | operations journal domain/identity·W-prefix 연속성과 business revision 분리 | Host 서비스 |
 | N-34 | start 등록 target/environment/registration의 미존재·타 조직·읽기/시작 권한 거부를 동일 NOT_FOUND로 은닉, 인가 전 멱등·용량·출처 사유 차단 | contracts + Host + app |
+| N-35 | 서로 다른 Task의 동일 attempt_ref가 같은 AttemptSummary이면 1회 집계, 내용이 상충하면 RunStatus 생성 거부 | contracts + Host |
+| N-36 | COMPLETE 조회에서 전체 Run send_counts와 고유 Attempt 상태별 수 정확 일치; PARTIAL은 알려진 하한과 정본 전체 수 비교 | contracts + Host + Report |
+| N-37 | ReportInput.tasks의 revision은 진단 cutoff에 마지막으로 journal에 확정된 각 Task 업무 revision으로 고정 | Host + Report |
+| N-38 | Report의 Host RUN/TASK audit 검증은 reader binding + Host verify_committed attestation; 공개 요약으로 독립 digest 재계산 주장 금지 | Host + Report |
 
-위 책임 표를 구현 범위로 읽을 때 다음을 구분한다. 현재 contracts PR에서 다루는 지역 범위는 N-01의 요청 `ReadContext` 구조, N-07~N-10의 stop/state 조합에 대한 생성자 불변식, N-13~N-15의 run 업무 revision·`snapshot_revision`·보존 구조, N-18~N-19의 두 completeness 값과 진단/운영 범위 보존, N-23의 frozen audit record 형태, N-27의 `attempt_ref` 정규화·충돌 표현, N-28~N-29의 typed fingerprint와 vector 검증이다. 이 항목의 계약 테스트는 타입·필드·상태 조합·정규 bytes/digest의 지역 정합성만 확인하며, 실제 권한·저장 commit·동시성·감사 원본과 binding의 일치를 증명하지 않는다.
+위 책임 표를 구현 범위로 읽을 때 다음을 구분한다. 현재 contracts PR에서 다루는 지역 범위는 N-01의 요청 `ReadContext` 구조, N-07~N-10의 stop/state 조합에 대한 생성자 불변식, N-13~N-15의 run 업무 revision·`snapshot_revision`·보존 구조, N-18~N-19의 두 completeness 값과 진단/운영 범위 보존, N-23의 frozen audit record 형태, N-27의 `attempt_ref` 정규화·충돌 표현, N-28~N-29의 typed fingerprint와 vector 검증, N-35~N-36의 조회 시도·집계 지역 불변식이다. 이 항목의 계약 테스트는 타입·필드·상태 조합·정규 bytes/digest의 지역 정합성만 확인하며, 실제 권한·저장 commit·동시성·감사 원본과 binding의 일치를 증명하지 않는다.
 
-Host 서비스 인수 범위는 N-02~N-06, N-11~N-12, N-16~N-17, N-20~N-22, N-24~N-26과 N-03·N-04·N-05의 매 호출 권한/멱등 동작이다. N-07~N-10, N-13~N-15, N-18~N-19, N-23, N-27은 contracts 타입을 소비하면서 실제 transaction·CAS·reader·cleanup·감사 저장과 함께 재검증해야 한다. 특히 진단 cutoff 전 유한 봉인 시도와 실패 보존, Report 전체 lifecycle 및 post-cutoff Run revision의 operations audit 기록, 동일 snapshot 재사용/변경 시 증가, FINALIZING stop race의 원자 결정을 인수 테스트한다. N-30은 app·Host·Gateway의 무전송 통합과 실제 HTTP 준비 판정을 분리하는 인수 항목이다. N-31~N-34의 실제 봉인·누락 목록·집계·운영 감사 수위·등록 존재 은닉도 Host 및 관련 생산자의 서비스 인수 대상이다. 따라서 현재 문서와 구현 제안은 Host 서비스·Report 구현 완료, 실제 DB/HTTP 검증, 팀 합의를 주장하지 않는다.
+Host 서비스 인수 범위는 N-02~N-06, N-11~N-12, N-16~N-17, N-20~N-22, N-24~N-26과 N-03·N-04·N-05의 매 호출 권한/멱등 동작이다. N-07~N-10, N-13~N-15, N-18~N-19, N-23, N-27은 contracts 타입을 소비하면서 실제 transaction·CAS·reader·cleanup·감사 저장과 함께 재검증해야 한다. 특히 진단 cutoff 전 유한 봉인 시도와 실패 보존, Report 전체 lifecycle 및 post-cutoff Run revision의 operations audit 기록, 동일 snapshot 재사용/변경 시 증가, FINALIZING stop race의 원자 결정을 인수 테스트한다. N-30은 app·Host·Gateway의 무전송 통합과 실제 HTTP 준비 판정을 분리하는 인수 항목이다. N-31~N-38의 실제 봉인·누락 목록·집계·운영 감사 수위·등록 존재 은닉·cutoff Task revision 고정·Host 감사 확인도 Host 및 관련 생산자·Report의 서비스 인수 대상이다. 따라서 현재 문서와 구현 제안은 Host 서비스·Report 구현 완료, 실제 DB/HTTP 검증, 팀 합의를 주장하지 않는다.
 
 ### 7.1 PR #45 검토 사항의 설계 반영 내역
 
@@ -172,14 +183,24 @@ Host 서비스 인수 범위는 N-02~N-06, N-11~N-12, N-16~N-17, N-20~N-22, N-24
 - `get_status`의 outer result는 `audit_completeness=UNKNOWN`만으로 PARTIAL이 되지 않는다. 상태별 사유 허용목록은 `host.py`의 `STATUS_LOOKUP_FAILURE_REASON_CODES`, `STATUS_LOOKUP_PARTIAL_REASON_CODES`, `STOP_REJECTION_REASON_CODES`, `STOP_UNCERTAINTY_REASON_CODES` 네 폐쇄 상수와 검증 구조를 정본으로 참조하며, 이 문서는 ACL/source proof를 대신하지 않는다. `GetRunStatusResult.missing_task_refs`와 전체 run 전송 집계는 같은 snapshot revision에서 보존한다.
 - start_run의 존재 은닉 범위는 등록 자원의 조회 권한뿐 아니라 **시작 권한 거부**까지 동일 `NOT_FOUND`로 묶는다. Start에서 `ACCESS_DENIED`를 외부로 내보내지 않는다. 반면 Stop의 `ACCESS_DENIED`는 Run 조회 권한이 이미 확인된 뒤 **정지 권한만 없는 경우**로 제한한다. Host 인수 테스트는 미존재/타 조직/읽기 불가/시작 불가 등록의 동일 외부 응답과, 동일 submission 재시도에서 멱등 충돌·큐 용량 사유가 먼저 노출되지 않는 순서를 검증한다.
 
+### 7.2 최종 P2 피드백 반영 (Report 소비 경계)
+
+- `RunStatus`는 Task 간 `attempt_ref` 동일 내용 재사용은 유지하되 상충 내용(특히 `SENT`/`NOT_SENT`)은 거부한다. `send_counts`는 고유 시도 수이며 COMPLETE는 상태별 정확 일치, PARTIAL은 공개된 시도들의 상태별 하한만 검사한다. 전체 Run 집계 자체는 Host 정본에서 읽는다.
+- `ReportInput.tasks`의 각 `revision`은 **진단 cutoff 이전, 해당 Task의 마지막 진단 journal 확정 revision**이다. 최신 공개 RunStatus 또는 cutoff 이후 운영 revision으로 입력을 바꾸면 거짓 gap이 생긴다.
+- Report는 Run/Task의 비공개 fingerprint 입력이 없어 독립 계산 불가다. 일관된 reader binding·원본 영수증을 Host `verify_committed`에 전달해 확인하고, 이 결과를 **생산자 attestation**으로 표시한다. 실제 원본 위·변조 검출 및 불변 저장 검증은 Host 책임이다.
+
 ## 8. 팀 리뷰에서 조율할 영역
 
 1. Host 제공자 이경준: `FINALIZING` 위치, snapshot revision 발급 시점, 원자 트랜잭션/운영 감사 설계, Stop.NOT_APPLICABLE/STOPPED 구현 경로.
 2. app 소비자 이동찬: 신뢰된 caller/authorization/registration 제공자, 사용자 권한 조회·제어 범위, 멱등 submission 발급/재시도.
-3. Report 제공자 최민준: 진단 감사 producer registry/봉인, report partial/UNKNOWN, audit expectations 계약 소비.
+3. Report 제공자 최민준: 진단 감사 producer registry/봉인, cutoff Task revision 고정, Host RUN/TASK attestation의 검증 수위, report partial/UNKNOWN, audit expectations 계약 소비.
 4. 스키마 PR 제목에는 `스키마 변경` 포함. 계약 구현 완료와 Host 실제 DB/HTTP 테스트 완료를 구분. `uv run --no-project --python 3.13.15 scripts/dev.py check contracts`는 **최신 main을 기준으로 작업 브랜치에 변경을 적용한 후** 실행한다. main에 직접 작업하거나 push하지 않는다.
 
-## 9. 추가 패치 이전의 로컬 검증 기록
+## 9. 검증 이력과 최종 피드백 패치 확인
+
+**최종 P2 피드백 패치의 별도 격리 검증(2026-10-23):** PR #45 HEAD `b131dab`의 해당 소스·문서를 기준으로 계약 변경을 구성하고, `PYTHONPATH=packages/contracts/src python3 -m pytest -q packages/contracts/tests`에서 **794 passed**, Host 계약·fingerprint 2개 파일에서는 **372 passed**를 확인했다. `git diff --check`도 통과했다. 이 격리 실행은 최신 main 전체 CI·Ruff·mypy·Host 서비스 인수 검증이 아니며, 적용 후 WSL에서 `scripts/dev.py check contracts` 및 `check all`과 최신 HEAD CI를 다시 수행해야 한다. 기존 golden vector와 run.v1/task.v1 fingerprint 필드는 수정하지 않았다.
+
+### 9.1 추가 패치 이전의 로컬 검증 기록
 
 이 절의 수치는 업로드된 로컬 작업본에 기록된 검사 결과다. **이 추가 패치 적용 후 전체 저장소를 재검증한 수치가 아니다.** PR에 반영할 최종 수치는 적용 후 실제 재실행 결과로 갱신한다.
 

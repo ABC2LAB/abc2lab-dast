@@ -158,7 +158,9 @@ C4-B는 스키마 변경으로 기존 `verdict-v1-c4` 항목만 `verdict-v2-c4`�
 
 Report·Knowledge·app·eval의 저장 v1 digest/fixture와 Judge journal의 소비 경로를 점검한 결과는 [C4-B §3.1](judge-c4-contract.md#31-v1-지문-소비자저장-자료-점검)에 기록한다. 현재 추적 파일에는 보존한 Verdict v1 digest 소비자가 없으며, 의도적인 v1 거부 시험만 유지한다. 외부 DB나 개인 자료까지 없음을 증명하는 기록은 아니다.
 
-Host의 `RunAuditRecord`·`TaskAuditRecord`는 이 문서의 `canonical-json.v1` codec으로 `run.v1`·`task.v1`을 사용한다. 고정 bytes와 SHA-256은 [Host fingerprint vectors](../examples/host-fingerprint-vectors.json)에 기록하며, C1~C4의 기존 kind/version과 Verdict v2를 변경하지 않는다. Host 서비스가 저장된 실제 payload·binding·receipt를 대조하는 책임은 [Host 공개 계약 §5~§6](host-public-contract-v0.1.md#5-runtask-불변-감사-records와-fingerprint)에 있고, 이 표와 vector는 contracts 구현 제안·검증 입력이지 Host 영속 저장 완료를 뜻하지 않는다.
+Host의 `RunAuditRecord`·`TaskAuditRecord`는 이 문서의 `canonical-json.v1` codec으로 `run.v1`·`task.v1`을 사용한다. 고정 bytes와 SHA-256은 [Host fingerprint vectors](../examples/host-fingerprint-vectors.json)에 기록하며, C1~C4의 기존 kind/version과 Verdict v2를 변경하지 않는다. Report의 공개 `RunStatus`·`TaskSummary`에는 Run/Task 원본 감사 record의 등록·제출 참조·시각이 모두 노출되지 않으므로 Report는 `run.v1`/`task.v1` digest를 독립 재계산할 수 없다. Report는 고정된 diagnostic journal의 reader가 반환한 binding/receipt와 RunKey·record_ref·cutoff 시점 record_revision 및 journal sequence를 확인하고, Host `AuditVerifier.verify_committed`로 정본 commit을 검증한다. VERIFIED는 **Host 제공자 attestation**이지 소비자의 독립 payload fingerprint 재계산을 증명하지 않는다. 감사 누락/불명은 UNKNOWN으로 보존한다. 공개 record/payload/vector를 변경하지 않는다.
+
+Host 서비스가 저장된 실제 payload·binding·receipt를 대조하는 책임은 [Host 공개 계약 §5~§6](host-public-contract-v0.1.md#5-runtask-불변-감사-records와-fingerprint)에 있고, 이 표와 vector는 contracts 구현 제안·검증 입력이지 Host 영속 저장 완료를 뜻하지 않는다.
 
 각 벡터의 validation_path는 다음 경로를 구분하며 fingerprint envelope/payload에 포함하지 않는 시험 metadata다.
 
