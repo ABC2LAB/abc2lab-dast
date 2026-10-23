@@ -38,6 +38,9 @@ _REASON_MAP: dict[GatewayReason, ReasonCode | None] = {
     GatewayReason.CANCELLED: ReasonCode.CANCELLED,
     GatewayReason.DEADLINE_EXCEEDED: ReasonCode.DEADLINE_EXCEEDED,
     GatewayReason.BUDGET_EXHAUSTED: ReasonCode.BUDGET_EXHAUSTED,
+    # execute가 핸들을 해석하지 못한 거부(없음·소비됨·만료·run/request 불일치). 구체 원인은 저장소
+    # consume이 구분하지 못하므로 단일 invalid로 남긴다.
+    GatewayReason.PREPARED_HANDLE_INVALID: ReasonCode.PREPARED_HANDLE_INVALID,
     GatewayReason.CAPTURE_UNAVAILABLE: ReasonCode.CAPTURE_UNAVAILABLE,
     GatewayReason.RESPONSE_LIMIT_EXCEEDED: ReasonCode.RESPONSE_LIMIT_EXCEEDED,
     GatewayReason.SEND_ACKNOWLEDGEMENT_LOST: ReasonCode.SEND_ACKNOWLEDGEMENT_LOST,
