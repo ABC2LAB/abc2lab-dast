@@ -1,5 +1,6 @@
 """IO adapters for gateway; implementations are injected by app."""
 
+from abc2lab_gateway.adapters.auth_signal import AuthSignalExtractor, StubAuthSignalExtractor
 from abc2lab_gateway.adapters.budget import BudgetLedger, InMemoryBudgetLedger
 from abc2lab_gateway.adapters.execute import (
     ExecuteDependencies,
@@ -36,6 +37,12 @@ from abc2lab_gateway.adapters.service import (
     PrepareError,
     new_binding_id,
 )
+from abc2lab_gateway.adapters.session_context import (
+    AccountRegistrationSource,
+    GatewaySessionContexts,
+    InMemoryAccountRegistrations,
+    new_transport_context_ref,
+)
 from abc2lab_gateway.adapters.translation import (
     AttemptContext,
     to_attempt_result,
@@ -46,15 +53,19 @@ from abc2lab_gateway.adapters.transport import SendCommand, SendOutcome, StubTra
 from abc2lab_gateway.adapters.vault import InMemoryVaultBinder, VaultBinder
 
 __all__ = [
+    "AccountRegistrationSource",
     "AttemptContext",
+    "AuthSignalExtractor",
     "BudgetLedger",
     "ExecuteDependencies",
     "ExecuteSettings",
     "GatewayExecutor",
     "GatewayJournal",
     "GatewayPreparer",
+    "GatewaySessionContexts",
     "GatewayRegistration",
     "GatewayRegistrationSource",
+    "InMemoryAccountRegistrations",
     "InMemoryBudgetLedger",
     "InMemoryGatewayJournal",
     "InMemoryGatewayRegistrations",
@@ -65,6 +76,7 @@ __all__ = [
     "PreparedHandleStore",
     "PreparedRequest",
     "SendCommand",
+    "StubAuthSignalExtractor",
     "SendOutcome",
     "StubTransport",
     "Transport",
@@ -77,6 +89,7 @@ __all__ = [
     "intent_record_binding",
     "new_attempt_ref",
     "new_binding_id",
+    "new_transport_context_ref",
     "new_prepared_handle",
     "to_attempt_result",
     "to_contract_reasons",

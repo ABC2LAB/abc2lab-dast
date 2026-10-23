@@ -23,12 +23,13 @@ from abc2lab_contracts.audit import (
     RequestIntentRecord,
     VerificationState,
 )
-from abc2lab_contracts.capture import CaptureRequest
+from abc2lab_contracts.capture import CaptureRequest, ExecutedRequestView, RawResponse
 from abc2lab_contracts.execution import AttemptResult, ExecuteRequest, PolicyDecision
 from abc2lab_contracts.fingerprint import policy_decision_fingerprint, policy_input_fingerprint
 from abc2lab_contracts.ports import AuditVerifier, LocalCapturePort, SessionBindingReader
 from abc2lab_contracts.primitives import (
     AuditLink,
+    Purpose,
     Ref,
     ResultStatus,
     RunKey,
@@ -39,7 +40,9 @@ from abc2lab_contracts.primitives import (
 from abc2lab_contracts.primitives import (
     SendStatus as WireSendStatus,
 )
+from abc2lab_contracts.session import AuthSignal
 
+from abc2lab_gateway.adapters.auth_signal import AuthSignalExtractor
 from abc2lab_gateway.adapters.budget import BudgetLedger
 from abc2lab_gateway.adapters.handles import PreparedHandleStore, PreparedRequest
 from abc2lab_gateway.adapters.journal import (
@@ -128,6 +131,7 @@ class ExecuteDependencies:
     vault: VaultBinder
     transport: Transport
     capture: LocalCapturePort
+    auth_extractor: AuthSignalExtractor
     clock: Callable[[], datetime] = _utc_now
 
 
@@ -230,7 +234,7 @@ class GatewayExecutor:
                 audit_links=intent_links,
             )
 
-        outcome, capture_ref = await self._transport_and_capture(
+        outcome, capture_ref, auth_signal = await self._transport_and_capture(
             request, prepared, attempt_ref, transport_context_ref, now
         )
         return await self._finish(
@@ -241,6 +245,7 @@ class GatewayExecutor:
             decision_ref=decision_ref,
             binding_id=binding_id,
             capture_ref=capture_ref,
+            auth_signal=auth_signal,
             audit_links=intent_links,
         )
 
@@ -356,8 +361,8 @@ class GatewayExecutor:
         attempt_ref: Ref,
         transport_context_ref: Ref | None,
         observed_at: datetime,
-    ) -> tuple[AttemptOutcome, Ref | None]:
-        """⑤ 자격 결합 → 전송 → 관찰 분류 → 캡처 동기 인계."""
+    ) -> tuple[AttemptOutcome, Ref | None, AuthSignal | None]:
+        """⑤ 자격 결합 → 전송 → 관찰 분류 → auth_signal 추출 → 캡처 동기 인계."""
         if transport_context_ref is not None:
             await self._deps.vault.bind(
                 request.run_key, prepared.policy_input.account_ref, transport_context_ref
@@ -367,9 +372,12 @@ class GatewayExecutor:
         )
         outcome = classify_transport(send.observation)
         if send.observation is not TransportObservation.SENT_CAPTURED:
-            return outcome, None
+            return outcome, None, None
         if send.raw_response is None or send.executed_request is None:
-            return _sent_unavailable(GatewayReason.CAPTURE_UNAVAILABLE), None
+            return _sent_unavailable(GatewayReason.CAPTURE_UNAVAILABLE), None, None
+        auth_signal = await self._extract_auth_signal(
+            prepared, send.raw_response, send.executed_request
+        )
         capture = self._deps.capture.capture(
             CaptureRequest(
                 run_key=request.run_key,
@@ -386,9 +394,30 @@ class GatewayExecutor:
             )
         )
         if capture.status is ResultStatus.COMPLETE and capture.capture_ref is not None:
-            return outcome, capture.capture_ref
+            return outcome, capture.capture_ref, auth_signal
         # 캡처 실패는 전송 상태를 보존하고 sent/unavailable로 내린다.
-        return _sent_unavailable(GatewayReason.CAPTURE_UNAVAILABLE), None
+        return _sent_unavailable(GatewayReason.CAPTURE_UNAVAILABLE), None, auth_signal
+
+    async def _extract_auth_signal(
+        self,
+        prepared: PreparedRequest,
+        response: RawResponse,
+        executed: ExecutedRequestView,
+    ) -> AuthSignal | None:
+        """인증/신원 요청의 응답에서 비밀 없는 AuthSignal을 추출한다. 그 외 목적은 None.
+
+        교차 목적 신호 누출을 막으려고 **그 요청의 purpose**를 그대로 넘긴다(AUTHENTICATE→
+        login_result,
+        IDENTIFY→identity). 추출기는 원문을 실행 메모리에서만 읽고 등록 별칭 subject만 반환한다.
+        """
+        purpose = prepared.request.purpose
+        if purpose not in (Purpose.AUTHENTICATE, Purpose.IDENTIFY):
+            return None
+        if prepared.auth_profile_ref is None:
+            return None
+        return await self._deps.auth_extractor.extract(
+            prepared.auth_profile_ref, purpose, response, executed
+        )
 
     async def _finish(
         self,
@@ -401,6 +430,7 @@ class GatewayExecutor:
         binding_id: Ref | None,
         capture_ref: Ref | None,
         audit_links: tuple[AuditLink, ...],
+        auth_signal: AuthSignal | None = None,
     ) -> AttemptResult:
         """공통 종결: AttemptRecord commit → self verify → `AttemptResult`.
 
@@ -445,7 +475,7 @@ class GatewayExecutor:
             decision_ref=decision_ref,
             binding_id=binding_id,
             capture_ref=capture_ref,
-            auth_signal=None,
+            auth_signal=auth_signal,
             audit_links=links,
         )
         result = to_attempt_result(outcome, context)

@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from abc2lab_contracts.audit import (
@@ -26,7 +26,12 @@ from abc2lab_contracts.capture import (
     ExecutedRequestView,
     RawResponse,
 )
-from abc2lab_contracts.execution import ExecuteRequest, ExecutionRequest, PolicyDecision
+from abc2lab_contracts.execution import (
+    ExecuteRequest,
+    ExecutionRequest,
+    PolicyDecision,
+    PrivateHttpRequest,
+)
 from abc2lab_contracts.fingerprint import policy_input_fingerprint
 from abc2lab_contracts.primitives import (
     CaptureStatus,
@@ -41,18 +46,29 @@ from abc2lab_contracts.primitives import (
     SendStatus,
     SourceVersion,
 )
-from abc2lab_contracts.session import SessionBinding, SessionBindingResult
+from abc2lab_contracts.registration import OperationRegistration
+from abc2lab_contracts.session import (
+    AuthSignal,
+    AuthSignalKind,
+    AuthSignalState,
+    SessionBinding,
+    SessionBindingResult,
+    SessionHandle,
+)
 from abc2lab_gateway.adapters import (
     ExecuteDependencies,
     ExecuteSettings,
     GatewayExecutor,
     GatewayPreparer,
+    GatewayRegistration,
     InMemoryBudgetLedger,
     InMemoryGatewayJournal,
+    InMemoryGatewayRegistrations,
     InMemoryPreparedHandleStore,
     InMemoryVaultBinder,
     JournalCommitError,
     SendOutcome,
+    StubAuthSignalExtractor,
     StubTransport,
 )
 from abc2lab_gateway.adapters.handles import PreparedRequest
@@ -191,6 +207,7 @@ def build_executor(
     vault: InMemoryVaultBinder | None = None,
     transport: StubTransport | None = None,
     capture: FakeCapture | None = None,
+    auth_extractor: StubAuthSignalExtractor | None = None,
 ) -> GatewayExecutor:
     """fake 의존을 묶어 executor를 만든다. attempt_ref는 고정한다."""
     deps = ExecuteDependencies(
@@ -202,6 +219,7 @@ def build_executor(
         vault=vault or InMemoryVaultBinder(),
         transport=transport or StubTransport(captured_send(_RUN, now)),
         capture=capture or FakeCapture(),
+        auth_extractor=auth_extractor or StubAuthSignalExtractor(),
         clock=lambda: now,
     )
     return GatewayExecutor(
@@ -211,6 +229,13 @@ def build_executor(
 
 _RUN = RunKey(
     organization_ref="org-1", target_ref="target-1", environment_ref="env-1", run_ref="run-1"
+)
+_SESSION_HANDLE = SessionHandle(
+    session_ref="sess-eval",
+    run_key=_RUN,
+    account_ref="acct-eval",
+    generation=2,
+    expires_at=datetime(2026, 10, 22, 12, 30, tzinfo=UTC),
 )
 
 
@@ -646,3 +671,159 @@ class _StaticSessions:
         if binding is None:
             return SessionBindingResult(run_key, ResultStatus.FAILED, None, (ReasonCode.NOT_FOUND,))
         return SessionBindingResult(run_key, ResultStatus.COMPLETE, binding, ())
+
+
+# ---------------------------------------------------------------- auth_signal 배선
+
+
+_AUTH_PROFILE = "auth-prof-whoami"
+
+
+async def identify_handle(
+    registration: GatewayRegistration,
+    sessions: object,
+    handles: InMemoryPreparedHandleStore,
+    now: datetime,
+    *,
+    purpose: Purpose,
+) -> tuple[Ref, ExecuteRequest]:
+    """auth_profile을 가진 operation으로 purpose 요청을 prepare해 핸들을 얻는다."""
+    operation = OperationRegistration(
+        source=SourceVersion(issuer="reg", source_ref="op-whoami", revision=2),
+        operation_ref="op-whoami",
+        allowed_purposes=(Purpose.AUTHENTICATE, Purpose.IDENTIFY),
+        auth_profile_ref=_AUTH_PROFILE,
+        method="GET",
+        origin=_ORIGIN,
+        path_template="/whoami",
+        resource_bindings=(),
+    )
+    store = InMemoryGatewayRegistrations()
+    store.register(_RUN, replace(registration, operations=(operation,)))
+    preparer = GatewayPreparer(
+        store,
+        sessions,  # type: ignore[arg-type]
+        handles,
+        "gateway",
+        clock=lambda: now,
+        binding_id_factory=lambda: "binding-fixed",
+    )
+    request = ExecutionRequest(
+        run_key=_RUN,
+        request_ref="request-1",
+        operation_ref="op-whoami",
+        operation_revision=2,
+        resource_ref=None,
+        resource_binding_ref=None,
+        resource_binding_revision=None,
+        purpose=purpose,
+        http=PrivateHttpRequest(
+            origin=_ORIGIN, method="GET", path="/whoami", parameters=(), timeout_ms=5_000
+        ),
+        session=_SESSION_HANDLE,
+        owner_session=None,
+        scope_revision=1,
+        profile_revision=1,
+        expected_policy=None,
+        cross_confirmation=None,
+    )
+    result = await preparer.prepare(request)
+    assert result.status is ResultStatus.COMPLETE and result.prepared_handle is not None
+    exec_request = ExecuteRequest(_RUN, "request-1", result.prepared_handle, None)
+    return result.prepared_handle, exec_request
+
+
+@pytest.mark.asyncio
+async def test_identify_extracts_identity_auth_signal(
+    registration: GatewayRegistration,
+    sessions: object,
+    handles: InMemoryPreparedHandleStore,
+    now: datetime,
+) -> None:
+    handle, exec_request = await identify_handle(
+        registration, sessions, handles, now, purpose=Purpose.IDENTIFY
+    )
+    prepared = handles.consume(_RUN, handle)
+    assert prepared is not None
+    handle2 = handles.allocate(prepared)  # execute가 소비할 수 있도록 다시 넣는다
+    signal = AuthSignal(AuthSignalKind.IDENTITY, AuthSignalState.ACCEPTED, "subject-alias")
+    extractor = StubAuthSignalExtractor(signal)
+    decision = make_decision(prepared, now)
+    executor = build_executor(handles, sessions, now, auth_extractor=extractor)
+    result = await executor.execute(ExecuteRequest(_RUN, "request-1", handle2, decision))
+    assert result.send_status is SendStatus.SENT
+    assert result.auth_signal == signal
+    assert extractor.calls == [Purpose.IDENTIFY]  # 요청 purpose로 호출
+
+
+@pytest.mark.asyncio
+async def test_authenticate_does_not_leak_identity_signal(
+    registration: GatewayRegistration,
+    sessions: object,
+    handles: InMemoryPreparedHandleStore,
+    now: datetime,
+) -> None:
+    handle, _ = await identify_handle(
+        registration, sessions, handles, now, purpose=Purpose.AUTHENTICATE
+    )
+    prepared = handles.consume(_RUN, handle)
+    assert prepared is not None
+    handle2 = handles.allocate(prepared)
+    # identity 신호만 설정된 추출기 → AUTHENTICATE 요청에는 반환하지 않는다(교차 목적 누출 방지).
+    extractor = StubAuthSignalExtractor(
+        AuthSignal(AuthSignalKind.IDENTITY, AuthSignalState.ACCEPTED, "subject-alias")
+    )
+    decision = make_decision(prepared, now)
+    executor = build_executor(handles, sessions, now, auth_extractor=extractor)
+    result = await executor.execute(ExecuteRequest(_RUN, "request-1", handle2, decision))
+    assert extractor.calls == [Purpose.AUTHENTICATE]
+    assert result.auth_signal is None
+
+
+@pytest.mark.asyncio
+async def test_observe_does_not_extract_even_with_auth_profile(
+    registration: GatewayRegistration,
+    sessions: object,
+    handles: InMemoryPreparedHandleStore,
+    now: datetime,
+) -> None:
+    # auth_profile_ref가 있어도 purpose가 OBSERVE면 추출하지 않는다(purpose 가드 단독 검증).
+    handle, _ = await identify_handle(registration, sessions, handles, now, purpose=Purpose.OBSERVE)
+    prepared = handles.consume(_RUN, handle)
+    assert prepared is not None and prepared.auth_profile_ref == _AUTH_PROFILE
+    handle2 = handles.allocate(prepared)
+    extractor = StubAuthSignalExtractor(
+        AuthSignal(AuthSignalKind.IDENTITY, AuthSignalState.ACCEPTED, "subject-alias")
+    )
+    executor = build_executor(handles, sessions, now, auth_extractor=extractor)
+    result = await executor.execute(
+        ExecuteRequest(_RUN, "request-1", handle2, make_decision(prepared, now))
+    )
+    assert result.auth_signal is None
+    assert extractor.calls == []  # 관찰은 추출 안 함
+
+
+@pytest.mark.asyncio
+async def test_not_sent_skips_extraction(
+    registration: GatewayRegistration,
+    sessions: object,
+    handles: InMemoryPreparedHandleStore,
+    now: datetime,
+) -> None:
+    handle, _ = await identify_handle(
+        registration, sessions, handles, now, purpose=Purpose.IDENTIFY
+    )
+    prepared = handles.consume(_RUN, handle)
+    assert prepared is not None
+    handle2 = handles.allocate(prepared)
+    extractor = StubAuthSignalExtractor(
+        AuthSignal(AuthSignalKind.IDENTITY, AuthSignalState.ACCEPTED, "subject-alias")
+    )
+    executor = build_executor(
+        handles, sessions, now, budget=CountingBudget(allow=False), auth_extractor=extractor
+    )
+    decision = make_decision(prepared, now)
+    result = await executor.execute(ExecuteRequest(_RUN, "request-1", handle2, decision))
+    assert result.send_status is SendStatus.NOT_SENT
+    assert result.auth_signal is None
+    assert extractor.calls == []  # 전송 안 했으면 추출 없음
