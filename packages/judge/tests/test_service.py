@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from abc2lab_contracts.audit import AuditVerifyRequest, AuditVerifyResult, VerificationState
@@ -17,6 +17,8 @@ from abc2lab_judge.adapters import (
     VerdictPublisher,
 )
 from abc2lab_judge.core.model import OracleVerdict
+
+_OCCURRED_AT = datetime(2026, 10, 22, 12, 30, tzinfo=UTC)
 
 
 class _StateJournal(InMemoryVerdictJournal):
@@ -45,7 +47,9 @@ async def test_publish_confirmed_returns_projection(
     confirmed_oracle: OracleVerdict,
     confirmed_context: VerdictContext,
 ) -> None:
-    projected = await publisher.publish(confirmed_oracle, confirmed_context)
+    projected = await publisher.publish(
+        confirmed_oracle, confirmed_context, occurred_at=_OCCURRED_AT
+    )
     assert isinstance(projected, VerdictProjected)
     assert projected.verdict.verdict_ref == "verdict-1"
     assert projected.event_ref == "judge:run-1:fixed"
@@ -61,7 +65,9 @@ async def test_publish_undetermined_with_mapped_reason(
     undecidable_mapped_oracle: OracleVerdict,
     undetermined_context: VerdictContext,
 ) -> None:
-    projected = await publisher.publish(undecidable_mapped_oracle, undetermined_context)
+    projected = await publisher.publish(
+        undecidable_mapped_oracle, undetermined_context, occurred_at=_OCCURRED_AT
+    )
     assert projected.verdict.reason_codes == (ReasonCode.EXPECTED_ACCESS_POLICY_MISSING,)
 
 
@@ -73,7 +79,9 @@ async def test_publish_data_unverifiable_undecidable_succeeds(
 ) -> None:
     # C4-B(#39) 전에는 유일 사유 DATA_UNVERIFIABLE가 미대응이라 발행 불가(시끄러운 실패)였다. 이제
     # 공개 코드가 생겨 정상 발행되고 그 사유가 wire에 남는다.
-    projected = await publisher.publish(undecidable_data_unverifiable_oracle, undetermined_context)
+    projected = await publisher.publish(
+        undecidable_data_unverifiable_oracle, undetermined_context, occurred_at=_OCCURRED_AT
+    )
     assert projected.verdict.value is VerdictValue.UNDECIDABLE
     assert projected.verdict.reason_codes == (ReasonCode.DATA_UNVERIFIABLE,)
 
@@ -84,7 +92,9 @@ async def test_publish_raises_on_invalid_verification(
 ) -> None:
     journal = _StateJournal("judge", VerificationState.INVALID, clock=lambda: now)
     with pytest.raises(JournalCommitError) as error:
-        await _publisher(journal).publish(confirmed_oracle, confirmed_context)
+        await _publisher(journal).publish(
+            confirmed_oracle, confirmed_context, occurred_at=_OCCURRED_AT
+        )
     assert error.value.reason_code is ReasonCode.AUDIT_COMMIT_FAILED
 
 
@@ -94,7 +104,9 @@ async def test_publish_raises_on_unknown_verification(
 ) -> None:
     journal = _StateJournal("judge", VerificationState.UNKNOWN, clock=lambda: now)
     with pytest.raises(JournalCommitError) as error:
-        await _publisher(journal).publish(confirmed_oracle, confirmed_context)
+        await _publisher(journal).publish(
+            confirmed_oracle, confirmed_context, occurred_at=_OCCURRED_AT
+        )
     assert error.value.reason_code is ReasonCode.AUDIT_VERIFICATION_UNKNOWN
 
 
@@ -105,7 +117,7 @@ async def test_publish_allowed_commits_and_verifies(
     allowed_oracle: OracleVerdict,
     allowed_context: VerdictContext,
 ) -> None:
-    projected = await publisher.publish(allowed_oracle, allowed_context)
+    projected = await publisher.publish(allowed_oracle, allowed_context, occurred_at=_OCCURRED_AT)
     assert projected.verdict.value is VerdictValue.ALLOWED
     assert projected.verdict.reason_codes == (ReasonCode.POLICY_ALLOWS,)
     assert journal.committed(allowed_context.run_key)[0].receipt == projected.source_receipt
