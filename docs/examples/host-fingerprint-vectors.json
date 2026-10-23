@@ -1,0 +1,20 @@
+{
+  "vectors": [
+    {
+      "id": "run-audit-v1",
+      "codec_version": "canonical-json.v1",
+      "record_kind": "run",
+      "schema_version": "run.v1",
+      "canonical_utf8": "{\"codec_version\":\"canonical-json.v1\",\"payload\":{\"created_at\":\"2026-10-22T08:00:00.000000Z\",\"reason_codes\":[],\"registration_ref\":\"registration-demo\",\"revision\":1,\"run_key\":{\"environment_ref\":\"env-demo\",\"organization_ref\":\"org-demo\",\"run_ref\":\"run-demo\",\"target_ref\":\"target-demo\"},\"state\":\"queued\",\"submission_ref\":\"submission-demo\",\"updated_at\":\"2026-10-22T08:00:00.000000Z\"},\"record_kind\":\"run\",\"schema_version\":\"run.v1\"}",
+      "sha256": "2299a8948e6ef7dc48110992bb1d0b26cf98eb9aa5b0b946752087c02c6105c2"
+    },
+    {
+      "id": "task-audit-v1",
+      "codec_version": "canonical-json.v1",
+      "record_kind": "task",
+      "schema_version": "task.v1",
+      "canonical_utf8": "{\"codec_version\":\"canonical-json.v1\",\"payload\":{\"attempt_summaries\":[{\"attempt_ref\":\"attempt-demo\",\"audit_links\":[{\"event_ref\":\"event-demo\",\"producer\":\"gateway\"}],\"reason_codes\":[\"audit_gap\"],\"request_ref\":\"request-demo\",\"run_key\":{\"environment_ref\":\"env-demo\",\"organization_ref\":\"org-demo\",\"run_ref\":\"run-demo\",\"target_ref\":\"target-demo\"},\"send_status\":\"unknown\"}],\"case_ref\":\"case-demo\",\"created_at\":\"2026-10-22T08:00:00.000000Z\",\"kind\":\"compare\",\"reason_codes\":[\"audit_gap\"],\"revision\":2,\"run_key\":{\"environment_ref\":\"env-demo\",\"organization_ref\":\"org-demo\",\"run_ref\":\"run-demo\",\"target_ref\":\"target-demo\"},\"state\":\"partial\",\"task_ref\":\"task-demo\",\"updated_at\":\"2026-10-22T08:00:00.000000Z\"},\"record_kind\":\"task\",\"schema_version\":\"task.v1\"}",
+      "sha256": "f2a79d6a3c53133f4ab83a077b8e278184cdea25288220be258d0827cc992d62"
+    }
+  ]
+}

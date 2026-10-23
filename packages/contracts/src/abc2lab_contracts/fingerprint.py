@@ -27,6 +27,8 @@ from abc2lab_contracts.execution import (
     PolicyIdentityStatus,
     PolicyInput,
 )
+from abc2lab_contracts.host import RunState, TaskKind, TaskState
+from abc2lab_contracts.host_audit import RunAuditRecord, TaskAuditRecord
 from abc2lab_contracts.observation import Observation
 from abc2lab_contracts.primitives import (
     AttemptSummary,
@@ -195,6 +197,14 @@ _RECORD_FIELDS: Mapping[type[ContractRecord], str] = MappingProxyType(
             "run_key identity_ref status session_ref account_ref generation "
             "subject_ref evidence_ref verified_at valid_until audit_receipt "
             "attempt_summaries reason_codes"
+        ),
+        RunAuditRecord: (
+            "run_key registration_ref submission_ref revision state created_at updated_at "
+            "reason_codes"
+        ),
+        TaskAuditRecord: (
+            "run_key task_ref revision kind case_ref state attempt_summaries created_at "
+            "updated_at reason_codes"
         ),
         RequestIntentRecord: (
             "run_key request_ref attempt_ref binding_id operation_ref operation_revision purpose "
@@ -455,6 +465,42 @@ def _attempt_payload(value: AttemptRecord) -> CanonicalValue:
             "run_key": _run_key(value.run_key),
             "send_status": _enum(value.send_status, SendStatus),
             "session_generation": value.session_generation,
+        }
+    )
+
+
+def _run_audit_payload(value: RunAuditRecord) -> CanonicalValue:
+    if type(value) is not RunAuditRecord:
+        raise TypeError("expected RunAuditRecord")
+    return freeze_object(
+        {
+            "run_key": _run_key(value.run_key),
+            "registration_ref": value.registration_ref,
+            "submission_ref": value.submission_ref,
+            "revision": value.revision,
+            "state": _enum(value.state, RunState),
+            "created_at": value.created_at,
+            "updated_at": value.updated_at,
+            "reason_codes": tuple(_enum(item, ReasonCode) for item in value.reason_codes),
+        }
+    )
+
+
+def _task_audit_payload(value: TaskAuditRecord) -> CanonicalValue:
+    if type(value) is not TaskAuditRecord:
+        raise TypeError("expected TaskAuditRecord")
+    return freeze_object(
+        {
+            "run_key": _run_key(value.run_key),
+            "task_ref": value.task_ref,
+            "revision": value.revision,
+            "kind": _enum(value.kind, TaskKind),
+            "case_ref": value.case_ref,
+            "state": _enum(value.state, TaskState),
+            "attempt_summaries": tuple(_attempt_summary(item) for item in value.attempt_summaries),
+            "created_at": value.created_at,
+            "updated_at": value.updated_at,
+            "reason_codes": tuple(_enum(item, ReasonCode) for item in value.reason_codes),
         }
     )
 
@@ -774,6 +820,20 @@ _REGISTERED_RECORDS: tuple[_RecordRegistration, ...] = (
     ),
     _RecordRegistration(
         CODEC_VERSION,
+        "run",
+        "run.v1",
+        RunAuditRecord,
+        cast(Callable[[object], CanonicalValue], _run_audit_payload),
+    ),
+    _RecordRegistration(
+        CODEC_VERSION,
+        "task",
+        "task.v1",
+        TaskAuditRecord,
+        cast(Callable[[object], CanonicalValue], _task_audit_payload),
+    ),
+    _RecordRegistration(
+        CODEC_VERSION,
         "evidence",
         "evidence.v1",
         EvidenceSummary,
@@ -882,6 +942,20 @@ def attempt_fingerprint(value: AttemptRecord) -> str:
     """Fingerprint an exact AttemptRecord."""
     if type(value) is not AttemptRecord:
         raise TypeError("expected exact AttemptRecord")
+    return _registered_record_fingerprint(value)
+
+
+def run_fingerprint(value: RunAuditRecord) -> str:
+    """Fingerprint a normalized exact RunAuditRecord using run.v1."""
+    if type(value) is not RunAuditRecord:
+        raise TypeError("expected exact RunAuditRecord")
+    return _registered_record_fingerprint(value)
+
+
+def task_fingerprint(value: TaskAuditRecord) -> str:
+    """Fingerprint a normalized exact TaskAuditRecord using task.v1."""
+    if type(value) is not TaskAuditRecord:
+        raise TypeError("expected exact TaskAuditRecord")
     return _registered_record_fingerprint(value)
 
 
