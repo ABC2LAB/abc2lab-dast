@@ -59,6 +59,9 @@ def check_expected_policy(policy: PolicyAssertion, observed_at: datetime) -> Che
     """
     if not policy.has_registered_source:
         return CheckOutcome(CheckState.UNKNOWN, JudgeReason.EXPECTED_ACCESS_POLICY_MISSING)
+    if not policy.hint_matches_canonical:
+        # 힌트와 정본이 다르면 정본 내용과 무관하게 정책 무효로 보류한다(명세 §9).
+        return CheckOutcome(CheckState.UNKNOWN, JudgeReason.EXPECTED_ACCESS_POLICY_INVALID)
     if not policy.valid_from <= observed_at < policy.valid_until:
         return CheckOutcome(CheckState.UNKNOWN, JudgeReason.EXPECTED_ACCESS_POLICY_INVALID)
     if policy.expected_access is ExpectedAccess.ALLOW:

@@ -65,13 +65,20 @@ class VerdictJournal(AuditVerifier, Protocol):
     - `asyncio.CancelledError`는 감싸지 않고 전파한다.
     """
 
-    async def append(self, verdict: Verdict) -> AuditReceipt:
+    async def append(self, verdict: Verdict, *, occurred_at: datetime) -> AuditReceipt:
         """판정을 불변으로 commit하고 영수증을 반환한다.
+
+        `occurred_at`은 Judge 감사 이벤트의 발생 시각(신뢰 시계 1회 읽기)이다. 근거 관찰 시각이나
+        `committed_at`과 다르며 그 값으로 대신하지 않는다.
 
         Raises:
             JournalCommitError: commit을 확인하지 못했거나 같은 (verdict_ref, revision)에 다른
                 내용이 있거나 event_ref를 다른 기록이 이미 썼다.
         """
+        ...
+
+    async def latest_revision(self, run_key: RunKey, verdict_ref: Ref) -> int:
+        """같은 run의 verdict_ref에 commit된 최고 revision을 반환한다. 없으면 0."""
         ...
 
 
@@ -81,6 +88,7 @@ class CommittedVerdict:
 
     verdict: Verdict
     receipt: AuditReceipt
+    occurred_at: datetime
 
 
 def _utc_now() -> datetime:
@@ -101,8 +109,8 @@ class InMemoryVerdictJournal:
         self._by_event: dict[tuple[RunKey, Ref], CommittedVerdict] = {}
         self._sequences: dict[RunKey, int] = {}
 
-    async def append(self, verdict: Verdict) -> AuditReceipt:
-        """판정을 commit한다. 같은 내용의 재commit은 기존 영수증을 반환한다."""
+    async def append(self, verdict: Verdict, *, occurred_at: datetime) -> AuditReceipt:
+        """판정을 commit한다. 같은 내용의 재commit은 기존 영수증(최초 occurred_at)을 반환한다."""
         event_ref = verdict.source_event.event_ref
         record_key = (verdict.run_key, verdict.verdict_ref, verdict.revision)
         existing = self._by_record.get(record_key)
@@ -126,11 +134,20 @@ class InMemoryVerdictJournal:
             binding=verdict_record_binding(verdict),
             committed_at=self._clock(),
         )
-        entry = CommittedVerdict(verdict=verdict, receipt=receipt)
+        entry = CommittedVerdict(verdict=verdict, receipt=receipt, occurred_at=occurred_at)
         self._sequences[verdict.run_key] = sequence
         self._by_record[record_key] = entry
         self._by_event[event_key] = entry
         return receipt
+
+    async def latest_revision(self, run_key: RunKey, verdict_ref: Ref) -> int:
+        """같은 run의 verdict_ref에 commit된 최고 revision을 반환한다. 없으면 0."""
+        revisions = [
+            revision
+            for (key, ref, revision) in self._by_record
+            if key == run_key and ref == verdict_ref
+        ]
+        return max(revisions, default=0)
 
     async def verify_committed(self, request: AuditVerifyRequest) -> AuditVerifyResult:
         """저장된 판정에서 fingerprint를 재계산해 run·영수증·binding과 대조한다."""

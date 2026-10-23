@@ -41,6 +41,7 @@ def _registered_policy(expected_access: ExpectedAccess) -> PolicyAssertion:
         has_registered_source=True,
         valid_from=_JUDGED_AT - timedelta(hours=1),
         valid_until=_JUDGED_AT + timedelta(hours=1),
+        hint_matches_canonical=True,
     )
 
 

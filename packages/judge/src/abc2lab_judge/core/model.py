@@ -92,7 +92,12 @@ class CheckOutcome:
 
 @dataclass(frozen=True, slots=True)
 class PolicyAssertion:
-    """등록 기대 접근 정책의 판정용 축약. 등록 출처가 있을 때만 신뢰한다."""
+    """등록 기대 접근 정책의 판정용 축약. 등록 출처가 있을 때만 신뢰한다.
+
+    `hint_matches_canonical`은 호출자가 공급한 정책 힌트가 reader가 돌려준 정본과 일치했는지다.
+    정본이 이 case의 정책이어도 힌트가 다른(진위는 인증된) 정책이었다면 판정 근거로 쓰지 않는다 —
+    명세 §9 "다른 case의 진짜 정책은 UNDECIDABLE + expected_access_policy_invalid".
+    """
 
     expected_access: ExpectedAccess
     sharing: ResolutionState
@@ -100,6 +105,7 @@ class PolicyAssertion:
     has_registered_source: bool
     valid_from: datetime
     valid_until: datetime
+    hint_matches_canonical: bool
 
 
 @dataclass(frozen=True, slots=True)

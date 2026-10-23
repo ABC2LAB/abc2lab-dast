@@ -27,6 +27,7 @@ _POLICY = PolicyAssertion(
     has_registered_source=True,
     valid_from=_OBSERVED_AT - timedelta(hours=1),
     valid_until=_OBSERVED_AT + timedelta(hours=1),
+    hint_matches_canonical=True,
 )
 
 _SUBJECTS = SubjectContext(
@@ -343,3 +344,18 @@ def test_value_partition_over_every_policy_combination() -> None:
         if result.value is VerdictValue.CONFIRMED:
             assert access is ExpectedAccess.DENY
             assert sharing is delegation is ResolutionState.RESOLVED_NONE
+
+
+def test_hint_mismatch_holds_even_a_strong_deny_case() -> None:
+    # 힌트가 정본과 다르면 정본이 명시 DENY이고 (b)(c)가 모두 yes여도 정책 무효로 보류한다(명세 §9).
+    case = _with_policy(replace(_POLICY, hint_matches_canonical=False))
+    result = evaluate_case(case, _OBSERVED_AT)
+    assert result.value is VerdictValue.UNDECIDABLE
+    assert result.policy_check is CheckState.UNKNOWN
+    assert result.reason_codes[0] is JudgeReason.EXPECTED_ACCESS_POLICY_INVALID
+
+
+def test_missing_policy_outranks_hint_mismatch() -> None:
+    case = _with_policy(replace(_POLICY, has_registered_source=False, hint_matches_canonical=False))
+    result = evaluate_case(case, _OBSERVED_AT)
+    assert result.reason_codes[0] is JudgeReason.EXPECTED_ACCESS_POLICY_MISSING
