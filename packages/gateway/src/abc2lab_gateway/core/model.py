@@ -72,6 +72,7 @@ class GatewayReason(StrEnum):
     CANCELLED = "cancelled"
     DEADLINE_EXCEEDED = "deadline_exceeded"
     BUDGET_EXHAUSTED = "budget_exhausted"
+    PREPARED_HANDLE_INVALID = "prepared_handle_invalid"
     TRANSPORT_NOT_ENTERED = "transport_not_entered"
     SENT_CAPTURED = "sent_captured"
     CAPTURE_UNAVAILABLE = "capture_unavailable"
