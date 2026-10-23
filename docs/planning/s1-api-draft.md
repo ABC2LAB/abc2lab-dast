@@ -65,7 +65,7 @@
 | API 제안 | 최소 입력 | 결과·실패 의미 | 제공자 / 소비자 |
 |---|---|---|---|
 | `async def start_run(request: StartRunRequest) -> StartRunResult` | 대상/환경·등록 설정 참조·submission_ref·필수 ReadContext. 범위·계정·프로필·예산·기대 정책은 app이 주입 | complete 수락/partial 수락 미확정/failed 거절. 같은 키로 수락 여부 재확인, 중복 생성/배정 없음 | Host / 진입점 |
-| `async def get_status(request: GetRunStatusRequest) -> GetRunStatusResult` | 실행 키·필수 ReadContext | 일관 상태 snapshot 또는 partial/failed. 전송 3상태·진단/운영 감사 상태를 보존하고 호출마다 현재 권한을 재검증 | Host / 진입점 |
+| `async def get_status(request: GetRunStatusRequest) -> GetRunStatusResult` | 실행 키·필수 ReadContext | 업무 `revision`과 별도 `snapshot_revision`을 가진 일관 상태 snapshot 또는 partial/failed. 전송 3상태·진단/운영 감사 상태를 보존하고 호출마다 현재 권한을 재검증 | Host / 진입점 |
 | `async def stop(request: StopRunRequest) -> StopReceipt` | 실행 키·필수 ReadContext | 접수/실제 정리 종료/적용 대상 아님/불명을 구분하고 requested_at 존재 조건을 따른다. 진행 중 전송의 불명을 지우지 않음 | Host / 진입점 |
 | `async def collect(request: DiscoveryRequest) -> DiscoveryResult` | 실행 키·허가된 seed·계정·유한 탐색 상한 | CandidateHint 단서·출처·관찰 필요 조건·모든 전송 시도·complete/partial/failed. 후보 ID/revision은 Host가 Knowledge 등록 후 받음 | WebDiag / Host |
 | `async def http_observe(request: ObserveRequest) -> ObserveResult` | 실행 키·Host가 조회한 자기 자원 Candidate 값·계정·관찰 프로필 | 아래 Observation·원본 projection_events 또는 차단·실패·부분 결과. 교차 자원 관찰로 전환하지 않음 | WebDiag / Host |
@@ -73,7 +73,7 @@
 
 S1은 HTTP 단일 경로이며 web_observe는 후속 브라우저 어댑터다. collect는 민감값을 제거한 단서만 반환하고 **Host가 Knowledge 후보 등록·조회·revision 검증을 수행**한다. Host는 ObserveRequest/AccessCompareRequest에 Candidate 전체를 값으로 전달한다. WebDiag에는 Knowledge 포트를 주입하지 않는다. 후보 발견만으로 관찰·검사 완료로 표시하지 않는다.
 
-Host의 plan·submit/lease/complete/cancel은 host 내부 Protocol이며 S1 contracts에 포함하지 않는다. tools_for/call Broker·MCP/LLM 라우팅은 S1에서 구현·호출하지 않는다. 유한 ready 큐·worker 1개를 사용하고 get_status/stop은 검사 worker를 기다리지 않는 제어 경로로 둔다. 첫 Planner는 A의 기준 관찰과 access_compare 작업을 구성하며 B 자기 객체·4응답 고정 세트를 요구하지 않는다. 공개 포트 수는 [상세 규격 §3.1](s1-api-spec.md#31-s1-포트-수-대조)의 24 async+3 sync다.
+Host의 plan·submit/lease/complete/cancel은 host 내부 Protocol이며 S1 contracts에 포함하지 않는다. tools_for/call Broker·MCP/LLM 라우팅은 S1에서 구현·호출하지 않는다. 유한 ready 큐·worker 1개를 사용하고 get_status/stop은 검사 worker를 기다리지 않는 제어 경로로 둔다. 첫 Planner는 A의 기준 관찰과 access_compare 작업을 구성하며 B 자기 객체·4응답 고정 세트를 요구하지 않는다. 공개 포트 수는 [상세 규격 §3.1](s1-api-spec.md#31-s1-포트-수-대조)의 26 async+3 sync다.
 
 ### 5.2 WebDiag 인증 경계
 
@@ -174,7 +174,7 @@ S1은 `store_memory`로 테스트한다. 다른 서비스의 작업/정책/근�
 | `async def build_report(request: ReportInput) -> ReportResult` | 실행 키·관찰/판정/작업 요약·생산자별 기대 기록. 근거/요청 레시피·감사는 주입된 읽기 포트로 조회 | DiagnosisReport와 PoC 상태/절차 또는 생성 실패. Report는 재전송 없이 제한·전송 불명·감사 완전성을 보존 |
 | `async def read_audit(request: AuditReadRequest) -> AuditPage` | 실행 키·호출자 권한·producer/cursor·유한 반환 상한 | 각 생산자의 허용 이벤트·순번·연결 참조·다음 cursor·완전성/실패. 각 소유 서비스가 제공 |
 
-Host가 작업을 조정하고 `app`이 Judge/Report가 소비할 읽기 포트를 주입한다. Report가 타 서비스 DB를 읽지 않는다. 감사는 기대 request/event ID와 실제 연결을 비교한다. A·B가 필요한데 A·A 두 건이 있는 경우를 완료로 처리하지 않는다. 생산자별 저장 내구성과 조회 snapshot을 확인하지 못하면 감사 완전성은 unknown이다.
+Host가 작업을 조정하고 `app`이 Judge/Report가 소비할 읽기 포트를 주입한다. Report가 타 서비스 DB를 읽지 않는다. 모든 진단 producer journal은 Report task 생성 전에 봉인하며 Report는 고정된 diagnostic prefix만 읽는다. Report task lifecycle과 cutoff 이후 Run/Task revision은 별도 private operations audit에 기록하고 `ReportInput.tasks`에서 제외한다. 공개 RunStatus에는 Report task를 포함한 모든 task를 보존한다. 감사는 기대 request/event ID와 실제 연결을 비교한다. A·B가 필요한데 A·A 두 건이 있는 경우를 완료로 처리하지 않는다. 생산자별 저장 내구성과 조회 snapshot을 확인하지 못하면 감사 완전성은 unknown이다.
 
 Judge는 다음 셋을 각각 확인한다: **(a)** 현재 적용되는 등록 기대 정책과 공유/위임 예외 해소, **(b)** A·B의 유효한 실제 subject, **(c)** 같은 소유자 객체의 정상 응답에 비자명 실데이터가 있고 교차 응답이 그것을 반환한다는 근거. HTTP 200·HMAC 일치·ID echo·owner_id·공통 템플릿만으로 확정하지 않는다. 규칙·검증 canary는 Judge가 소유하고 `app`이 로컬 Evidence에 주입한다. ([오라클 기준](module-design-confirmed.md#7-확정-오라클--읽기-전용-수평-idor-judge-패키지))
 
@@ -318,4 +318,4 @@ Judge가 기대 접근 정책을 확인할 수 없는 예:
 
 주요 위험과 대응: opaque 참조의 숨은 저장 구조 결합은 §5.3의 Gateway 소유/값 전달로 줄인다. 공용 타입 비대화는 경계별 최소 PR과 모듈 내부 소유로 제한한다. fake/실제 의미 불일치는 동일 case ID의 전송 기록·상태·근거/감사 연결 비교로 검증한다. 실제 내구성/인가를 fake 통과로 오인하지 않는다.
 
-현재 main(2026-10-22, `8f6fdd2`)에는 C1·C2, C3 Evidence 계약(#26·#27), C4-A Knowledge 계약(#30), Host↔WebDiag 계약(#38), C4-B Judge 계약(#39)과 Judge ReasonCode 매핑(#41)이 병합됐다. Evidence 메모리 구현·PoC 요청 레시피(#35·#36)와 WebDiag 세션 기반(#40)도 부분 구현됐지만, 실제 S1 통합은 완료되지 않았다. Host의 시작/조회/중지, Report의 보고 요청/결과는 아직 공유 계약 미구현이며, Knowledge 저장소·app 등록 정본·조립·eval은 후속 개발이다. 이 문서의 C1/C2 첫 PR 표현은 당시의 개발 지침 이력으로만 읽고, 현행 구현·검증·남은 작업의 정본은 [S1 상태](s1-development-status.md#8-현재-서비스-구현과-남은-작업)를 따른다. 무전송 fake 검증을 실제 영속·대상 통신·S1 실행 성공으로 간주하지 않는다.
+현재 기준 main(2026-10-23, `f649487`)에는 C1·C2, C3 Evidence 계약(#26·#27), C4-A Knowledge 계약(#30), Host↔WebDiag 계약(#38), C4-B Judge 계약(#39)과 Judge ReasonCode 매핑(#41), 웹 목업(#44)이 병합됐다. Host 공개 계약 v0.1은 현재 브랜치에서 contracts 구현 제안·문서화 중이며 팀 승인·병합·Host 서비스 구현을 뜻하지 않는다. Evidence 메모리 구현·PoC 요청 레시피(#35·#36)와 WebDiag 세션 기반(#40)도 부분 구현됐지만, 실제 S1 통합은 완료되지 않았다. Report의 보고 요청/결과는 별도 공유 계약으로 남아 있다. 이 문서의 C1/C2 첫 PR 표현은 당시의 개발 지침 이력으로만 읽고, 현행 구현·검증·남은 작업의 정본은 [S1 상태](s1-development-status.md#8-현재-서비스-구현과-남은-작업)를 따른다. 무전송 fake 검증을 실제 영속·대상 통신·S1 실행 성공으로 간주하지 않는다.

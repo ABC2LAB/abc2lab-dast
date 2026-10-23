@@ -22,6 +22,31 @@ from abc2lab_contracts.primitives import (
     UtcTime,
 )
 
+START_REJECTION_REASON_CODES: frozenset[ReasonCode] = frozenset(
+    {
+        ReasonCode.CONFIGURATION_MISSING,
+        ReasonCode.NOT_FOUND,
+        ReasonCode.ACCESS_DENIED,
+        ReasonCode.SCOPE_MISMATCH,
+        ReasonCode.IDEMPOTENCY_CONFLICT,
+        ReasonCode.QUEUE_FULL,
+        ReasonCode.UNSUPPORTED_SCHEMA_VERSION,
+        ReasonCode.SOURCE_UNVERIFIED,
+    }
+)
+
+START_UNCERTAINTY_REASON_CODES: frozenset[ReasonCode] = frozenset(
+    {
+        ReasonCode.AUDIT_COMMIT_FAILED,
+        ReasonCode.AUDIT_VERIFICATION_UNKNOWN,
+        ReasonCode.AUDIT_GAP,
+        ReasonCode.REVISION_UNAVAILABLE,
+        ReasonCode.INTERNAL_ERROR,
+        ReasonCode.DEADLINE_EXCEEDED,
+        ReasonCode.SNAPSHOT_EXPIRED,
+    }
+)
+
 
 class RunState(StrEnum):
     """The Host-owned lifecycle of an accepted run."""
@@ -94,7 +119,11 @@ class RunHandle(ContractRecord):
 
 @dataclass(frozen=True, slots=True)
 class StartRunResult(ContractRecord):
-    """COMPLETE admits; PARTIAL is uncertain; FAILED is a confirmed rejection."""
+    """Distinguish admission from uncertainty and a verified rejection reason class.
+
+    Reasons restrict what the provider may claim; they do not prove admission
+    or rejection. The service must reconcile the submission's durable original.
+    """
 
     status: ResultStatus
     run: RunHandle | None
@@ -106,6 +135,11 @@ class StartRunResult(ContractRecord):
                 raise ValueError("complete admission requires a run and no failure reasons")
         elif self.run is not None or not self.reason_codes:
             raise ValueError("unconfirmed or rejected admission cannot publish a run")
+        elif self.status is ResultStatus.FAILED:
+            if any(reason not in START_REJECTION_REASON_CODES for reason in self.reason_codes):
+                raise ValueError("failed admission requires confirmed rejection reasons only")
+        elif any(reason not in START_UNCERTAINTY_REASON_CODES for reason in self.reason_codes):
+            raise ValueError("partial admission requires uncertainty reasons only")
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,10 +189,15 @@ class TaskSummary(ContractRecord):
 
 @dataclass(frozen=True, slots=True)
 class RunStatus(ContractRecord):
-    """Present one bounded, consistent Host snapshot, not a proof of cleanup."""
+    """Separate the run business revision from the complete public snapshot version.
+
+    Host assigns snapshot_revision consistently with task, count and audit
+    changes. Local validation cannot prove version history or completed cleanup.
+    """
 
     run_key: RunKey
     revision: Revision
+    snapshot_revision: Revision
     state: RunState
     tasks: tuple[TaskSummary, ...]
     send_counts: SendCounts
@@ -196,6 +235,17 @@ class GetRunStatusResult(ContractRecord):
     reason_codes: tuple[ReasonCode, ...]
 
     def _validate_invariants(self) -> None:
+        if ReasonCode.ACCESS_DENIED in self.reason_codes:
+            raise ValueError("status lookup must conceal denied run access as not_found")
+        if ReasonCode.NOT_FOUND in self.reason_codes and (
+            self.status is not ResultStatus.FAILED or self.reason_codes != (ReasonCode.NOT_FOUND,)
+        ):
+            raise ValueError("not_found lookup requires an exact single failed reason")
+        if (
+            ReasonCode.REVISION_UNAVAILABLE in self.reason_codes
+            and self.status is not ResultStatus.FAILED
+        ):
+            raise ValueError("unavailable snapshot revision requires a failed lookup")
         if self.status is ResultStatus.FAILED:
             if self.run_status is not None or not self.reason_codes:
                 raise ValueError("failed lookup must have no snapshot and a reason")
@@ -231,7 +281,7 @@ class StopReceipt(ContractRecord):
             if self.stop_state is StopState.REQUESTED and self.requested_at is None:
                 raise ValueError("new stop request requires requested_at")
             if self.stop_state is StopState.NOT_APPLICABLE and self.requested_at is not None:
-                raise ValueError("no stop request was accepted for a completed/failed run")
+                raise ValueError("non-applicable stop cannot claim an accepted request timestamp")
             if self.stop_state is StopState.STOPPED and self.requested_at is None:
                 raise ValueError("confirmed stopped run needs the original stop-request time")
         else:
@@ -242,16 +292,27 @@ class StopReceipt(ContractRecord):
 
 
 class HostPort(Protocol):
-    """Async public control boundary; each operation independently authorizes context."""
+    """Authorize each control call without exposing an unreadable run's existence.
+
+    ReadContext is not authorization proof. Recheck it on repeated calls too;
+    get_status and stop return the same NOT_FOUND for absent and unreadable runs.
+    """
 
     async def start_run(self, request: StartRunRequest) -> StartRunResult:
         """Confirm admission, distinguish unknown commit and reject without double-enqueue."""
         ...
 
     async def get_status(self, request: GetRunStatusRequest) -> GetRunStatusResult:
-        """Read an authorized snapshot without waiting for target work semaphores."""
+        """Read one versioned authorized snapshot without waiting for transport."""
         ...
 
     async def stop(self, request: StopRunRequest) -> StopReceipt:
-        """Publish cancel intent before responding; never fabricate completed cleanup."""
+        """Preserve prior cancellation; do not accept a new stop in FINALIZING.
+
+        After read authorization, atomically inspect lifecycle and accepted
+        intent. A new FINALIZING stop is NOT_APPLICABLE with no timestamp;
+        a prior stop retains its timestamp and REQUESTED until cleanup is
+        verified, then STOPPED. Uncertain intent/cleanup remains UNKNOWN.
+        No result reopens sealed diagnostics or proves that traffic was recalled.
+        """
         ...

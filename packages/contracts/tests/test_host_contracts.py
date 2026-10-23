@@ -5,6 +5,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from abc2lab_contracts.host import (
+    START_REJECTION_REASON_CODES,
+    START_UNCERTAINTY_REASON_CODES,
     AuditCompleteness,
     GetRunStatusRequest,
     GetRunStatusResult,
@@ -59,6 +61,7 @@ def _snapshot() -> RunStatus:
     return RunStatus(
         _run(),
         1,
+        1,
         RunState.QUEUED,
         (),
         SendCounts(0, 0, 0),
@@ -79,6 +82,7 @@ def test_start_requires_context_and_separates_confirmation_from_uncertainty() ->
     assert StartRunResult(ResultStatus.COMPLETE, handle, ()).run == handle
     assert StartRunResult(ResultStatus.PARTIAL, None, (ReasonCode.AUDIT_GAP,)).run is None
     assert StartRunResult(ResultStatus.FAILED, None, (ReasonCode.QUEUE_FULL,)).run is None
+    assert START_REJECTION_REASON_CODES.isdisjoint(START_UNCERTAINTY_REASON_CODES)
     for status, run, reasons in (
         (ResultStatus.COMPLETE, None, ()),
         (ResultStatus.PARTIAL, handle, (ReasonCode.AUDIT_GAP,)),
@@ -115,6 +119,17 @@ def test_status_and_stop_are_explicit_authorized_requests() -> None:
         GetRunStatusResult(
             RunKey("else", "target", "env", "run"), ResultStatus.COMPLETE, _snapshot(), ()
         )
+    with pytest.raises(ValueError):
+        GetRunStatusResult(_run(), ResultStatus.FAILED, None, (ReasonCode.ACCESS_DENIED,))
+    with pytest.raises(ValueError):
+        GetRunStatusResult(
+            _run(),
+            ResultStatus.FAILED,
+            None,
+            (ReasonCode.NOT_FOUND, ReasonCode.ACCESS_DENIED),
+        )
+    with pytest.raises(ValueError):
+        GetRunStatusResult(_run(), ResultStatus.PARTIAL, _snapshot(), (ReasonCode.ACCESS_DENIED,))
 
 
 def test_stop_ack_does_not_implicitly_complete_cleanup() -> None:
@@ -175,6 +190,7 @@ def test_task_attempts_and_terminal_snapshot_are_bounded_by_consistency() -> Non
         RunStatus(
             _run(),
             2,
+            2,
             RunState.COMPLETED,
             (replace(summary, state=TaskState.RUNNING),),
             SendCounts(0, 0, 1),
@@ -185,6 +201,7 @@ def test_task_attempts_and_terminal_snapshot_are_bounded_by_consistency() -> Non
     with pytest.raises(ValueError):
         RunStatus(
             RunKey("other", "target", "env", "run"),
+            2,
             2,
             RunState.RUNNING,
             (summary,),
@@ -278,6 +295,42 @@ def test_status_includes_task_case_and_revision() -> None:
         replace(_snapshot(), revision=0)
 
 
+def test_snapshot_revision_is_positive_and_separate_from_run_revision() -> None:
+    for invalid in (0, True, "snapshot"):
+        with pytest.raises((TypeError, ValueError)):
+            replace(_snapshot(), snapshot_revision=invalid)  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        RunStatus(
+            run_key=_run(),
+            revision=1,
+            state=RunState.QUEUED,
+            tasks=(),
+            send_counts=SendCounts(0, 0, 0),
+            audit_completeness=AuditCompleteness.UNKNOWN,
+            operations_audit_completeness=AuditCompleteness.UNKNOWN,
+            reason_codes=(),
+        )  # type: ignore[call-arg]
+    same_run_new_task = replace(
+        _snapshot(),
+        tasks=(TaskSummary("task", 1, TaskKind.COLLECT, None, TaskState.COMPLETE, (), ()),),
+        snapshot_revision=2,
+    )
+    assert same_run_new_task.revision == _snapshot().revision
+    assert same_run_new_task.snapshot_revision != _snapshot().snapshot_revision
+    audit_update = replace(
+        _snapshot(),
+        audit_completeness=AuditCompleteness.COMPLETE,
+        snapshot_revision=3,
+    )
+    operations_update = replace(
+        _snapshot(),
+        operations_audit_completeness=AuditCompleteness.COMPLETE,
+        snapshot_revision=4,
+    )
+    assert audit_update.revision == operations_update.revision == _snapshot().revision
+    assert audit_update.snapshot_revision != operations_update.snapshot_revision
+
+
 def test_same_attempt_ref_with_different_request_is_conflict() -> None:
     attempt = _attempt()
     with pytest.raises(ValueError, match="conflicting attempt"):
@@ -285,11 +338,33 @@ def test_same_attempt_ref_with_different_request_is_conflict() -> None:
 
 
 def test_status_failed_lookup_never_reveals_run_snapshot() -> None:
-    for reason in (ReasonCode.NOT_FOUND, ReasonCode.ACCESS_DENIED):
-        result = GetRunStatusResult(_run(), ResultStatus.FAILED, None, (reason,))
-        assert result.run_status is None
+    result = GetRunStatusResult(_run(), ResultStatus.FAILED, None, (ReasonCode.NOT_FOUND,))
+    assert result.run_status is None
+    with pytest.raises(ValueError):
+        GetRunStatusResult(_run(), ResultStatus.FAILED, None, (ReasonCode.ACCESS_DENIED,))
     # Service boundary rule: callers without read permission MUST use NOT_FOUND,
     # including stop; a constructor cannot prove the service enforced it.
+
+
+def test_not_found_lookup_cannot_add_other_causes_or_duplicates() -> None:
+    for reasons in (
+        (ReasonCode.NOT_FOUND, ReasonCode.AUDIT_GAP),
+        (ReasonCode.NOT_FOUND, ReasonCode.NOT_FOUND),
+    ):
+        with pytest.raises(ValueError, match="not_found"):
+            GetRunStatusResult(_run(), ResultStatus.FAILED, None, reasons)
+    with pytest.raises(ValueError, match="not_found"):
+        GetRunStatusResult(_run(), ResultStatus.PARTIAL, _snapshot(), (ReasonCode.NOT_FOUND,))
+
+
+def test_authorized_snapshot_preserves_a_tasks_actual_access_denial() -> None:
+    task = TaskSummary(
+        "task", 1, TaskKind.COLLECT, None, TaskState.FAILED, (), (ReasonCode.ACCESS_DENIED,)
+    )
+    snapshot = replace(_snapshot(), snapshot_revision=2, tasks=(task,))
+    result = GetRunStatusResult(_run(), ResultStatus.COMPLETE, snapshot, ())
+    assert result.run_status is not None
+    assert result.run_status.tasks[0].reason_codes == (ReasonCode.ACCESS_DENIED,)
 
 
 def test_all_public_requests_require_non_empty_read_context_fields() -> None:
@@ -469,7 +544,12 @@ def test_admission_result_state_matrix(
     status: ResultStatus, has_run: bool, has_reasons: bool
 ) -> None:
     handle = RunHandle(_run(), _now()) if has_run else None
-    reasons = (ReasonCode.AUDIT_VERIFICATION_UNKNOWN,) if has_reasons else ()
+    reason = (
+        ReasonCode.QUEUE_FULL
+        if status is ResultStatus.FAILED
+        else ReasonCode.AUDIT_VERIFICATION_UNKNOWN
+    )
+    reasons = (reason,) if has_reasons else ()
     allowed = {
         (ResultStatus.COMPLETE, True, False),
         (ResultStatus.PARTIAL, False, True),
@@ -482,6 +562,66 @@ def test_admission_result_state_matrix(
             StartRunResult(status, handle, reasons)
 
 
+@pytest.mark.parametrize("reason", tuple(ReasonCode))
+def test_admission_failure_reason_classes_are_closed(reason: ReasonCode) -> None:
+    failed = StartRunResult
+    if reason in START_REJECTION_REASON_CODES:
+        assert failed(ResultStatus.FAILED, None, (reason,)).run is None
+    else:
+        with pytest.raises(ValueError):
+            failed(ResultStatus.FAILED, None, (reason,))
+    if reason in START_UNCERTAINTY_REASON_CODES:
+        assert failed(ResultStatus.PARTIAL, None, (reason,)).run is None
+    else:
+        with pytest.raises(ValueError):
+            failed(ResultStatus.PARTIAL, None, (reason,))
+
+
+def test_admission_mixed_reason_classes_fail_closed() -> None:
+    with pytest.raises(ValueError):
+        StartRunResult(
+            ResultStatus.FAILED,
+            None,
+            (ReasonCode.QUEUE_FULL, ReasonCode.AUDIT_GAP),
+        )
+    with pytest.raises(ValueError):
+        StartRunResult(
+            ResultStatus.PARTIAL,
+            None,
+            (ReasonCode.AUDIT_GAP, ReasonCode.QUEUE_FULL),
+        )
+
+
+def test_admission_reason_sets_are_explicit_and_disjoint() -> None:
+    assert START_REJECTION_REASON_CODES == frozenset(
+        {
+            ReasonCode.CONFIGURATION_MISSING,
+            ReasonCode.NOT_FOUND,
+            ReasonCode.ACCESS_DENIED,
+            ReasonCode.SCOPE_MISMATCH,
+            ReasonCode.IDEMPOTENCY_CONFLICT,
+            ReasonCode.QUEUE_FULL,
+            ReasonCode.UNSUPPORTED_SCHEMA_VERSION,
+            ReasonCode.SOURCE_UNVERIFIED,
+        }
+    )
+    assert START_UNCERTAINTY_REASON_CODES == frozenset(
+        {
+            ReasonCode.AUDIT_COMMIT_FAILED,
+            ReasonCode.AUDIT_VERIFICATION_UNKNOWN,
+            ReasonCode.AUDIT_GAP,
+            ReasonCode.REVISION_UNAVAILABLE,
+            ReasonCode.INTERNAL_ERROR,
+            ReasonCode.DEADLINE_EXCEEDED,
+            ReasonCode.SNAPSHOT_EXPIRED,
+        }
+    )
+    assert set(START_REJECTION_REASON_CODES) | set(START_UNCERTAINTY_REASON_CODES) <= set(
+        ReasonCode
+    )
+    assert set(START_REJECTION_REASON_CODES).isdisjoint(START_UNCERTAINTY_REASON_CODES)
+
+
 @pytest.mark.parametrize("status", tuple(ResultStatus))
 @pytest.mark.parametrize("has_snapshot", (False, True))
 @pytest.mark.parametrize("has_reasons", (False, True))
@@ -489,7 +629,8 @@ def test_status_result_state_matrix(
     status: ResultStatus, has_snapshot: bool, has_reasons: bool
 ) -> None:
     snapshot = _snapshot() if has_snapshot else None
-    reasons = (ReasonCode.AUDIT_GAP,) if has_reasons else ()
+    reason = ReasonCode.NOT_FOUND if status is ResultStatus.FAILED else ReasonCode.AUDIT_GAP
+    reasons = (reason,) if has_reasons else ()
     allowed = {
         (ResultStatus.COMPLETE, True, False),
         (ResultStatus.PARTIAL, True, True),
@@ -500,6 +641,21 @@ def test_status_result_state_matrix(
     else:
         with pytest.raises(ValueError):
             GetRunStatusResult(_run(), status, snapshot, reasons)
+
+
+def test_unavailable_snapshot_revision_never_publishes_a_partial_snapshot() -> None:
+    for reasons in (
+        (ReasonCode.REVISION_UNAVAILABLE,),
+        (ReasonCode.REVISION_UNAVAILABLE, ReasonCode.AUDIT_GAP),
+    ):
+        failed = GetRunStatusResult(_run(), ResultStatus.FAILED, None, reasons)
+        assert failed.run_status is None
+        with pytest.raises(ValueError, match="revision"):
+            GetRunStatusResult(_run(), ResultStatus.PARTIAL, _snapshot(), reasons)
+        with pytest.raises(ValueError):
+            GetRunStatusResult(_run(), ResultStatus.COMPLETE, _snapshot(), reasons)
+        with pytest.raises(ValueError):
+            GetRunStatusResult(_run(), ResultStatus.FAILED, _snapshot(), reasons)
 
 
 @pytest.mark.parametrize("status", tuple(ResultStatus))

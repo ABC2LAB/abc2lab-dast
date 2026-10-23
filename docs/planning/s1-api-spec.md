@@ -213,16 +213,18 @@ Host가 §8의 get_case_view로 선택한 후보를 읽고 작업에 기록된 c
 |---|---|
 | `StartRunResult` | `status`, `run: RunHandle?`, `reason_codes`. 수락 commit이 확인되면 complete, 수락 여부가 불명하면 partial/None, 명백한 거절이면 failed/None |
 | `RunHandle` | `run_key`, `created_at: UtcTime` |
-| `GetRunStatusResult` | `run_key`, `status`, `run_status: RunStatus?`, `reason_codes`. 조회 권한이 없거나 없는 run은 `failed + (NOT_FOUND,)`로 동일하게 공개 |
-| `RunStatus` | `run_key`, `revision: Revision`, `state: queued/running/finalizing/stopping/completed/failed/stopped`, `tasks: tuple[TaskSummary, ...]`, `send_counts: SendCounts`, `audit_completeness`, `operations_audit_completeness`, `reason_codes` |
+| `GetRunStatusResult` | `run_key`, `status`, `run_status: RunStatus?`, `reason_codes`. 미존재/조회 무권한은 정확히 `failed + None + (NOT_FOUND,)`이고 결과 사유의 ACCESS_DENIED·NOT_FOUND 혼합을 거부. REVISION_UNAVAILABLE을 포함하면 failed/None만 허용 |
+| `RunStatus` | `run_key`, `revision: Revision`, `snapshot_revision: Revision`, `state: queued/running/finalizing/stopping/completed/failed/stopped`, `tasks: tuple[TaskSummary, ...]`, `send_counts: SendCounts`, `audit_completeness`, `operations_audit_completeness`, `reason_codes` |
 | `TaskSummary` | `task_ref`, `revision: Revision`, `kind`, `case_ref: Ref?`, `state`, `attempt_summaries`, `reason_codes` |
-| `StopReceipt` | `run_key`, `status`, `stop_state: requested/stopped/not_applicable/unknown`, `requested_at: UtcTime?`, `reason_codes`. `requested`는 이미 종료되었다는 뜻이 아니며, 취소 없이 끝난 `completed/failed`에는 `not_applicable`을 사용 |
+| `StopReceipt` | `run_key`, `status`, `stop_state: requested/stopped/not_applicable/unknown`, `requested_at: UtcTime?`, `reason_codes`. 기존 취소가 없으면 completed/failed 및 FINALIZING의 새 stop은 not_applicable/None. 기존 취소는 최초 시각·requested를 보존하고 정리 확인 후 stopped |
 | `DiscoveryResult` | `run_key`, `status`, `hints: tuple[CandidateHint]`, `attempt_summaries`, `reason_codes`. Knowledge 등록 전의 민감값 제거 단서이며 ID/revision을 발급하지 않음 |
 | `ObserveResult` | `run_key`, `status`, `observation: Observation?`, `projection_events: tuple[ObservationProjected]`, `attempt_summaries`, `reason_codes` |
 | `AccessCompareResult` | `run_key`, `case_ref`, `status`, `owner_identity: IdentityResult?`, `evaluated_identity: IdentityResult?`, `owner_observation: Observation?`, `stored_comparison: StoredComparison?`, `stored_evidence_refs: tuple[Ref]`, `projection_events: tuple[WebDiagProjectionEvent]`, `attempt_summaries`, `reason_codes` |
 | `Observation` | `run_key`, `observation_ref`, `candidate_ref`, `resource_ref`, `operation_ref`, `account_ref`, `session_generation: int`, `identity_ref: Ref`, `response_class: ResponseClass`, `evidence_ref: Ref`, `source_event: AuditLink`, `observed_at: UtcTime`, `reason_codes` |
 
-`Observation`은 공개 Evidence가 저장된 경우에만 존재한다. `complete`는 관찰/비교 작업이 완료되었다는 뜻이며, 권한이 올바르거나 취약점이 존재한다는 뜻은 아니다. `AccessCompareResult.complete`에는 `stored_comparison`이 있어야 한다. partial은 저장된 한쪽 결과를 보존할 수 있고, failed도 이미 발생한 attempt를 보존해야 한다. collect의 인증/발견 요청도 attempt_summaries에 포함한다. Host `start_run/get_status/stop`의 `PARTIAL`은 수락·조회·cleanup·감사 범위가 일부 미확정임을 보존하며, `UNKNOWN` 전송을 `not_sent`로 낮추지 않는다. `FINALIZING`은 진단 task와 보고 확정 이후 운영 감사·최종 상태를 저장하는 구간이며, 보고 task가 실행 중일 때 진입하지 않는다.
+`Observation`은 공개 Evidence가 저장된 경우에만 존재한다. `complete`는 관찰/비교 작업이 완료되었다는 뜻이며, 권한이 올바르거나 취약점이 존재한다는 뜻은 아니다. `AccessCompareResult.complete`에는 `stored_comparison`이 있어야 한다. partial은 저장된 한쪽 결과를 보존할 수 있고, failed도 이미 발생한 attempt를 보존해야 한다. collect의 인증/발견 요청도 attempt_summaries에 포함한다. Host `start_run/get_status/stop`의 `PARTIAL`은 수락·조회·cleanup·감사 범위가 일부 미확정임을 보존하며, `UNKNOWN` 전송을 `not_sent`로 낮추지 않는다. `RunStatus.revision`은 RunAuditRecord와 같은 업무 revision이고 `snapshot_revision`은 tasks/send_counts/audit/reasons 전체의 안정적 공개 snapshot version이다. `FINALIZING`은 진단 task와 보고 확정 이후 운영 감사·최종 상태를 저장하는 구간이며, 보고 task가 실행 중일 때 진입하지 않는다.
+
+Host 시작 결과의 FAILED/PARTIAL은 [Host 계약 §2](host-public-contract-v0.1.md#2-호출-결과와-실패-분류)의 폐쇄 사유 허용목록을 따른다. QUEUE_FULL·IDEMPOTENCY_CONFLICT는 확정 거절 집합이고 AUDIT_VERIFICATION_UNKNOWN 등 수락 불명은 PARTIAL 집합이며 두 역할을 섞지 않는다. 사유 이름만으로 실제 수락 여부가 입증되지는 않는다. 상태 조회는 실제로 유효한 version이 있는 부분 snapshot만 PARTIAL로 반환하며, version을 확인할 수 없는 REVISION_UNAVAILABLE 결과는 FAILED/None으로 반환한다. 실제 ACL 은닉·snapshot 원자성·최종화/stop 경합은 Host 서비스 인수 대상이다.
 
 `WebDiagProjectionEvent = ObservationProjected | ComparisonProjected`라는 폐쇄 union을 사용한다. Observation을 반환하면 해당 원본 ObservationProjected도 함께 반환한다. CompareOutcome.complete와 AccessCompareResult.complete에는 완료된 ComparisonProjected가 필요하다. 원본 감사 commit 실패는 partial/사유로 남기고 완료된 artifact·receipt·이벤트를 보존한다. 이벤트를 완성하려고 같은 대상 요청을 재전송하지 않는다.
 
@@ -437,7 +439,7 @@ at_revision=None이면 현재 일관된 snapshot을 가져온다. 지정한 revi
 |---|---|---|
 | `async def judge(JudgeRequest) -> JudgeResult` | `run_key, context: ReadContext, case_ref, submission_ref, expected_policy: ExpectedAccessPolicySnapshot?, owner_identity: IdentityResult?, evaluated_identity: IdentityResult?, comparison_ref: Ref?` | `run_key, status, verdict: Verdict?, projection_event: VerdictProjected?, reason_codes`. complete는 판정과 원본 이벤트를 함께 반환 |
 | `async def read_case_policy(JudgePolicyReadRequest) -> JudgePolicyReadResult` | `run_key, context: ReadContext, case_ref, expected_policy: ExpectedAccessPolicySnapshot?` | 등록 정본 정책 또는 정상 부재/조회 실패. 상세는 [C4-B 계약](judge-c4-contract.md) |
-| `async def build_report(ReportInput) -> ReportResult` | `run_key, context: ReadContext, tasks: tuple[TaskSummary], observations: tuple[Observation], comparisons: tuple[AccessCompareResult], verdicts: tuple[Verdict], audit_expectations: tuple[AuditExpectation]` | `run_key, status, report: DiagnosisReport?, reason_codes` |
+| `async def build_report(ReportInput) -> ReportResult` | `run_key, context: ReadContext, tasks: tuple[TaskSummary], observations: tuple[Observation], comparisons: tuple[AccessCompareResult], verdicts: tuple[Verdict], audit_expectations: tuple[AuditExpectation]`. `tasks`는 진단 journal cutoff 시점에 봉인된 진단 task만 포함하며 Report task lifecycle은 포함하지 않음 | `run_key, status, report: DiagnosisReport?, reason_codes` |
 
 | Record | 필드 |
 |---|---|
@@ -457,7 +459,7 @@ Report는 각 생산자의 감사 페이지와 공개 Evidence를 읽고 다른 
 
 **Host의 AuditExpectation 조립 책임:** app이 Host와 Report에 주입한 producer별 감사 reader registry로 run의 기대 생산자 집합을 먼저 고정한다. Host는 모든 Discovery/Session/Identity/Observe/AccessCompare 결과와 TaskSummary의 attempt_summaries, 성공·부분·실패 결과에 보존된 정상 commit receipt·event refs를 producer 책임과 확인된 감사 link별로 모아 request/attempt/event 집합을 중복 제거한다. 같은 ref의 충돌·반환 유실은 감사 공백으로 보존한다. 기대 목록은 감사 조회 전에 고정하며 read_audit의 실제 행에서 역산하거나, 조회에 실패한 생산자를 목록에서 제외하지 않는다.
 
-모든 진단 작업과 생산자 소유 정리를 끝낸 뒤 Host가 각 reader의 read_audit로 봉인된 snapshot을 조회한다. §10의 독립 기대 시작값 1과 확인한 terminal_sequence를 AuditExpectation.first_sequence/last_sequence에 넣고 기존 기대 refs와 함께 build_report에 전달한다. 조회 실패·snapshot 만료·미봉인은 생산자와 기대 refs를 유지한 last_sequence=None 및 audit_gap/unknown으로 전달한다. Report는 주입된 동일 registry와 대조해 생산자 누락도 gap으로 처리하고, 자체 감사 읽기로 수위·연관·근거를 검증한다. ReportInput의 필드나 PoC 원문 입력을 추가하지 않는다.
+모든 진단 작업과 생산자 소유 정리를 끝낸 뒤 Host가 **Report task를 만들기 전에** 각 reader의 진단 journal을 봉인하고 고정된 snapshot/prefix를 조회한다. §10의 독립 기대 시작값 1과 확인한 terminal_sequence를 AuditExpectation.first_sequence/last_sequence에 넣고 기존 기대 refs와 함께 build_report에 전달한다. Report는 이 sealed diagnostic prefix만 검증한다. Report task의 생성·전이와 cutoff 이후 Run/Task revision은 진단 expectation이나 `ReportInput.tasks`에 넣지 않고 별도 private operations audit으로 기록한다. `operations_audit_completeness`는 현재 공개 상태 snapshot에서 확인한 bounded operations 범위의 관찰값이며 미래 전체 control-plane lifetime의 영구 완료를 뜻하지 않는다. 이후 상태 조회·stop·recovery가 operations record를 추가할 수 있고, 진단 complete가 미래 Run terminal/operations complete를 주장하지 않는다. 조회 실패·snapshot 만료·미봉인은 생산자와 기대 refs를 유지한 last_sequence=None 및 audit_gap/unknown으로 전달한다. Report는 주입된 동일 registry와 대조해 생산자 누락도 gap으로 처리하고, 자체 감사 읽기로 수위·연관·근거를 검증한다. ReportInput의 필드나 PoC 원문 입력을 추가하지 않는다.
 
 PocReport는 [PoC 보고서 계약](poc-report-design.md)의 실제 참조·등록 요청 레시피에서 생성한다. 원 실행의 저장된 CONFIRMED와 필요한 근거·레시피·감사를 확인하면 documented, 자료가 부족하면 incomplete, 형식/공개가 불가하면 unavailable다. S1 replay_status는 not_run이고 Report는 재전송하지 않는다. CONFIRMED 사례의 필수 PoC가 미완료면 report를 보존한 partial 결과로 반환한다. 미확정 판정을 정확히 설명하는 보고는 PoC를 확정하지 않았다는 이유만으로 생성 실패가 되지 않는다. PoC 가용성과 Judge 판정은 별개다.
 
@@ -486,7 +488,7 @@ RequestIntentRecord는 전송 전 불변 준비 snapshot과 결정을 연결하�
 
 elapsed_ms는 해당 producer_instance의 단조 시계 시작점 이후 경과 시간이고, sequence는 run/producer의 영속 순번이다. 재시작 시 instance_ref를 새로 만들고 sequence는 이어간다. 생산자 간 인과는 causal_links로 연결하며 시각만으로 순서를 합성하지 않는다. event binding의 request/attempt와 evidence/verdict/task 연결을 함께 대조한다.
 
-각 run/producer의 진단 journal은 sequence를 1에서 시작해 1씩 증가시킨다. AuditExpectation.first_sequence=1은 이 계약에서 정한 기대값이며 실제 페이지의 첫 값을 복사하지 않는다. AuditPage.first_sequence는 페이지 첫 행이 아니라 해당 snapshot이 보유한 run/producer의 최초 sequence다. 이 값이 2 이상이거나 중간 sequence가 빠지면 prefix/중간 누락으로 처리하며 기대 시작 경계를 올려 누락을 숨기지 않는다. 진단 이벤트가 0개임을 생산자가 봉인해 확인한 경우만 complete 페이지의 first_sequence=None, committed_through=0, terminal_sequence=0으로 표현한다. Host는 이에 대응하는 기대 범위를 first_sequence=1, last_sequence=0인 빈 구간으로 만들며, 기대 refs도 모두 비어 있을 때만 감사 완료 후보가 된다. 0은 미확인 수위를 대신하는 값이 아니다.
+각 run/producer의 진단 journal은 sequence를 1에서 시작해 1씩 증가시키고 Report 전에 봉인한다. AuditExpectation.first_sequence=1은 이 계약에서 정한 기대값이며 실제 페이지의 첫 값을 복사하지 않는다. AuditPage.first_sequence는 페이지 첫 행이 아니라 해당 snapshot이 보유한 run/producer의 최초 sequence다. 이 값이 2 이상이거나 중간 sequence가 빠지면 prefix/중간 누락으로 처리하며 기대 시작 경계를 올려 누락을 숨기지 않는다. 진단 이벤트가 0개임을 생산자가 봉인해 확인한 경우만 complete 페이지의 first_sequence=None, committed_through=0, terminal_sequence=0으로 표현한다. Host는 이에 대응하는 기대 범위를 first_sequence=1, last_sequence=0인 빈 구간으로 만들며, 기대 refs도 모두 비어 있을 때만 감사 완료 후보가 된다. Report task lifecycle과 cutoff 이후 Run/Task revisions는 별도 operations audit sequence/scope이며 진단 prefix에서 complete를 추론하지 않는다. 0은 미확인 수위를 대신하는 값이 아니다.
 
 Gateway 실행 순서: ① Policy decision과 commit 검증, ② attempt_ref를 생성하고 구체 요청의 intent를 기록한 뒤 자신의 commit 확인, ③ 전송 임계 구역에서 취소/바인딩/신원/범위를 다시 확인하고 예산 원자 차감, ④ transport 진입, ⑤ sent/not_sent/unknown과 캡처 결과 기록. ①②를 입증할 수 없거나 저장에 실패하면 절대 ④로 진입하지 않는다. ③ 이후에도 외부 취소가 발생할 수 있으며 stop은 시작된 전송을 회수한다고 보장할 수 없다.
 
@@ -494,7 +496,7 @@ Gateway 실행 순서: ① Policy decision과 commit 검증, ② attempt_ref를 
 
 S1 fake journal은 흐름 테스트를 위해 verified를 반환할 수 있지만 실제 HTTP는 검증된 영속 어댑터만 사용해야 한다. app은 memory fake를 실제 transport에 연결하는 것을 명시적으로 거부한다. 프로세스 장애 후 intent만 있고 완료 이벤트가 확정되지 않은 attempt는 unknown으로 복구하며 재전송으로 감사를 보완하지 않는다. 실행 후 감사가 실패해도 실제 전송 상태, audit_commit_failed 사유와 미확인 공백을 보존한다.
 
-read_audit의 첫 페이지에서 snapshot=None이면 run/producer 일관 snapshot을 생성하고, 이후 cursor에는 같은 snapshot이 있어야 하며 limit는 1–100이다. snapshot이 없거나 만료되면 failed/snapshot_expired를 명시적으로 반환하고 페이지를 섞지 않는다. terminal_sequence는 생산자가 해당 run의 진단 기록을 봉인한 뒤에만 값이 있으며 아직 열려 있으면 None이다. Host는 진단 작업을 종료하고 각 생산자의 최종 수위를 확인한 뒤 최종 보고를 호출한다. 보고 생성 자체의 후속 관리 로그는 이 진단 감사 범위에 포함하지 않으며, 보고 중 상태 조회는 partial/unknown일 수 있다. 빈 페이지·연속 번호·next_cursor=None만으로는 완전성을 증명할 수 없다.
+read_audit의 첫 페이지에서 snapshot=None이면 run/producer 일관 snapshot을 생성하고, 이후 cursor에는 같은 snapshot이 있어야 하며 limit는 1–100이다. snapshot이 없거나 만료되면 failed/snapshot_expired를 명시적으로 반환하고 페이지를 섞지 않는다. terminal_sequence는 생산자가 해당 run의 진단 기록을 봉인한 뒤에만 값이 있으며 아직 열려 있으면 None이다. Host는 진단 작업을 종료하고 각 생산자의 최종 수위를 확인해 cutoff를 고정한 뒤 Report task를 만들고 최종 보고를 호출한다. Report task 생성·전이 및 이후 Run finalization은 독립 operations audit에 남기며 진단 journal을 다시 열지 않는다. 이 operations completeness는 해당 조회 boundary에서 검증된 bounded scope만 표시하고 영구적인 future watermark나 별도 공개 field/port를 추가하지 않는다. 보고 중 RunState가 RUNNING/STOPPING으로 보일 수 있고, 보고 중 상태 조회는 partial/unknown일 수 있다. 빈 페이지·연속 번호·next_cursor=None만으로는 완전성을 증명할 수 없다.
 
 Host는 §9의 조립 절차에 따라 terminal_sequence를 기대 종료 수위로 전달하고 Report는 같은 봉인 상태와 전체 페이지를 확인한다. first_sequence·committed_through·terminal_sequence와 snapshot의 정합성이나 기대 ref 연관을 확인하지 못하면 partial/audit unknown이다. 큐가 비었거나 결과가 반환됐다는 이유만으로 생산자의 봉인을 가정하지 않는다.
 
