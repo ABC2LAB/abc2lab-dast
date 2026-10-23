@@ -45,9 +45,8 @@ _REASON_MAP: dict[GatewayReason, ReasonCode | None] = {
     # 게이트 사유와 별도 code라 dedup 후에도 둘 다 남아 감사에서 사라지지 않는다.
     GatewayReason.GATE_CONTRADICTION: ReasonCode.INTERNAL_ERROR,
     GatewayReason.SENT_CAPTURED: None,
-    # TODO(mminjun): not_sent의 "전송 단계 미진입" 사유 code가 계약에 없다. transport_not_entered
-    # 추가(스키마 변경, 이동찬 확인 중)까지 임시로 비운다. 이 공백은 xfail 테스트로 추적한다.
-    GatewayReason.TRANSPORT_NOT_ENTERED: None,
+    # 게이트를 모두 통과했지만 transport에 들어가지 못한 not_sent의 "안 보낸 이유"(#33).
+    GatewayReason.TRANSPORT_NOT_ENTERED: ReasonCode.TRANSPORT_NOT_ENTERED,
 }
 
 

@@ -115,8 +115,13 @@ def test_reason_mapping_and_dedup() -> None:
 
 
 def test_informational_reasons_are_dropped() -> None:
-    dropped = (GatewayReason.SENT_CAPTURED, GatewayReason.TRANSPORT_NOT_ENTERED)
-    assert to_contract_reasons(dropped) == ()
+    assert to_contract_reasons((GatewayReason.SENT_CAPTURED,)) == ()
+
+
+def test_transport_not_entered_maps_to_its_contract_code() -> None:
+    assert to_contract_reasons((GatewayReason.TRANSPORT_NOT_ENTERED,)) == (
+        ReasonCode.TRANSPORT_NOT_ENTERED,
+    )
 
 
 def test_gate_contradiction_maps_to_internal_error() -> None:
@@ -205,13 +210,10 @@ def test_not_sent_outcome_preserves_links() -> None:
     assert result.audit_links == links
 
 
-@pytest.mark.xfail(
-    reason="not_sent 미진입 사유 code 부재 — transport_not_entered 스키마 변경 대기",
-    strict=True,
-)
-def test_not_entered_should_carry_a_reason() -> None:
-    # 게이트를 다 통과했는데 전송에 못 들어간 not_sent는 '안 보낸 이유'가 있어야 한다.
-    # 지금은 맞는 ReasonCode가 없어 비어 있으므로 xfail로 구멍을 고정하지 않고 추적한다.
+def test_not_entered_carries_transport_not_entered() -> None:
+    # 게이트를 다 통과했는데 전송에 못 들어간 not_sent는 '안 보낸 이유'를 남긴다. 과거에는 맞는
+    # ReasonCode가 없어 xfail로 추적했고, #33의 transport_not_entered로 해소됐다.
     outcome = classify_transport(TransportObservation.NOT_ENTERED)
     result = to_attempt_result(outcome, _BASE_CONTEXT)
-    assert result.reason_codes != ()
+    assert result.send_status is SendStatus.NOT_SENT
+    assert result.reason_codes == (ReasonCode.TRANSPORT_NOT_ENTERED,)
