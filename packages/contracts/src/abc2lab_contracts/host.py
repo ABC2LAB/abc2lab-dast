@@ -26,7 +26,6 @@ START_REJECTION_REASON_CODES: frozenset[ReasonCode] = frozenset(
     {
         ReasonCode.CONFIGURATION_MISSING,
         ReasonCode.NOT_FOUND,
-        ReasonCode.ACCESS_DENIED,
         ReasonCode.SCOPE_MISMATCH,
         ReasonCode.IDEMPOTENCY_CONFLICT,
         ReasonCode.QUEUE_FULL,
@@ -44,6 +43,51 @@ START_UNCERTAINTY_REASON_CODES: frozenset[ReasonCode] = frozenset(
         ReasonCode.INTERNAL_ERROR,
         ReasonCode.DEADLINE_EXCEEDED,
         ReasonCode.SNAPSHOT_EXPIRED,
+    }
+)
+
+STATUS_LOOKUP_FAILURE_REASON_CODES: frozenset[ReasonCode] = frozenset(
+    {
+        ReasonCode.CONFIGURATION_MISSING,
+        ReasonCode.NOT_FOUND,
+        ReasonCode.REVISION_UNAVAILABLE,
+        ReasonCode.SNAPSHOT_EXPIRED,
+        ReasonCode.UNSUPPORTED_SCHEMA_VERSION,
+        ReasonCode.SOURCE_UNVERIFIED,
+        ReasonCode.INTERNAL_ERROR,
+        ReasonCode.DEADLINE_EXCEEDED,
+    }
+)
+
+STATUS_LOOKUP_PARTIAL_REASON_CODES: frozenset[ReasonCode] = frozenset(
+    {
+        ReasonCode.INTERNAL_ERROR,
+        ReasonCode.DEADLINE_EXCEEDED,
+    }
+)
+
+STOP_REJECTION_REASON_CODES: frozenset[ReasonCode] = frozenset(
+    {
+        ReasonCode.CONFIGURATION_MISSING,
+        ReasonCode.NOT_FOUND,
+        ReasonCode.ACCESS_DENIED,
+        ReasonCode.SCOPE_MISMATCH,
+        ReasonCode.UNSUPPORTED_SCHEMA_VERSION,
+        ReasonCode.SOURCE_UNVERIFIED,
+    }
+)
+
+STOP_UNCERTAINTY_REASON_CODES: frozenset[ReasonCode] = frozenset(
+    {
+        ReasonCode.AUDIT_COMMIT_FAILED,
+        ReasonCode.AUDIT_VERIFICATION_UNKNOWN,
+        ReasonCode.AUDIT_GAP,
+        ReasonCode.REVISION_UNAVAILABLE,
+        ReasonCode.REVISION_CONFLICT,
+        ReasonCode.INTERNAL_ERROR,
+        ReasonCode.DEADLINE_EXCEEDED,
+        ReasonCode.SNAPSHOT_EXPIRED,
+        ReasonCode.CLEANUP_TIMEOUT,
     }
 )
 
@@ -135,6 +179,10 @@ class StartRunResult(ContractRecord):
     reason_codes: tuple[ReasonCode, ...]
 
     def _validate_invariants(self) -> None:
+        if ReasonCode.NOT_FOUND in self.reason_codes and (
+            self.status is not ResultStatus.FAILED or self.reason_codes != (ReasonCode.NOT_FOUND,)
+        ):
+            raise ValueError("not_found admission requires an exact single failed reason")
         if self.status is ResultStatus.COMPLETE:
             if self.run is None or self.reason_codes:
                 raise ValueError("complete admission requires a run and no failure reasons")
@@ -201,7 +249,8 @@ class RunStatus(ContractRecord):
     """Separate the run business revision from the complete public snapshot version.
 
     Host assigns snapshot_revision consistently with task, count and audit
-    changes. Local validation cannot prove version history or completed cleanup.
+    changes, returned missing-task coverage and the adopted operations watermark.
+    Local validation cannot prove version history or completed cleanup.
     """
 
     run_key: RunKey
@@ -239,15 +288,18 @@ class GetRunStatusResult(ContractRecord):
     """Describe lookup completeness separately from the run's audit state.
 
     A coherent, full snapshot is COMPLETE even with UNKNOWN audit completeness.
-    PARTIAL means the lookup returned only a coherent, versioned partial view;
-    audit UNKNOWN or unfinished/failed tasks alone do not make lookup PARTIAL.
-    No coherent snapshot version means FAILED with REVISION_UNAVAILABLE.
+    PARTIAL requires exact missing_task_refs from the same versioned task
+    manifest; send counts still cover the whole run. Unavailable coverage,
+    counts or snapshot version means FAILED with REVISION_UNAVAILABLE.
+    Audit UNKNOWN or unfinished/failed tasks alone do not make lookup PARTIAL.
+    Local validation cannot prove the provider read its authoritative manifest.
     """
 
     run_key: RunKey
     status: ResultStatus
     run_status: RunStatus | None
     reason_codes: tuple[ReasonCode, ...]
+    missing_task_refs: tuple[Ref, ...] = ()
 
     def _validate_invariants(self) -> None:
         if ReasonCode.ACCESS_DENIED in self.reason_codes:
@@ -264,11 +316,31 @@ class GetRunStatusResult(ContractRecord):
         if self.status is ResultStatus.FAILED:
             if self.run_status is not None or not self.reason_codes:
                 raise ValueError("failed lookup must have no snapshot and a reason")
+            if self.missing_task_refs:
+                raise ValueError("failed lookup cannot publish missing task coverage")
+            if any(
+                reason not in STATUS_LOOKUP_FAILURE_REASON_CODES for reason in self.reason_codes
+            ):
+                raise ValueError("failed lookup requires lookup failure reasons only")
             return
         if self.run_status is None or self.run_status.run_key != self.run_key:
             raise ValueError("successful/partial lookup requires matching snapshot")
         if (self.status is ResultStatus.PARTIAL) != bool(self.reason_codes):
             raise ValueError("partial lookup requires reasons; complete does not")
+        if self.status is ResultStatus.COMPLETE:
+            if self.missing_task_refs:
+                raise ValueError("complete lookup cannot omit tasks")
+        else:
+            if not self.missing_task_refs:
+                raise ValueError("partial lookup requires explicit missing task refs")
+            if len(set(self.missing_task_refs)) != len(self.missing_task_refs):
+                raise ValueError("duplicate missing task ref")
+            if set(self.missing_task_refs) & {task.task_ref for task in self.run_status.tasks}:
+                raise ValueError("missing task ref overlaps a returned task")
+            if any(
+                reason not in STATUS_LOOKUP_PARTIAL_REASON_CODES for reason in self.reason_codes
+            ):
+                raise ValueError("partial lookup requires task lookup failure reasons only")
 
 
 @dataclass(frozen=True, slots=True)
@@ -281,7 +353,11 @@ class StopRunRequest(ContractRecord):
 
 @dataclass(frozen=True, slots=True)
 class StopReceipt(ContractRecord):
-    """Separate accepted stop, confirmed cleanup, and uncertain/rejected stop."""
+    """Separate accepted stop, confirmed cleanup, and uncertain/rejected stop.
+
+    Rejection and uncertainty use separate closed reason sets. The service must
+    verify rejection or reconcile the original intent; a reason is not proof.
+    """
 
     run_key: RunKey
     status: ResultStatus
@@ -290,6 +366,10 @@ class StopReceipt(ContractRecord):
     reason_codes: tuple[ReasonCode, ...]
 
     def _validate_invariants(self) -> None:
+        if ReasonCode.NOT_FOUND in self.reason_codes and (
+            self.status is not ResultStatus.FAILED or self.reason_codes != (ReasonCode.NOT_FOUND,)
+        ):
+            raise ValueError("not_found stop requires an exact single failed reason")
         if self.status is ResultStatus.COMPLETE:
             if self.stop_state is StopState.UNKNOWN or self.reason_codes:
                 raise ValueError("complete stop cannot be unknown or contain failures")
@@ -304,6 +384,13 @@ class StopReceipt(ContractRecord):
                 raise ValueError("failed/uncertain stop must be unknown with reasons")
             if self.status is ResultStatus.FAILED and self.requested_at is not None:
                 raise ValueError("rejected stop cannot claim a new request timestamp")
+            allowed_reasons = (
+                STOP_REJECTION_REASON_CODES
+                if self.status is ResultStatus.FAILED
+                else STOP_UNCERTAINTY_REASON_CODES
+            )
+            if any(reason not in allowed_reasons for reason in self.reason_codes):
+                raise ValueError("stop reasons must match rejection or uncertainty status")
 
 
 class HostPort(Protocol):
@@ -314,7 +401,13 @@ class HostPort(Protocol):
     """
 
     async def start_run(self, request: StartRunRequest) -> StartRunResult:
-        """Confirm admission, distinguish unknown commit and reject without double-enqueue."""
+        """Confirm admission without double-enqueue or exposing unreadable registrations.
+
+        Absent, foreign, unreadable and start-denied target/environment/registration
+        inputs all share an exact NOT_FOUND rejection. ACCESS_DENIED is never a
+        public start reason. Check registration visibility, start permission and
+        submission ownership before reporting conflicts, capacity or provenance.
+        """
         ...
 
     async def get_status(self, request: GetRunStatusRequest) -> GetRunStatusResult:

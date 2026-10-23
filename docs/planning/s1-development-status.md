@@ -20,7 +20,7 @@
 | [PR #39](https://github.com/ABC2LAB/abc2lab-dast/pull/39) | MERGED, C4-B Judge 공유 계약 | `JudgeRequest`·`JudgeResult`·`JudgePort`와 app 주입 `JudgePolicyReader`, `verdict.v2`·ALLOWED·ReasonCode 9개 및 실패 사유 분류. 실제 Judge 서비스·등록 저장소·영속 journal 확장은 후속 |
 | [PR #40](https://github.com/ABC2LAB/abc2lab-dast/pull/40) | MERGED, WebDiag 세션 기반 | 바인딩 저장소·상태 전이·context open/close 구현. 발견·whoami·관찰·교차 비교 전체 구현은 후속 |
 | [PR #41](https://github.com/ABC2LAB/abc2lab-dast/pull/41) | MERGED, Judge 사유 코드 매핑 | 미대응 9개를 공개 ReasonCode로 매핑하고 관련 xfail 해소. `JudgePort.judge` 전체 조립·내부 ALLOWED 경로는 후속 |
-| Host 공개 계약 v0.1 | 현재 브랜치의 contracts 구현 제안·문서화, 아직 Draft 팀 리뷰 전 | `start_run/get_status/stop`의 요청·결과·`ReadContext`, Run 업무 revision과 `snapshot_revision`, 진단 journal cutoff 후 Report lifecycle/Run finalization의 독립 operations audit, `FINALIZING`·`NOT_APPLICABLE`, 독립 진단·운영 감사 completeness와 `run.v1`/`task.v1` fingerprint를 기준으로 Host 서비스 인수 테스트를 후속 수행 |
+| Host 공개 계약 v0.1 | PR #45 Draft 리뷰 보완 중, 담당자 승인·병합 대기 | `start_run/get_status/stop`의 요청·결과·`ReadContext`, Run 업무 revision과 `snapshot_revision`, 부분 조회의 `missing_task_refs`·전체 Run 전송 집계, 호출별 사유 허용목록, 유한 봉인 시도·감사 공백을 보존한 부분 보고, cutoff 후 독립 operations audit, `FINALIZING`·`NOT_APPLICABLE`과 `run.v1`/`task.v1` fingerprint를 기준으로 Host 서비스 인수 테스트를 후속 수행 |
 | [PR #14](https://github.com/ABC2LAB/abc2lab-dast/pull/14)·[PR #16](https://github.com/ABC2LAB/abc2lab-dast/pull/16) | MERGED, C3·C4 최소 계약 초안과 리뷰 반영 | capture·Judge 소유 경계의 문서 제안. C2나 C3·C4 구현·벡터·fake가 제공된 것은 아님 |
 
 Policy/Gateway 공개 포트와 그 fake의 공유 선행조건인 **C2 실행 경계 계약 PR #20의 병합이 완료됐다.** 각 담당자는 최신 main의 contracts를 사용해 상대 서비스 구현을 기다리지 않고 자기 모듈과 로컬 fake를 개발·시험한다. 폐기된 PR #8을 선행조건으로 삼지 않는다. 공개 계약 대신 임의 Any·dict·서비스별 타입 사본을 만들지 않으며, 추가로 필요한 C3·C4 경계는 작은 계약 PR로 정의한다.

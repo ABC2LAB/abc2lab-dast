@@ -7,6 +7,10 @@ import pytest
 from abc2lab_contracts.host import (
     START_REJECTION_REASON_CODES,
     START_UNCERTAINTY_REASON_CODES,
+    STATUS_LOOKUP_FAILURE_REASON_CODES,
+    STATUS_LOOKUP_PARTIAL_REASON_CODES,
+    STOP_REJECTION_REASON_CODES,
+    STOP_UNCERTAINTY_REASON_CODES,
     AuditCompleteness,
     GetRunStatusRequest,
     GetRunStatusResult,
@@ -107,7 +111,11 @@ def test_status_and_stop_are_explicit_authorized_requests() -> None:
     )
     assert (
         GetRunStatusResult(
-            _run(), ResultStatus.PARTIAL, _snapshot(), (ReasonCode.AUDIT_GAP,)
+            _run(),
+            ResultStatus.PARTIAL,
+            _snapshot(),
+            (ReasonCode.INTERNAL_ERROR,),
+            missing_task_refs=("task-unavailable",),
         ).status
         is ResultStatus.PARTIAL
     )
@@ -577,6 +585,28 @@ def test_admission_failure_reason_classes_are_closed(reason: ReasonCode) -> None
             failed(ResultStatus.PARTIAL, None, (reason,))
 
 
+def test_start_rejects_access_denied_to_prevent_registration_enumeration() -> None:
+    """Start cannot reveal an existing but non-startable registration."""
+    assert ReasonCode.ACCESS_DENIED not in START_REJECTION_REASON_CODES
+    assert StartRunResult(ResultStatus.FAILED, None, (ReasonCode.NOT_FOUND,)).reason_codes == (
+        ReasonCode.NOT_FOUND,
+    )
+    for reason_codes in (
+        (ReasonCode.ACCESS_DENIED,),
+        (ReasonCode.NOT_FOUND, ReasonCode.ACCESS_DENIED),
+        (ReasonCode.NOT_FOUND, ReasonCode.CONFIGURATION_MISSING),
+        (ReasonCode.NOT_FOUND, ReasonCode.IDEMPOTENCY_CONFLICT),
+    ):
+        with pytest.raises(ValueError):
+            StartRunResult(ResultStatus.FAILED, None, reason_codes)
+
+
+def test_start_partial_cannot_publish_access_denied() -> None:
+    """A forbidden registration is not an admission uncertainty reason."""
+    with pytest.raises(ValueError):
+        StartRunResult(ResultStatus.PARTIAL, None, (ReasonCode.ACCESS_DENIED,))
+
+
 def test_admission_mixed_reason_classes_fail_closed() -> None:
     with pytest.raises(ValueError):
         StartRunResult(
@@ -597,7 +627,6 @@ def test_admission_reason_sets_are_explicit_and_disjoint() -> None:
         {
             ReasonCode.CONFIGURATION_MISSING,
             ReasonCode.NOT_FOUND,
-            ReasonCode.ACCESS_DENIED,
             ReasonCode.SCOPE_MISMATCH,
             ReasonCode.IDEMPOTENCY_CONFLICT,
             ReasonCode.QUEUE_FULL,
@@ -625,28 +654,30 @@ def test_admission_reason_sets_are_explicit_and_disjoint() -> None:
 @pytest.mark.parametrize("status", tuple(ResultStatus))
 @pytest.mark.parametrize("has_snapshot", (False, True))
 @pytest.mark.parametrize("has_reasons", (False, True))
+@pytest.mark.parametrize("has_missing_tasks", (False, True))
 def test_status_result_state_matrix(
-    status: ResultStatus, has_snapshot: bool, has_reasons: bool
+    status: ResultStatus, has_snapshot: bool, has_reasons: bool, has_missing_tasks: bool
 ) -> None:
     snapshot = _snapshot() if has_snapshot else None
-    reason = ReasonCode.NOT_FOUND if status is ResultStatus.FAILED else ReasonCode.AUDIT_GAP
+    reason = ReasonCode.NOT_FOUND if status is ResultStatus.FAILED else ReasonCode.INTERNAL_ERROR
     reasons = (reason,) if has_reasons else ()
+    missing = ("task-unavailable",) if has_missing_tasks else ()
     allowed = {
-        (ResultStatus.COMPLETE, True, False),
-        (ResultStatus.PARTIAL, True, True),
-        (ResultStatus.FAILED, False, True),
+        (ResultStatus.COMPLETE, True, False, False),
+        (ResultStatus.PARTIAL, True, True, True),
+        (ResultStatus.FAILED, False, True, False),
     }
-    if (status, has_snapshot, has_reasons) in allowed:
-        assert GetRunStatusResult(_run(), status, snapshot, reasons).run_status == snapshot
+    if (status, has_snapshot, has_reasons, has_missing_tasks) in allowed:
+        assert GetRunStatusResult(_run(), status, snapshot, reasons, missing).run_status == snapshot
     else:
         with pytest.raises(ValueError):
-            GetRunStatusResult(_run(), status, snapshot, reasons)
+            GetRunStatusResult(_run(), status, snapshot, reasons, missing)
 
 
 def test_unavailable_snapshot_revision_never_publishes_a_partial_snapshot() -> None:
     for reasons in (
         (ReasonCode.REVISION_UNAVAILABLE,),
-        (ReasonCode.REVISION_UNAVAILABLE, ReasonCode.AUDIT_GAP),
+        (ReasonCode.REVISION_UNAVAILABLE, ReasonCode.INTERNAL_ERROR),
     ):
         failed = GetRunStatusResult(_run(), ResultStatus.FAILED, None, reasons)
         assert failed.run_status is None
@@ -666,7 +697,12 @@ def test_stop_result_state_matrix(
     status: ResultStatus, stop_state: StopState, has_timestamp: bool, has_reasons: bool
 ) -> None:
     stamp = _now() if has_timestamp else None
-    reasons = (ReasonCode.AUDIT_VERIFICATION_UNKNOWN,) if has_reasons else ()
+    reason = (
+        ReasonCode.ACCESS_DENIED
+        if status is ResultStatus.FAILED
+        else ReasonCode.AUDIT_VERIFICATION_UNKNOWN
+    )
+    reasons = (reason,) if has_reasons else ()
     allowed = {
         (ResultStatus.COMPLETE, StopState.REQUESTED, True, False),
         (ResultStatus.COMPLETE, StopState.STOPPED, True, False),
@@ -680,3 +716,198 @@ def test_stop_result_state_matrix(
     else:
         with pytest.raises(ValueError):
             StopReceipt(_run(), status, stop_state, stamp, reasons)
+
+
+@pytest.mark.parametrize("reason", tuple(ReasonCode))
+def test_status_reason_classes_fail_closed(reason: ReasonCode) -> None:
+    if reason in STATUS_LOOKUP_FAILURE_REASON_CODES:
+        assert GetRunStatusResult(_run(), ResultStatus.FAILED, None, (reason,)).run_status is None
+    else:
+        with pytest.raises(ValueError):
+            GetRunStatusResult(_run(), ResultStatus.FAILED, None, (reason,))
+    if reason in STATUS_LOOKUP_PARTIAL_REASON_CODES:
+        result = GetRunStatusResult(
+            _run(), ResultStatus.PARTIAL, _snapshot(), (reason,), ("task-missing",)
+        )
+        assert result.missing_task_refs == ("task-missing",)
+    else:
+        with pytest.raises(ValueError):
+            GetRunStatusResult(
+                _run(), ResultStatus.PARTIAL, _snapshot(), (reason,), ("task-missing",)
+            )
+
+
+@pytest.mark.parametrize("reason", tuple(ReasonCode))
+def test_stop_reason_classes_fail_closed(reason: ReasonCode) -> None:
+    if reason in STOP_REJECTION_REASON_CODES:
+        assert (
+            StopReceipt(_run(), ResultStatus.FAILED, StopState.UNKNOWN, None, (reason,)).status
+            is ResultStatus.FAILED
+        )
+    else:
+        with pytest.raises(ValueError):
+            StopReceipt(_run(), ResultStatus.FAILED, StopState.UNKNOWN, None, (reason,))
+    if reason in STOP_UNCERTAINTY_REASON_CODES:
+        assert (
+            StopReceipt(_run(), ResultStatus.PARTIAL, StopState.UNKNOWN, None, (reason,)).status
+            is ResultStatus.PARTIAL
+        )
+    else:
+        with pytest.raises(ValueError):
+            StopReceipt(_run(), ResultStatus.PARTIAL, StopState.UNKNOWN, None, (reason,))
+
+
+def test_status_and_stop_reason_allowlists_are_explicit() -> None:
+    assert STATUS_LOOKUP_FAILURE_REASON_CODES == frozenset(
+        {
+            ReasonCode.CONFIGURATION_MISSING,
+            ReasonCode.NOT_FOUND,
+            ReasonCode.REVISION_UNAVAILABLE,
+            ReasonCode.SNAPSHOT_EXPIRED,
+            ReasonCode.UNSUPPORTED_SCHEMA_VERSION,
+            ReasonCode.SOURCE_UNVERIFIED,
+            ReasonCode.INTERNAL_ERROR,
+            ReasonCode.DEADLINE_EXCEEDED,
+        }
+    )
+    assert STATUS_LOOKUP_PARTIAL_REASON_CODES == frozenset(
+        {ReasonCode.INTERNAL_ERROR, ReasonCode.DEADLINE_EXCEEDED}
+    )
+    assert STOP_REJECTION_REASON_CODES == frozenset(
+        {
+            ReasonCode.CONFIGURATION_MISSING,
+            ReasonCode.NOT_FOUND,
+            ReasonCode.ACCESS_DENIED,
+            ReasonCode.SCOPE_MISMATCH,
+            ReasonCode.UNSUPPORTED_SCHEMA_VERSION,
+            ReasonCode.SOURCE_UNVERIFIED,
+        }
+    )
+    assert STOP_UNCERTAINTY_REASON_CODES == frozenset(
+        {
+            ReasonCode.AUDIT_COMMIT_FAILED,
+            ReasonCode.AUDIT_VERIFICATION_UNKNOWN,
+            ReasonCode.AUDIT_GAP,
+            ReasonCode.REVISION_UNAVAILABLE,
+            ReasonCode.REVISION_CONFLICT,
+            ReasonCode.INTERNAL_ERROR,
+            ReasonCode.DEADLINE_EXCEEDED,
+            ReasonCode.SNAPSHOT_EXPIRED,
+            ReasonCode.CLEANUP_TIMEOUT,
+        }
+    )
+    assert STOP_REJECTION_REASON_CODES.isdisjoint(STOP_UNCERTAINTY_REASON_CODES)
+
+
+@pytest.mark.parametrize(
+    "reasons",
+    (
+        (ReasonCode.AUDIT_GAP, ReasonCode.INTERNAL_ERROR),
+        (ReasonCode.INTERNAL_ERROR, ReasonCode.COMPARISON_CANARY_PASSED),
+        (ReasonCode.INTERNAL_ERROR, ReasonCode.POLICY_ALLOWS),
+    ),
+)
+def test_partial_lookup_cannot_launder_audit_or_diagnostic_reasons(
+    reasons: tuple[ReasonCode, ...],
+) -> None:
+    with pytest.raises(ValueError):
+        GetRunStatusResult(
+            _run(), ResultStatus.PARTIAL, _snapshot(), reasons, ("task-unavailable",)
+        )
+
+
+def test_stop_cannot_mix_rejection_and_uncertainty_or_diagnostic_reasons() -> None:
+    for reasons in (
+        (ReasonCode.ACCESS_DENIED, ReasonCode.AUDIT_VERIFICATION_UNKNOWN),
+        (ReasonCode.ACCESS_DENIED, ReasonCode.POLICY_ALLOWS),
+        (ReasonCode.CLEANUP_TIMEOUT, ReasonCode.COMPARISON_CANARY_PASSED),
+    ):
+        for status in (ResultStatus.FAILED, ResultStatus.PARTIAL):
+            with pytest.raises(ValueError):
+                StopReceipt(_run(), status, StopState.UNKNOWN, None, reasons)
+
+
+@pytest.mark.parametrize(
+    "reasons",
+    (
+        (ReasonCode.NOT_FOUND, ReasonCode.ACCESS_DENIED),
+        (ReasonCode.NOT_FOUND, ReasonCode.NOT_FOUND),
+        (ReasonCode.NOT_FOUND, ReasonCode.SOURCE_UNVERIFIED),
+        (ReasonCode.NOT_FOUND, ReasonCode.INTERNAL_ERROR),
+    ),
+)
+def test_start_and_stop_not_found_never_leak_additional_reasons(
+    reasons: tuple[ReasonCode, ...],
+) -> None:
+    with pytest.raises(ValueError, match="not_found"):
+        StartRunResult(ResultStatus.FAILED, None, reasons)
+    with pytest.raises(ValueError, match="not_found"):
+        StopReceipt(_run(), ResultStatus.FAILED, StopState.UNKNOWN, None, reasons)
+
+
+@pytest.mark.parametrize("audit", tuple(AuditCompleteness))
+@pytest.mark.parametrize("operations", tuple(AuditCompleteness))
+def test_complete_lookup_is_independent_of_audit_verification(
+    audit: AuditCompleteness, operations: AuditCompleteness
+) -> None:
+    snapshot = replace(
+        _snapshot(),
+        audit_completeness=audit,
+        operations_audit_completeness=operations,
+        reason_codes=(
+            (ReasonCode.AUDIT_GAP,) if AuditCompleteness.UNKNOWN in (audit, operations) else ()
+        ),
+    )
+    result = GetRunStatusResult(_run(), ResultStatus.COMPLETE, snapshot, ())
+    assert result.status is ResultStatus.COMPLETE
+    assert result.run_status == snapshot
+    assert result.reason_codes == result.missing_task_refs == ()
+
+
+def test_partial_lookup_has_explicit_missing_tasks_and_whole_run_counts() -> None:
+    task = TaskSummary("task-returned", 1, TaskKind.OBSERVE, None, TaskState.RUNNING, (), ())
+    snapshot = replace(
+        _snapshot(),
+        state=RunState.RUNNING,
+        tasks=(task,),
+        snapshot_revision=2,
+        send_counts=SendCounts(2, 1, 3),
+    )
+    result = GetRunStatusResult(
+        _run(),
+        ResultStatus.PARTIAL,
+        snapshot,
+        (ReasonCode.INTERNAL_ERROR,),
+        missing_task_refs=("task-missing-1", "task-missing-2"),
+    )
+    assert result.run_status == snapshot
+    assert set(result.missing_task_refs) | {item.task_ref for item in snapshot.tasks} == {
+        "task-returned",
+        "task-missing-1",
+        "task-missing-2",
+    }
+    assert result.run_status.send_counts == SendCounts(2, 1, 3)
+
+
+@pytest.mark.parametrize("missing_refs", ((), ("task-missing", "task-missing"), ("task-returned",)))
+def test_partial_lookup_rejects_ambiguous_or_overlapping_missing_tasks(
+    missing_refs: tuple[str, ...],
+) -> None:
+    task = TaskSummary("task-returned", 1, TaskKind.OBSERVE, None, TaskState.RUNNING, (), ())
+    snapshot = replace(_snapshot(), tasks=(task,))
+    with pytest.raises(ValueError):
+        GetRunStatusResult(
+            _run(), ResultStatus.PARTIAL, snapshot, (ReasonCode.INTERNAL_ERROR,), missing_refs
+        )
+
+
+@pytest.mark.parametrize("missing_refs", (("",), ["task-missing"], (None,), "task-missing"))
+def test_partial_lookup_rejects_invalid_missing_task_reference_types(missing_refs: object) -> None:
+    with pytest.raises((TypeError, ValueError)):
+        GetRunStatusResult(
+            _run(),
+            ResultStatus.PARTIAL,
+            _snapshot(),
+            (ReasonCode.INTERNAL_ERROR,),
+            missing_refs,  # type: ignore[arg-type]
+        )

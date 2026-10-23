@@ -65,7 +65,7 @@
 | API 제안 | 최소 입력 | 결과·실패 의미 | 제공자 / 소비자 |
 |---|---|---|---|
 | `async def start_run(request: StartRunRequest) -> StartRunResult` | 대상/환경·등록 설정 참조·submission_ref·필수 ReadContext. 범위·계정·프로필·예산·기대 정책은 app이 주입 | complete 수락/partial 수락 미확정/failed 거절. 같은 키로 수락 여부 재확인, 중복 생성/배정 없음 | Host / 진입점 |
-| `async def get_status(request: GetRunStatusRequest) -> GetRunStatusResult` | 실행 키·필수 ReadContext | 업무 `revision`과 별도 `snapshot_revision`을 가진 일관 상태 snapshot 또는 partial/failed. 전송 3상태·진단/운영 감사 상태를 보존하고 호출마다 현재 권한을 재검증 | Host / 진입점 |
+| `async def get_status(request: GetRunStatusRequest) -> GetRunStatusResult` | 실행 키·필수 ReadContext | 업무 `revision`과 별도 `snapshot_revision`을 가진 일관 상태 snapshot 또는 partial/failed. partial은 `GetRunStatusResult.missing_task_refs`로 정확한 누락 Task를 명시하고 전송 집계는 전체 Run 기준을 유지. 감사 UNKNOWN만으로 partial이 되지 않으며 호출마다 현재 권한을 재검증 | Host / 진입점 |
 | `async def stop(request: StopRunRequest) -> StopReceipt` | 실행 키·필수 ReadContext | 접수/실제 정리 종료/적용 대상 아님/불명을 구분하고 requested_at 존재 조건을 따른다. 진행 중 전송의 불명을 지우지 않음 | Host / 진입점 |
 | `async def collect(request: DiscoveryRequest) -> DiscoveryResult` | 실행 키·허가된 seed·계정·유한 탐색 상한 | CandidateHint 단서·출처·관찰 필요 조건·모든 전송 시도·complete/partial/failed. 후보 ID/revision은 Host가 Knowledge 등록 후 받음 | WebDiag / Host |
 | `async def http_observe(request: ObserveRequest) -> ObserveResult` | 실행 키·Host가 조회한 자기 자원 Candidate 값·계정·관찰 프로필 | 아래 Observation·원본 projection_events 또는 차단·실패·부분 결과. 교차 자원 관찰로 전환하지 않음 | WebDiag / Host |
@@ -174,7 +174,7 @@ S1은 `store_memory`로 테스트한다. 다른 서비스의 작업/정책/근�
 | `async def build_report(request: ReportInput) -> ReportResult` | 실행 키·관찰/판정/작업 요약·생산자별 기대 기록. 근거/요청 레시피·감사는 주입된 읽기 포트로 조회 | DiagnosisReport와 PoC 상태/절차 또는 생성 실패. Report는 재전송 없이 제한·전송 불명·감사 완전성을 보존 |
 | `async def read_audit(request: AuditReadRequest) -> AuditPage` | 실행 키·호출자 권한·producer/cursor·유한 반환 상한 | 각 생산자의 허용 이벤트·순번·연결 참조·다음 cursor·완전성/실패. 각 소유 서비스가 제공 |
 
-Host가 작업을 조정하고 `app`이 Judge/Report가 소비할 읽기 포트를 주입한다. Report가 타 서비스 DB를 읽지 않는다. 모든 진단 producer journal은 Report task 생성 전에 봉인하며 Report는 고정된 diagnostic prefix만 읽는다. Report task lifecycle과 cutoff 이후 Run/Task revision은 별도 private operations audit에 기록하고 `ReportInput.tasks`에서 제외한다. 공개 RunStatus에는 Report task를 포함한 모든 task를 보존한다. 감사는 기대 request/event ID와 실제 연결을 비교한다. A·B가 필요한데 A·A 두 건이 있는 경우를 완료로 처리하지 않는다. 생산자별 저장 내구성과 조회 snapshot을 확인하지 못하면 감사 완전성은 unknown이다.
+Host가 작업을 조정하고 `app`이 Judge/Report가 소비할 읽기 포트를 주입한다. Report가 타 서비스 DB를 읽지 않는다. Host는 진단 작업 발급을 멈추고 Report task 생성 전에 app이 정한 유한 기한 안에서 각 생산자의 종료·감사 봉인을 시도한다. `read_audit`는 봉인을 요청하는 포트가 아니며 app이 주입한 생산자 소유의 내부 수명주기 경계가 이를 수행한다. 봉인·조회 실패 생산자도 기대 목록에 남기고 `last_sequence=None`과 감사 공백을 전달해 부분 보고를 허용한다. Report는 확인된 유효한 진단 prefix와 근거를 검증하며 미확정을 감사 완료로 바꾸지 않는다. Report task lifecycle과 cutoff 이후 Run/Task revision은 별도 private operations audit에 기록하고 `ReportInput.tasks`에서 제외한다. 공개 RunStatus에는 Report task를 포함한 모든 task를 보존한다. 감사는 기대 request/event ID와 실제 연결을 비교한다. A·B가 필요한데 A·A 두 건이 있는 경우를 완료로 처리하지 않는다. 생산자별 저장 내구성과 조회 snapshot을 확인하지 못하면 감사 완전성은 unknown이다. 종료·봉인 확인과 운영 감사의 수위 검증은 [Host 계약](host-public-contract-v0.1.md#4-진단-감사와-운영-감사--독립-경계)을 따른다.
 
 Judge는 다음 셋을 각각 확인한다: **(a)** 현재 적용되는 등록 기대 정책과 공유/위임 예외 해소, **(b)** A·B의 유효한 실제 subject, **(c)** 같은 소유자 객체의 정상 응답에 비자명 실데이터가 있고 교차 응답이 그것을 반환한다는 근거. HTTP 200·HMAC 일치·ID echo·owner_id·공통 템플릿만으로 확정하지 않는다. 규칙·검증 canary는 Judge가 소유하고 `app`이 로컬 Evidence에 주입한다. ([오라클 기준](module-design-confirmed.md#7-확정-오라클--읽기-전용-수평-idor-judge-패키지))
 
