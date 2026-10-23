@@ -9,7 +9,7 @@
 ## 1. 역할 경계·공개 인터페이스
 
 - 공개 `HostPort`: `start_run(StartRunRequest) -> StartRunResult`, `get_status(GetRunStatusRequest) -> GetRunStatusResult`, `stop(StopRunRequest) -> StopReceipt`, 모두 `async`. `abc2lab_contracts.ports.HostPort`로도 노출한다.
-- 세 요청 모두 필수 `ReadContext(caller_ref, authorization_ref)`를 포함한다. `app`이 인증한 식별자는 **권한 자체가 아니며**, Host는 주입된 신뢰된 authorizer/registration reader에서 **매 호출 시** 현재 권한, 조직·대상·환경 및 run 접근 범위를 재검증한다. constructor는 인증 증거를 검증하지 못한다.
+- 세 요청 모두 필수 `ReadContext(caller_ref, authorization_ref)`를 포함한다. 여기서는 기존 공유 타입을 범용 호출자·인가 참조 맥락으로 재사용하며, `Read`라는 이름이 읽기 전용 권한이나 쓰기 권한을 부여하지 않는다. `app`이 인증한 식별자는 **권한 자체가 아니며**, Host는 주입된 신뢰된 authorizer/registration reader에서 **매 호출 시** 시작·조회·정지 각각에 필요한 현재 권한, 조직·대상·환경 및 run 접근 범위를 재검증한다. constructor는 인증 증거를 검증하지 못한다.
 - 다른 조직이나 조회 권한 없는 run에 대한 `get_status`·`stop`은 존재하지 않는 run과 **동일하게** `FAILED + (NOT_FOUND,)`로 공개한다. `GetRunStatusResult.reason_codes`에는 `ACCESS_DENIED`를 허용하지 않으며, `NOT_FOUND`를 다른 사유와 섞지 않는다. 조회 권한은 있으나 정지 권한이 없다면 **stop 결과에서만** `ACCESS_DENIED`가 가능하다. 작업 실행 중 실제로 발생한 거부는 중첩 TaskSummary의 사유로 보존하며 run 조회 권한 거부와 혼동하지 않는다. 내부 운영 감사는 실제 거부 원인을 제한적으로 기록할 수 있지만 외부로 유출하지 않는다.
 - Host ID: `RunKey.run_ref`, `task_ref`, `case_ref`. WebDiag `request_ref`; Gateway `attempt_ref`. Host는 요청 recipe·쿠키·계정 자격 증명·원문 캡처/응답·GT를 API/감사 payload로 복사하지 않는다. 실행 허용 결정은 Policy/Gateway에서 독립 확인한다.
 - `start_run`은 검증된 `registration_ref`와 caller-generated `submission_ref`만 받으며 임의 URL/비밀번호를 받지 않는다. Host는 서비스에 주입된 등록 정본에 대해 속성·버전·정책 snapshot을 검증한다.
@@ -38,13 +38,15 @@
 | start | `PARTIAL + None + reasons` | 수락 commit 여부 불명. 새 run/새 작업을 만들지 않고 기존 submission과 정본/outbox를 재조정 |
 | start | `FAILED + None + reasons` | 수락하지 않았음이 확인된 거절 (`QUEUE_FULL`, `IDEMPOTENCY_CONFLICT`, 등록/인가 오류 등) |
 | get_status | `COMPLETE + RunStatus + ()` | 현재 권한 확인된 일관·전체 상태 snapshot |
-| get_status | `PARTIAL + RunStatus + reasons` | 같은 시점의 유효한 부분 snapshot이나 알려진 미확인 영역 존재 |
+| get_status | `PARTIAL + RunStatus + reasons` | tasks·전송 집계 등 상태 조회가 일부만 성공해, 유효한 version이 있는 일관된 부분 snapshot과 조회 누락 사유를 반환 |
 | get_status | `FAILED + None + reasons` | 조회 실패, 무권한/없는 run 모두 `NOT_FOUND` 공개 |
 | stop | `COMPLETE + REQUESTED + requested_at` | 취소 의도 commit 수락. 실제 중지·lease/capture 회수 아님 |
 | stop | `COMPLETE + STOPPED + requested_at` | 이전에 수락된 취소의 실행/cleanup 종료가 확인됨. `requested_at`은 최초 수락 시각 |
 | stop | `COMPLETE + NOT_APPLICABLE + None` | 기존 취소 수락 없이 `COMPLETED`/`FAILED`로 끝났거나, `FINALIZING`에 진입해 신규 취소를 수락하지 않는 경우. FINALIZING 자체는 terminal이 아님 |
 | stop | `PARTIAL + UNKNOWN + requested_at? + reasons` | 취소 intent commit 또는 cleanup 종료 여부 미확정. 해당 시각이 신뢰 가능한 경우에만 보존 |
 | stop | `FAILED + UNKNOWN + None + reasons` | 명백한 거부/조회 실패, 요청 시각을 만들지 않음 |
+
+**상태 조회의 두 축:** 바깥 `GetRunStatusResult.status`는 **조회 결과의 완성도**, 안쪽 두 `audit_completeness`는 **Run의 감사 검증 상태**다. 권한 확인과 전체 snapshot 조회가 성공했다면 감사가 UNKNOWN이어도 `COMPLETE + RunStatus + ()`로 반환하며, 감사 미확인 사유는 `RunStatus.reason_codes`에 보존한다. 진행 중이거나 실패한 Task가 있다는 사실도 바깥 PARTIAL의 사유가 아니다. 바깥 PARTIAL은 조회 자체가 일부 실패해 일관된 부분 snapshot만 제공할 때 사용하고 누락·조회 실패를 바깥 사유에 남긴다. 일관된 snapshot/version조차 확보하지 못하면 `REVISION_UNAVAILABLE`을 포함한 `FAILED + None`이다. 소비자는 먼저 바깥 status로 조회 범위를 확인하고, 안쪽 Run/Task 상태·두 감사 필드로 실행 및 감사 상태를 표시한다. 조회 COMPLETE를 감사 완료나 진단 안전성으로 해석하지 않는다.
 
 `COMPLETE`인 stop은 요청 수락·정리 종료·취소 적용 대상 아님 중 어느 사실이 확인됐는지 `stop_state`로 구분하며 전송 회수 보장은 아니다. 권한을 먼저 확인한 뒤 기존 cancellation intent를 조회한다. 이미 수락된 취소가 있으면 최초 `requested_at`을 유지하고 `REQUESTED`를 반복 반환하며 cleanup 확인 뒤에만 `STOPPED`로 바꾼다. 기존 취소가 없을 때 `FINALIZING`의 새 stop은 `NOT_APPLICABLE`을 반환한다. 이 결정은 run CAS/원자 decision으로 concurrent stop과 조정한다. `NOT_APPLICABLE`은 stopped로 오해할 수 없으며 `STOPPED`는 cleanup 완료를 입증한 경우에만 반환한다. 불확실하면 `PARTIAL + UNKNOWN`에 신뢰 가능한 시각만 보존하고, 상태를 되돌리거나 진단 journal을 다시 열지 않는다. `CancelledError`는 정리/기록한 뒤 전파하고 정상 실패 결과로 삼키지 않는다.
 
@@ -80,6 +82,7 @@
 - exact `frozen` dataclass 타입, UTC 정규화, Revision 양수, `updated_at >= created_at`; 상태에 필요한 reason과 일치해야 한다. 이 두 record는 **업무 상태 revision**을 기술하지 진단·운영 감사 completeness의 조회 파생값을 fingerprint에 중복 저장하지 않는다.
 - 기존 `abc2lab_contracts.fingerprint`의 `canonical-json.v1`만 사용하며 `record_kind=run/task`, `schema_version=run.v1/task.v1`. `record_ref=run_key.run_ref/task_ref`; `record_revision=revision`. AuditReceipt `sequence`와 업무 revision은 별개. vector는 `docs/examples/host-fingerprint-vectors.json`에 봉인한다.
 - `normalize_reason_codes`: value 오름차순 정렬·동일 중복 제거. `normalize_attempt_summaries`: **`attempt_ref` 기준 오름차순**, 동일 내용 중복 제거; 각 Attempt의 `audit_links`는 `(producer,event_ref)` 순, reason도 정규화. **같은 attempt_ref에 다른 request_ref 또는 다른 업무 필드가 있으면 충돌**로 거부하고 Host가 비공개 감사 gap/UNKNOWN으로 기록한다. 단순 RequestRef 기준으로 구분해 이중 집계하지 않는다.
+- 공개 `TaskSummary`는 입력 tuple 순서를 보존하며 감사용 정렬을 강제하지 않는다. `attempt_ref` 중복은 거부한다. 반면 `TaskAuditRecord`는 결정적인 fingerprint 입력이므로 Host가 생성 전에 `normalize_attempt_summaries`와 `normalize_reason_codes`를 명시적으로 적용한다. 공개 요약의 정렬까지 강제하는 규칙은 아니며, 공개 tuple 순서를 바꾸면 관찰 가능한 snapshot 내용도 바뀌므로 `snapshot_revision` 규칙은 적용한다.
 - 생성자 및 typed fingerprint는 미정규화된 Run/Task 감사 record를 거부한다. 서로 다른 의미를 같은 revision/ref 아래 재기록할 수 없다. heartbeat, 단순 정렬 차이나 journal 조회만으로 업무 revision을 불필요하게 증가시키지 않는다.
 - Host service가 `AuditRecordBinding(RUN/TASK)`·`AuditReceipt`를 저장된 실제 payload와 비교해야 하며, 호출자가 준 digest나 receipt 사본만으로 VERIFY 완료를 주장할 수 없다.
 

@@ -99,7 +99,12 @@ class StopState(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class StartRunRequest(ContractRecord):
-    """Request admission for an app-registered target, never raw credentials."""
+    """Request admission for an app-registered target, never raw credentials.
+
+    ReadContext carries shared caller/authorization references; its name neither
+    grants authority nor limits an operation to reads. Host authorizes admission
+    independently on every call, as it does status reads and stop requests.
+    """
 
     organization_ref: Ref
     target_ref: Ref
@@ -168,7 +173,11 @@ class SendCounts(ContractRecord):
 
 @dataclass(frozen=True, slots=True)
 class TaskSummary(ContractRecord):
-    """Retain public attempts and reasons for one Host task."""
+    """Retain public attempts and reasons for one Host task.
+
+    Tuple order is retained without audit normalization; attempt refs are unique.
+    Host explicitly normalizes attempts and reasons for TaskAuditRecord instead.
+    """
 
     task_ref: Ref
     revision: Revision
@@ -227,7 +236,13 @@ class RunStatus(ContractRecord):
 
 @dataclass(frozen=True, slots=True)
 class GetRunStatusResult(ContractRecord):
-    """Keep lookup failure distinct from a valid run snapshot."""
+    """Describe lookup completeness separately from the run's audit state.
+
+    A coherent, full snapshot is COMPLETE even with UNKNOWN audit completeness.
+    PARTIAL means the lookup returned only a coherent, versioned partial view;
+    audit UNKNOWN or unfinished/failed tasks alone do not make lookup PARTIAL.
+    No coherent snapshot version means FAILED with REVISION_UNAVAILABLE.
+    """
 
     run_key: RunKey
     status: ResultStatus

@@ -72,7 +72,12 @@ class RunAuditRecord(ContractRecord):
 
 @dataclass(frozen=True, slots=True)
 class TaskAuditRecord(ContractRecord):
-    """Immutable Host task revision with no raw request/response material."""
+    """Immutable Host task revision with no raw request/response material.
+
+    Unlike TaskSummary, fingerprint input requires normalized tuple order.
+    Host applies normalize_attempt_summaries and normalize_reason_codes before
+    construction; unnormalized audit records are rejected, not silently sorted.
+    """
 
     run_key: RunKey
     task_ref: Ref
