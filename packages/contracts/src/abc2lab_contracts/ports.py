@@ -28,6 +28,7 @@ from abc2lab_contracts.execution import (
     PolicyInput,
     PrepareResult,
 )
+from abc2lab_contracts.host import HostPort as HostPort
 from abc2lab_contracts.judge import (
     JudgePolicyReadRequest,
     JudgePolicyReadResult,

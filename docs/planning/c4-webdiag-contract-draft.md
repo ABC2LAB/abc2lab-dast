@@ -4,7 +4,7 @@
 
 ## 1. 범위와 선행 의존
 
-이 초안은 **Host가 WebDiag를 호출하는 경계**(`WebDiagPort`)를 다룬다. 공유 타입과 포트는 PR #38에서 구현됐다. WebDiag가 소비하는 Gateway/Policy/Session/Evidence 포트는 이미 `abc2lab_contracts.ports`에 있으며, Knowledge 투영 제출은 Host가 기존 `KnowledgePort.project`를 호출해 조정한다. Host 진입점(`start_run/get_status/stop`)·Report 입력/결과·`build_report`는 **여전히 구현되지 않은 별도 공유 계약**으로, Host/Report 담당자와 확정해야 한다.
+이 초안은 **Host가 WebDiag를 호출하는 경계**(`WebDiagPort`)를 다룬다. 공유 타입과 포트는 PR #38에서 구현됐다. WebDiag가 소비하는 Gateway/Policy/Session/Evidence 포트는 이미 `abc2lab_contracts.ports`에 있으며, Knowledge 투영 제출은 Host가 기존 `KnowledgePort.project`를 호출해 조정한다. Host 진입점(`start_run/get_status/stop`)은 별도의 [Host 공개 계약 v0.1](host-public-contract-v0.1.md)에서 요청·결과·Protocol을 구현 제안하며, 아직 팀 승인·병합·Host 서비스 구현을 의미하지 않는다. Report 입력/결과·`build_report`는 Report 담당자와 별도 공유 계약 PR로 확정해야 한다.
 
 | 구분 | 타입 | 상태 |
 |---|---|---|
