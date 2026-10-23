@@ -44,6 +44,7 @@ from abc2lab_contracts.knowledge import (
     ProjectionSubmission,
 )
 from abc2lab_contracts.primitives import CloseResult, Ref, RunKey
+from abc2lab_contracts.report import ReportPort as ReportPort
 from abc2lab_contracts.session import (
     SessionBindingResult,
     SessionContextCloseRequest,
