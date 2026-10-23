@@ -20,6 +20,7 @@
 | [PR #39](https://github.com/ABC2LAB/abc2lab-dast/pull/39) | MERGED, C4-B Judge 공유 계약 | `JudgeRequest`·`JudgeResult`·`JudgePort`와 app 주입 `JudgePolicyReader`, `verdict.v2`·ALLOWED·ReasonCode 9개 및 실패 사유 분류. 실제 Judge 서비스·등록 저장소·영속 journal 확장은 후속 |
 | [PR #40](https://github.com/ABC2LAB/abc2lab-dast/pull/40) | MERGED, WebDiag 세션 기반 | 바인딩 저장소·상태 전이·context open/close 구현. 발견·whoami·관찰·교차 비교 전체 구현은 후속 |
 | [PR #41](https://github.com/ABC2LAB/abc2lab-dast/pull/41) | MERGED, Judge 사유 코드 매핑 | 미대응 9개를 공개 ReasonCode로 매핑하고 관련 xfail 해소. `JudgePort.judge` 전체 조립·내부 ALLOWED 경로는 후속 |
+| [PR #46](https://github.com/ABC2LAB/abc2lab-dast/pull/46) | OPEN(리뷰 중), WebDiag 전송 cycle·whoami | run_request·등록값 빌더·AuthSignal 해석·whoami(identify→seal→identity 감사→VERIFIED IdentityResult)와 webdiag 내부 포트 구현. 공개 contracts 타입 변경 없음. acquire_session·관찰·교차 비교는 후속 |
 | [PR #14](https://github.com/ABC2LAB/abc2lab-dast/pull/14)·[PR #16](https://github.com/ABC2LAB/abc2lab-dast/pull/16) | MERGED, C3·C4 최소 계약 초안과 리뷰 반영 | capture·Judge 소유 경계의 문서 제안. C2나 C3·C4 구현·벡터·fake가 제공된 것은 아님 |
 
 Policy/Gateway 공개 포트와 그 fake의 공유 선행조건인 **C2 실행 경계 계약 PR #20의 병합이 완료됐다.** 각 담당자는 최신 main의 contracts를 사용해 상대 서비스 구현을 기다리지 않고 자기 모듈과 로컬 fake를 개발·시험한다. 폐기된 PR #8을 선행조건으로 삼지 않는다. 공개 계약 대신 임의 Any·dict·서비스별 타입 사본을 만들지 않으며, 추가로 필요한 C3·C4 경계는 작은 계약 PR로 정의한다.
@@ -147,7 +148,7 @@ Observation/Verdict payload와 원본 projection, 기존 ExpectedAccessPolicySna
 | policy·최민준 | 순수 평가, PolicyService.evaluate와 메모리 journal | app 주입·Gateway 연동, 내구 저장·감사 및 장애/복구 통합 검증 |
 | judge·최민준 | 순수 오라클, VerdictPublisher와 메모리 journal, PR #41의 사유 9개 매핑 | JudgePort.judge에서 정책 reader·신원·Evidence 검증 연결, ALLOWED 서비스 관문, 영속화·멱등성/CAS·시각 검증 |
 | report·최민준 | 패키지 골격과 smoke 테스트 | build_report, 감사 완결성·누락·전송 unknown 보존, Evidence/Comparison/Verdict와 무전송 PoC 보고 |
-| webdiag·이경준 | PR #40의 세션 바인딩·상태 전이·context 생명주기 | 발견·인증/whoami·관찰·교차 비교, Gateway/Policy/Evidence 조정과 원본 이벤트 반환 |
+| webdiag·이경준 | PR #40의 세션 바인딩·상태 전이·context 생명주기. **PR #46(리뷰 중)**: run_request(prepare→evaluate→execute)·등록값→ExecutionRequest 빌더·AuthSignal 해석·whoami(identify→주체확인→seal→identity 감사 commit→VERIFIED IdentityResult)와 webdiag 내부 포트(EvidenceSealer·IdentityJournal·IdentityProfileRegistry·WebDiagClock) | acquire_session(open+로그인 step+whoami+CONFIRMED 바인딩 compose)·http_observe·access_compare(D-0 무전송)·collect, Gateway/Policy/Evidence 실제 연동과 원본 이벤트 반환 |
 | host·이경준 | 패키지 골격과 smoke 테스트 | run/task/case 관리, 유한 큐·worker·취소, 후보 등록/조회·투영과 감사 기대 수위 조립 |
 | evidence·이경준 | PR #35·#36의 capture·seal/compare·recover·레시피와 메모리 저장/조회 | 실제 Gateway 연동, 내구 저장·감사와 재시작 복구·인가 통합 검증 |
 
