@@ -27,6 +27,7 @@ class PreparedRequest:
     policy_input: PolicyInput
     request: ExecutionRequest
     expires_at: datetime
+    auth_profile_ref: Ref | None = None
 
 
 class PreparedHandleStore(Protocol):

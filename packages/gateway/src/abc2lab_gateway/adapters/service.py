@@ -125,6 +125,7 @@ class GatewayPreparer:
                 policy_input=policy_input,
                 request=request,
                 expires_at=expires_at,
+                auth_profile_ref=operation.auth_profile_ref,
             )
         )
         _LOGGER.info(
