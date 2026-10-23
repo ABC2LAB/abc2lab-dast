@@ -9,6 +9,7 @@ import pytest
 from abc2lab_contracts.audit import AuditVerifyRequest, AuditVerifyResult, VerificationState
 from abc2lab_contracts.primitives import ReasonCode
 from abc2lab_contracts.projection import VerdictProjected
+from abc2lab_contracts.verdict import VerdictValue
 from abc2lab_judge.adapters import (
     InMemoryVerdictJournal,
     JournalCommitError,
@@ -65,14 +66,16 @@ async def test_publish_undetermined_with_mapped_reason(
 
 
 @pytest.mark.asyncio
-async def test_publish_unmapped_only_fails_loudly(
+async def test_publish_data_unverifiable_undecidable_succeeds(
     publisher: VerdictPublisher,
-    undecidable_unmapped_oracle: OracleVerdict,
+    undecidable_data_unverifiable_oracle: OracleVerdict,
     undetermined_context: VerdictContext,
 ) -> None:
-    # 미대응 사유만 남아 wire 사유가 비면 Verdict 생성자가 거부하고, 채움용 코드로 막지 않는다.
-    with pytest.raises(ValueError):
-        await publisher.publish(undecidable_unmapped_oracle, undetermined_context)
+    # C4-B(#39) 전에는 유일 사유 DATA_UNVERIFIABLE가 미대응이라 발행 불가(시끄러운 실패)였다. 이제
+    # 공개 코드가 생겨 정상 발행되고 그 사유가 wire에 남는다.
+    projected = await publisher.publish(undecidable_data_unverifiable_oracle, undetermined_context)
+    assert projected.verdict.value is VerdictValue.UNDECIDABLE
+    assert projected.verdict.reason_codes == (ReasonCode.DATA_UNVERIFIABLE,)
 
 
 @pytest.mark.asyncio
@@ -93,3 +96,16 @@ async def test_publish_raises_on_unknown_verification(
     with pytest.raises(JournalCommitError) as error:
         await _publisher(journal).publish(confirmed_oracle, confirmed_context)
     assert error.value.reason_code is ReasonCode.AUDIT_VERIFICATION_UNKNOWN
+
+
+@pytest.mark.asyncio
+async def test_publish_allowed_commits_and_verifies(
+    publisher: VerdictPublisher,
+    journal: InMemoryVerdictJournal,
+    allowed_oracle: OracleVerdict,
+    allowed_context: VerdictContext,
+) -> None:
+    projected = await publisher.publish(allowed_oracle, allowed_context)
+    assert projected.verdict.value is VerdictValue.ALLOWED
+    assert projected.verdict.reason_codes == (ReasonCode.POLICY_ALLOWS,)
+    assert journal.committed(allowed_context.run_key)[0].receipt == projected.source_receipt

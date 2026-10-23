@@ -1,6 +1,6 @@
 # 결정적 fingerprint 계약 v1
 
-상태: **C1·C2 구현·병합 완료** ([PR #15](https://github.com/ABC2LAB/abc2lab-dast/pull/15), [PR #20](https://github.com/ABC2LAB/abc2lab-dast/pull/20)). C2의 typed wrapper·adapter와 실행 경계 계약 검증 결과·공유 착수 조건은 [착수 상태](s1-development-status.md#4-c2-구현과-검증)를 따른다.
+상태: **C1·C2 codec·typed adapter 병합(#15·#20), C3 Evidence/Comparison(#27)·C4-A Knowledge/투영(#30)·C4-B Verdict v2(#39) 운영 fingerprint 계약 반영 (2026-10-22)**. C1의 canonical-json.v1은 유지되며 `Verdict`만 `verdict.v2` 단일 운영 스키마다. 기록된 시점별 테스트 수치는 역사적 검사 결과이고, 실제 생산자 journal·복구·전체 S1 서비스 검증은 별도다. [착수 상태](s1-development-status.md)를 참조한다.
 
 ## 1. 소유권과 경계
 

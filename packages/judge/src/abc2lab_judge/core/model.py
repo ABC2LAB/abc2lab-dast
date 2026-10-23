@@ -2,13 +2,12 @@
 
 공개 계약(C4 `Verdict`, C2 공유 타입 `CheckState`·`ExpectedAccessPolicySnapshot`·`IdentityResult`·
 C3 `ComparisonSignals`)으로 변환되기 전의 모듈 내부 타입이다. 공개 계약을 대신하거나 사본으로 쓰지
-않으며, 원문·캡처 핸들·HMAC 키를 받지 않는다. C2는 병합됐고(PR #20) C3/C4는 후속이다. `adapters`가
-저장된 비교 결과·정책 snapshot·신원 결과를 이 모델로 distill하고 이 판정을 `Verdict`로 발행할
-책임을 진다.
+않으며, 원문·캡처 핸들·HMAC 키를 받지 않는다. `adapters`가 저장된 비교 결과·정책 snapshot·신원
+결과를 이 모델로 distill하고 이 판정을 `Verdict`로 발행할 책임을 진다.
 
-판정은 보수적이다. (a)(b)(c)를 각각 확인하고 셋이 모두 충족될 때만 CONFIRMED이다. 하나라도 확인
-불가(`unknown`)면 UNDECIDABLE이 우선하고, 전부 확인됐으나 미충족이면서 명시 이상 신호가 있을 때만
-SUSPECTED다. SUSPECTED의 정확한 허용 조건은 팀 합의 전이므로 명시 신호에만 의존한다.
+판정은 보수적이다. (a)(b)(c)가 모두 충족될 때만 CONFIRMED이다. SUSPECTED·ALLOWED·UNDECIDABLE은
+C4-B 계약 §2에 따라 (a)의 사유와 (b)(c)의 상태로 가른다(규칙은 `oracle`). 확인하지 못한 것은
+UNDECIDABLE이 기본이다.
 """
 
 from __future__ import annotations
@@ -27,11 +26,15 @@ class CheckState(StrEnum):
 
 
 class VerdictValue(StrEnum):
-    """판정 결과. 보수적 기본값은 `UNDECIDABLE`."""
+    """판정 결과. 보수적 기본값은 `UNDECIDABLE`.
+
+    `ALLOWED`는 검증된 정책상 허용이다. HTTP 성공이나 취약점 부재를 뜻하지 않는다.
+    """
 
     CONFIRMED = "confirmed"
     SUSPECTED = "suspected"
     UNDECIDABLE = "undecidable"
+    ALLOWED = "allowed"
 
 
 class ExpectedAccess(StrEnum):
@@ -123,12 +126,11 @@ class ComparisonFacts:
 
 @dataclass(frozen=True, slots=True)
 class CaseInput:
-    """한 사례의 판정 입력. `has_concrete_anomaly`는 SUSPECTED 잠정 게이트다."""
+    """한 사례의 판정 입력."""
 
     policy: PolicyAssertion
     subjects: SubjectContext
     facts: ComparisonFacts
-    has_concrete_anomaly: bool = False
 
 
 @dataclass(frozen=True, slots=True)

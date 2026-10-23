@@ -1,6 +1,6 @@
 # S1 PoC 포함 진단 보고서 설계 v0.1
 
-상태: **팀 검토용 설계안**. [S1 API 상세 규격](s1-api-spec.md)의 보고 기능을 구체화한다. 실제 진단·PoC 실행·보고 생성기가 구현됐다는 뜻이 아니다. 출력 형태는 [가상 보고서 예시](../examples/s1-poc-report.example.md)에서 확인한다. 현재 소유자·검토자는 [담당 배정표](../module-development.md#담당-배정)를 따른다.
+상태: **S1 Report 출력 계약은 팀 검토용 설계안 / Evidence의 로컬 요청 레시피 생성 #36 구현 / `ReportInput`·`ReportResult`·`build_report` 공유 계약 및 실제 Report 서비스 미구현 (2026-10-22)**. [S1 API 상세 규격](s1-api-spec.md)의 보고 기능을 구체화한다. 실제 진단·PoC 재실행·보고 생성기가 구현됐다는 뜻이 아니다. 출력 형태는 [미실행 가상 보고서 예시](../examples/s1-poc-report.example.md)를 따른다. Report 소유자는 최민준, 공유 계약 담당은 이동찬이다([담당 배정](../module-development.md#담당-배정)).
 
 목표는 발견 결과마다 **어떤 조건에서, 어떤 요청으로, 무엇을 확인했는지**를 근거에 연결해 사람이 재현할 수 있는 보고서를 만드는 것이다. 최초 범위는 등록된 A/B 두 계정과 기존 A 소유 객체의 GET 비교다. SQLi/XSS payload 생성과 자동 재실행은 이번 확장에 포함하지 않는다.
 

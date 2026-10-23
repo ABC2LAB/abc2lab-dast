@@ -2,12 +2,57 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from abc2lab_contracts.primitives import RunKey, SourceVersion
 from abc2lab_judge.adapters import InMemoryVerdictJournal, VerdictContext, VerdictPublisher
-from abc2lab_judge.core.model import CheckState, JudgeReason, OracleVerdict, VerdictValue
+from abc2lab_judge.core import evaluate_case
+from abc2lab_judge.core.model import (
+    CaseInput,
+    CheckState,
+    ComparisonFacts,
+    ExpectedAccess,
+    JudgeReason,
+    OracleVerdict,
+    PolicyAssertion,
+    ResolutionState,
+    SubjectContext,
+    SubjectStatus,
+    VerdictValue,
+)
+
+_JUDGED_AT = datetime(2026, 10, 22, 12, 0, 0, tzinfo=UTC)
+
+_VERIFIED_SUBJECTS = SubjectContext(
+    owner_status=SubjectStatus.VERIFIED,
+    evaluated_status=SubjectStatus.VERIFIED,
+    owner_subject_ref="subject-a",
+    evaluated_subject_ref="subject-b",
+)
+
+
+def _registered_policy(expected_access: ExpectedAccess) -> PolicyAssertion:
+    return PolicyAssertion(
+        expected_access=expected_access,
+        sharing=ResolutionState.RESOLVED_NONE,
+        delegation=ResolutionState.RESOLVED_NONE,
+        has_registered_source=True,
+        valid_from=_JUDGED_AT - timedelta(hours=1),
+        valid_until=_JUDGED_AT + timedelta(hours=1),
+    )
+
+
+def _facts(state: CheckState) -> ComparisonFacts:
+    return ComparisonFacts(
+        same_resource=state,
+        owner_normal_data=state,
+        cross_normal_data=state,
+        nontrivial_data_match=state,
+        reflection_excluded=state,
+        template_excluded=state,
+    )
 
 
 @pytest.fixture
@@ -60,8 +105,9 @@ def undecidable_mapped_oracle() -> OracleVerdict:
 
 
 @pytest.fixture
-def undecidable_unmapped_oracle() -> OracleVerdict:
-    """데이터 검증 불가로 UNDECIDABLE. 유일한 사유 DATA_UNVERIFIABLE가 미대응이라 발행 불가."""
+def undecidable_data_unverifiable_oracle() -> OracleVerdict:
+    """데이터 검증 불가로 UNDECIDABLE. YES 근거 2개는 드롭되고 유일하게 남는 wire 사유가
+    DATA_UNVERIFIABLE다. C4-B(#39)로 공개 코드가 생겨 이제 발행 가능하다."""
     return OracleVerdict(
         value=VerdictValue.UNDECIDABLE,
         policy_check=CheckState.YES,
@@ -111,4 +157,50 @@ def journal(now: datetime) -> InMemoryVerdictJournal:
 def publisher(journal: InMemoryVerdictJournal) -> VerdictPublisher:
     return VerdictPublisher(
         journal, "judge", event_ref_factory=lambda producer, run: f"{producer}:{run.run_ref}:fixed"
+    )
+
+
+@pytest.fixture
+def allowed_oracle() -> OracleVerdict:
+    """직접 ALLOW + B 검증, A·비교 없음. 오라클이 실제로 낸 ALLOWED 판정이다."""
+    subjects = replace(
+        _VERIFIED_SUBJECTS, owner_status=SubjectStatus.UNKNOWN, owner_subject_ref=None
+    )
+    case = CaseInput(_registered_policy(ExpectedAccess.ALLOW), subjects, _facts(CheckState.UNKNOWN))
+    return evaluate_case(case, _JUDGED_AT)
+
+
+@pytest.fixture
+def suspected_oracle() -> OracleVerdict:
+    """기대 접근 불명 + A/B 구별·교차 노출 확인. 오라클이 실제로 낸 SUSPECTED 판정이다."""
+    case = CaseInput(
+        _registered_policy(ExpectedAccess.UNKNOWN), _VERIFIED_SUBJECTS, _facts(CheckState.YES)
+    )
+    return evaluate_case(case, _JUDGED_AT)
+
+
+@pytest.fixture
+def allowed_context(run_key: RunKey, oracle_version: SourceVersion) -> VerdictContext:
+    """ALLOWED에 필요한 정책 출처만 갖춘 맥락. 비교·근거 ref는 없다."""
+    return VerdictContext(
+        run_key=run_key,
+        verdict_ref="verdict-1",
+        revision=1,
+        case_ref="case-1",
+        oracle_version=oracle_version,
+        expected_policy_source=SourceVersion(issuer="reg", source_ref="eap", revision=3),
+    )
+
+
+@pytest.fixture
+def suspected_context(run_key: RunKey, oracle_version: SourceVersion) -> VerdictContext:
+    """SUSPECTED에 필요한 비교·근거 ref를 갖춘 맥락. 확인된 정책 출처는 없다."""
+    return VerdictContext(
+        run_key=run_key,
+        verdict_ref="verdict-1",
+        revision=1,
+        case_ref="case-1",
+        oracle_version=oracle_version,
+        comparison_ref="comparison-1",
+        evidence_refs=("evidence-owner", "evidence-cross"),
     )

@@ -45,7 +45,7 @@
 
 Verdict 생성자는 CONFIRMED의 필요조건(3개 check 모두 YES, 정책 출처·비교·근거 ref 존재)과 C4-B의 `SUSPECTED`·`ALLOWED`·`UNDECIDABLE` 구조 조건을 검사한다. 실제 정책·신원·데이터 검증은 Judge 소유이며, 상세 계약은 [Judge C4-B 계약](judge-c4-contract.md)을 따른다.
 
-공유 `VerdictValue`의 wire 값은 명세대로 대문자다. PR #34의 기존 제공자 어댑터는 소문자 Judge 내부 enum을 공유 VerdictValue·CheckState로 명시 변환한다. C4-B는 내부 enum을 통합하지 않으며 ALLOWED 발행과 추가 사유 매핑은 Judge 담당자의 후속 PR이다. 내부 enum 객체를 공유 계약에 직접 넣지 않는다.
+공유 `VerdictValue`의 wire 값은 명세대로 대문자다. PR #34의 기존 제공자 어댑터는 소문자 Judge 내부 enum을 공유 VerdictValue·CheckState로 명시 변환한다. C4-B 공유 계약은 PR #39로 병합됐고 추가 사유 9개의 제공자 매핑과 관련 xfail은 PR #41에서 해소됐다. 내부 enum은 계속 분리되어 있으며 ALLOWED 서비스 발행·검증은 Judge 담당자의 후속 PR이다. 내부 enum 객체를 공유 계약에 직접 넣지 않는다.
 
 ## 4. revision·멱등성·조회 한도 명확화
 
@@ -54,6 +54,8 @@ Verdict 생성자는 CONFIRMED의 필요조건(3개 check 모두 YES, 정책 출
 - 투영 식별자는 `(run_key, producer, event_ref)`다. 같은 이벤트/내용은 duplicate로 **최초 적용 revision**을 돌려주고 graph revision을 증가시키지 않는다. 같은 식별자의 다른 내용은 rejected/idempotency_conflict다. deferred/rejected는 graph에 0건 적용한다. deferred 재제출은 동일 원본 이벤트를 사용하고 대상 요청을 재전송하지 않는다.
 - `CaseReadRequest.limit`은 **candidates와 events의 반환 개수 합계** 상한이며 1–100이다. 반환은 단일 snapshot에서 결정한다. 요청 revision을 제공할 수 없으면 failed/revision_unavailable이며 최신 snapshot으로 대체하지 않는다. 현재 revision만 지원하는 메모리 구현을 허용한다.
 - `candidate_refs`와 Comparison/Verdict/Policy 이벤트를 연결하는 일반 조회 알고리즘·정렬·페이지 cursor는 이 최소 계약에서 새로 확정하지 않는다. 실제 Knowledge 구현 착수 시 그 연계·접근 범위 규칙을 별도로 정의해야 한다. 무전송 fake는 명시적으로 연결한 한 후보의 fixture만 읽으며 범용 graph 질의를 구현했다고 표시하지 않는다.
+
+**현재 구현 경계(2026-10-22, main `8f6fdd2`):** `abc2lab-contracts`의 `KnowledgePort`·불변 record와 계약/무전송 fake는 있지만 `packages/knowledge`의 실제 메모리 저장·Projector·인가된 조회 구현은 아직 없다. 다음 구현은 public 계약 변경 없이 동일 `(run_key, submission_ref)` 멱등성, producer 원본 감사 독립 검증, APPLIED/DUPLICATE/DEFERRED/REJECTED, 단일 revision snapshot, 권한 거부·부분/한도 사례부터 검증한다. AGE 영속 어댑터나 광범위 관계 경로 질의는 해당 구현 완료로 주장하지 않는다.
 
 ## 5. 무전송 연결 예제와 담당 검토
 

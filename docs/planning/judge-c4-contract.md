@@ -1,6 +1,6 @@
 # C4-B Judge 공유 계약
 
-상태: **스키마 변경·공유 계약 구현·로컬 검증 완료, 팀 리뷰 대기 (2026-10-22)**. 이 문서는 `contracts`가 제공하는 Judge 경계의 정본이다. PR #34의 기존 오라클·메모리 journal·publisher는 보존하며, 새 포트의 실제 서비스 조립·정책 등록 저장소·영속화와 감사·권한 검증 확장은 후속 범위다.
+상태: **공유 계약 [PR #39](https://github.com/ABC2LAB/abc2lab-dast/pull/39) 병합 완료 / 사유 매핑 [PR #41](https://github.com/ABC2LAB/abc2lab-dast/pull/41) 반영 (2026-10-22)**. 이 문서는 `contracts`가 제공하는 Judge 경계의 정본이다. PR #34의 기존 오라클·메모리 journal·publisher에 이어 사유 9개의 제공자 매핑도 main에 반영됐다. 새 포트의 실제 서비스 조립·ALLOWED 발행 검증·정책 등록 저장소·영속화와 감사·권한 검증 확장은 후속 범위다.
 
 ## 1. 공개 포트
 
@@ -74,7 +74,7 @@ ALLOWED의 구조 조건은 서로 다른 A/B 주체나 교차 노출의 확인�
 
 `policy_allows`, `sharing_or_delegation_allows`, `expected_access_unknown`, `subject_not_verified`, `subjects_not_distinct`, `data_no_match`, `data_reflection_present`, `data_template_present`, `data_unverifiable`.
 
-기존 `expected_access_policy_missing`, `expected_access_policy_invalid`, `sharing_or_delegation_unknown`은 재사용한다. `policy_deny_resolved`, `subjects_distinct_verified`, `data_nontrivial_match` 같은 긍정 근거는 ReasonCode에 추가하지 않고 CheckState·구조 조건으로 표현한다. `Verdict.reason_codes`는 판정 이유이고 `JudgeResult.reason_codes`는 호출·권한·revision·감사 실패 이유다. COMPLETE JudgeResult의 호출 사유는 비어 있어야 한다. PR #34의 journal/publisher와 memory adapter는 이번 문서에서 재구현하지 않으며, 기존 미대응 9개 매핑과 ALLOWED 매핑·strict xfail은 후속 Judge PR이다. `data_unverifiable`가 shared enum에 추가되어도 adapter mapping이 완료된 것은 아니다. 내부/public enum을 합칠 때 기존 변환 테스트는 삭제하지 않고 항등과 전체 값 대응을 검증한다.
+기존 `expected_access_policy_missing`, `expected_access_policy_invalid`, `sharing_or_delegation_unknown`은 재사용한다. `policy_deny_resolved`, `subjects_distinct_verified`, `data_nontrivial_match` 같은 긍정 근거는 ReasonCode에 추가하지 않고 CheckState·구조 조건으로 표현한다. `Verdict.reason_codes`는 판정 이유이고 `JudgeResult.reason_codes`는 호출·권한·revision·감사 실패 이유다. COMPLETE JudgeResult의 호출 사유는 비어 있어야 한다. PR #34의 journal/publisher와 memory adapter는 보존한다. 기존 미대응 9개는 `data_unverifiable`을 포함해 PR #41에서 `_REASON_MAP`에 반영됐고 `_UNMAPPED`는 비어 있으며 관련 strict xfail도 해소됐다. 긍정 근거 3개의 wire 제외와 전수 분류 테스트는 유지한다. 내부 ALLOWED 값·오라클·발행 매핑과 실제 Judge 호출 서비스는 후속이다. 내부/public enum을 합칠 때 기존 변환 테스트는 삭제하지 않고 항등과 전체 값 대응을 검증한다.
 
 `abc2lab_contracts.reason_codes`는 사유 역할과 FAILED 허용목록을 불변 `frozenset`으로 공개한다.
 
@@ -120,7 +120,7 @@ Verdict payload 필드는 기존 집합을 유지하고 `record_kind=verdict`, `
 
 ## 5. 범위와 후속 구현 경계
 
-이번 계약은 네트워크·DB·대상 HTTP 호출 없이 타입·binding·스크립트형 포트 예제를 검증한다. PR #34의 `VerdictPublisher`, `VerdictJournal`, memory adapter와 fingerprint 소비 경로는 이미 존재하며 이번 변경에서 재구현하지 않는다. 정책 정본 생성·case mapping 영속화는 app 등록 경계의 후속 구현이고, 새 Judge 포트 조립·오라클/사유 매핑은 Judge 담당자의 후속 PR이다. 내부/public enum 통합을 선택하면 담당자가 기존 변환 테스트를 유지해 항등과 전체 값 대응을 확인한다. S1 포트 집계는 `29개(비동기 26, 동기 3)`이며 이 문서는 그중 Judge와 정책 등록 조회 경계를 정의한다.
+이번 계약은 네트워크·DB·대상 HTTP 호출 없이 타입·binding·스크립트형 포트 예제를 검증한다. PR #34의 `VerdictPublisher`, `VerdictJournal`, memory adapter와 fingerprint 소비 경로는 이미 존재하고 사유 9개 매핑은 PR #41에서 완료됐다. 정책 정본 생성·case mapping 영속화는 app 등록 경계의 후속 구현이고, 새 Judge 포트 조립·ALLOWED 오라클/값 매핑·서비스 검증은 Judge 담당자의 후속 PR이다. 내부/public enum 통합을 선택하면 담당자가 기존 변환 테스트를 유지해 항등과 전체 값 대응을 확인한다. S1 포트 집계는 `29개(비동기 26, 동기 3)`이며 이 문서는 그중 Judge와 정책 등록 조회 경계를 정의한다.
 
 ALLOWED의 실제 서비스 발행 조건과 미완료 인수 테스트는 [§2.1의 J-ALLOW-01~06](#21-allowed-발행-전-judge-서비스-불변식)으로 추적한다. 계약 생성자의 UNKNOWN 허용을 신원·정책 검증 면제로 해석하지 않는다. v2 교체의 현재 소비자 점검 결과와 확인 범위는 §3.1에 기록한다.
 
@@ -141,7 +141,7 @@ ALLOWED의 실제 서비스 발행 조건과 미완료 인수 테스트는 [§2.
 
 ## 7. 로컬 검증 기록
 
-2026-10-22, PR #38까지 반영한 `origin/main`의 `ea17ec2`를 반영한 `codex/judge-c4b-contracts`의 검증 결과다. 이 절은 공유 계약의 로컬 검증 기록이며 GitHub CI나 팀 승인 결과가 아니다. 병합은 팀 리뷰 후 별도로 확인한다. 확정 결정 ①~㉚의 별도 번호표는 제공되지 않았으므로 §6에서 요구사항 주제별로 대응하며 번호를 추정하지 않는다.
+아래 표는 2026-10-22, PR #38까지 반영한 `origin/main`의 `ea17ec2`를 기준으로 `codex/judge-c4b-contracts`에서 실행한 **PR #39 병합 전의 로컬 검증 이력**이다. 현재 main 전체의 테스트 수치나 GitHub CI·팀 승인 결과로 취급하지 않는다. 이후 PR #39의 병합과 PR #41의 사유 매핑 반영을 확인했으며, 변경된 현재 상태는 첫 문단과 아래 후속 기록을 따른다. 확정 결정 ①~㉚의 별도 번호표는 제공되지 않았으므로 §6에서 요구사항 주제별로 대응하며 번호를 추정하지 않는다.
 
 | 실행 명령 | 실제 결과 |
 |---|---|
@@ -152,4 +152,4 @@ ALLOWED의 실제 서비스 발행 조건과 미완료 인수 테스트는 [§2.
 | `test_judge_reason_codes.py` (contracts/전체 검사에 포함) | **83개 통과**. enum 전수 분류·실패 허용목록·진단/실패 혼합 거부·정상 부재에 모든 enum 사유 추가/중복 거부 |
 | 고정 벡터·변경 범위 | Verdict 1개만 v2로 교체, 다른 10개 보존. Judge 및 타 서비스·루트 설정·lock 변경 없음 |
 
-모든 명령은 로컬 uv cache를 `/tmp`에 두고 실행했다. 새 xfail을 추가하거나 기존 테스트를 삭제하지 않았다. 남은 Judge xfail은 미대응 ReasonCode 매핑, 다른 하나는 Gateway의 기존 전송 사유 매핑이다. 이 검증은 정책 등록 정본·case mapping 구현, 실제 인가·영속 감사·대상 전송·S1 통합의 완료나 GitHub CI/팀 승인 결과를 의미하지 않는다.
+모든 명령은 로컬 uv cache를 `/tmp`에 두고 실행했다. 당시 새 xfail을 추가하거나 기존 테스트를 삭제하지 않았다. 표의 xfail 2개 중 Judge 사유 매핑은 이후 PR #41에서 해소됐고 Gateway의 기존 전송 사유 매핑은 후속으로 남아 있다. 이 검증은 정책 등록 정본·case mapping 구현, 실제 인가·영속 감사·대상 전송·S1 통합의 완료나 GitHub CI/팀 승인 결과를 의미하지 않는다.

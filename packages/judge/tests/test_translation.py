@@ -48,6 +48,9 @@ def test_reason_classification_is_exhaustive_and_disjoint() -> None:
     assert _WIRE_EVIDENCE_DROPPED.isdisjoint(mapped)
     assert _WIRE_EVIDENCE_DROPPED.isdisjoint(_UNMAPPED)
     assert mapped.isdisjoint(_UNMAPPED)
+    # C4-B(#39)로 공개 코드가 모두 생겨 미대응은 비어 있다. YES 근거가 아닌 사유는 전부 매핑된다.
+    assert _UNMAPPED == frozenset()
+    assert mapped == set(JudgeReason) - _WIRE_EVIDENCE_DROPPED
 
 
 def test_yes_evidence_reasons_dropped_from_wire() -> None:
@@ -75,9 +78,18 @@ def test_mapped_reasons_and_dedup() -> None:
     )
 
 
-def test_unmapped_reasons_are_skipped() -> None:
-    # 계약에 맞는 코드가 없는 사유는 기존 코드로 때우지 않고 건너뛴다(의미 왜곡 방지).
-    assert to_contract_reasons((JudgeReason.DATA_NO_MATCH, JudgeReason.DATA_UNVERIFIABLE)) == ()
+def test_newly_added_reasons_map_to_same_name_wire_codes() -> None:
+    # C4-B 전에는 비워 두던(미대응) 사유들이 이제 같은 이름의 공개 코드로 그대로 나간다.
+    assert to_contract_reasons((JudgeReason.DATA_NO_MATCH, JudgeReason.DATA_UNVERIFIABLE)) == (
+        ReasonCode.DATA_NO_MATCH,
+        ReasonCode.DATA_UNVERIFIABLE,
+    )
+
+
+def test_every_non_evidence_reason_maps_to_identical_name() -> None:
+    # YES 근거 드롭을 뺀 모든 JudgeReason은 이름이 같은 ReasonCode로 대응한다(억지 매핑 없음).
+    for reason in set(JudgeReason) - _WIRE_EVIDENCE_DROPPED:
+        assert _REASON_MAP[reason].name == reason.name
 
 
 def test_to_verdict_confirmed(
@@ -103,17 +115,54 @@ def test_to_verdict_undetermined_with_mapped_reason(
     assert verdict.reason_codes == (ReasonCode.EXPECTED_ACCESS_POLICY_MISSING,)
 
 
-@pytest.mark.xfail(
-    reason="미대응 사유에 맞는 contracts ReasonCode 부재 — judge용 사유 코드 추가 대기",
-    strict=True,
-    raises=ValueError,
-)
-def test_unmapped_only_undetermined_should_be_publishable(
-    undecidable_unmapped_oracle: OracleVerdict, undetermined_context: VerdictContext
+def test_data_unverifiable_only_undecidable_is_publishable(
+    undecidable_data_unverifiable_oracle: OracleVerdict, undetermined_context: VerdictContext
 ) -> None:
-    # 데이터 검증 불가(UNDECIDABLE)의 유일한 사유가 미대응이라 wire 사유가 비고, Verdict 생성자가
-    # 거부한다. judge 로직 구멍이 아니라 contracts 사유 코드 부재다. 코드가 생기면 xfail을 걷는다.
+    # 과거 xfail: 데이터 검증 불가(UNDECIDABLE)의 유일한 wire 사유 DATA_UNVERIFIABLE가 미대응이라
+    # Verdict 생성자가 거부했다. C4-B(#39)로 공개 코드가 생겨 이제 정상 발행된다.
     verdict = to_verdict(
-        undecidable_unmapped_oracle, undetermined_context, producer="judge", event_ref="judge:e1"
+        undecidable_data_unverifiable_oracle,
+        undetermined_context,
+        producer="judge",
+        event_ref="judge:e1",
     )
-    assert verdict.reason_codes != ()
+    assert verdict.value is VerdictValue.UNDECIDABLE
+    assert verdict.reason_codes == (ReasonCode.DATA_UNVERIFIABLE,)
+
+
+def test_oracle_allowed_publishes_with_policy_source_only(
+    allowed_oracle: OracleVerdict, allowed_context: VerdictContext
+) -> None:
+    verdict = to_verdict(allowed_oracle, allowed_context, producer="judge", event_ref="judge:e1")
+    assert verdict.value is VerdictValue.ALLOWED
+    assert verdict.policy_check is CheckState.NO
+    # A/B 구별·교차 노출 축은 확인하지 않았어도 ALLOWED가 된다.
+    assert verdict.identity_check is CheckState.UNKNOWN
+    assert verdict.data_check is CheckState.UNKNOWN
+    assert verdict.reason_codes == (ReasonCode.POLICY_ALLOWS,)
+
+
+def test_oracle_allowed_without_policy_source_fails_loudly(
+    allowed_oracle: OracleVerdict, undetermined_context: VerdictContext
+) -> None:
+    with pytest.raises(ValueError):
+        to_verdict(allowed_oracle, undetermined_context, producer="judge", event_ref="judge:e1")
+
+
+def test_oracle_suspected_publishes_with_comparison(
+    suspected_oracle: OracleVerdict, suspected_context: VerdictContext
+) -> None:
+    # C4-B 전 오라클의 SUSPECTED는 policy_check가 UNKNOWN일 수 없어 발행이 불가능했다.
+    verdict = to_verdict(
+        suspected_oracle, suspected_context, producer="judge", event_ref="judge:e1"
+    )
+    assert verdict.value is VerdictValue.SUSPECTED
+    assert verdict.policy_check is CheckState.UNKNOWN
+    assert verdict.reason_codes == (ReasonCode.EXPECTED_ACCESS_UNKNOWN,)
+
+
+def test_oracle_suspected_without_comparison_fails_loudly(
+    suspected_oracle: OracleVerdict, undetermined_context: VerdictContext
+) -> None:
+    with pytest.raises(ValueError):
+        to_verdict(suspected_oracle, undetermined_context, producer="judge", event_ref="judge:e1")

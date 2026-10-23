@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from itertools import product
 
 from abc2lab_judge.core import (
     CaseInput,
@@ -44,7 +45,22 @@ _FACTS = ComparisonFacts(
     template_excluded=CheckState.YES,
 )
 
+# 비교가 없을 때의 신호. A·교차 응답이 없으면 모든 비교 신호는 확인 불가다.
+_NO_COMPARISON = ComparisonFacts(
+    same_resource=CheckState.UNKNOWN,
+    owner_normal_data=CheckState.UNKNOWN,
+    cross_normal_data=CheckState.UNKNOWN,
+    nontrivial_data_match=CheckState.UNKNOWN,
+    reflection_excluded=CheckState.UNKNOWN,
+    template_excluded=CheckState.UNKNOWN,
+)
+
+# _CASE는 (b)(c)가 모두 yes인 강한 근거다. 정책만 바꿔 값이 어떻게 갈리는지 본다.
 _CASE = CaseInput(policy=_POLICY, subjects=_SUBJECTS, facts=_FACTS)
+
+
+def _with_policy(policy: PolicyAssertion) -> CaseInput:
+    return replace(_CASE, policy=policy)
 
 
 def test_confirmed_when_all_three_checks_yes() -> None:
@@ -64,41 +80,139 @@ def test_reason_codes_follow_policy_identity_data_order() -> None:
     )
 
 
-def test_explicit_allow_policy_is_not_confirmed() -> None:
-    case = replace(_CASE, policy=replace(_POLICY, expected_access=ExpectedAccess.ALLOW))
-    result = evaluate_case(case, _OBSERVED_AT)
-    assert result.value is not VerdictValue.CONFIRMED
+def test_explicit_allow_with_verified_b_is_allowed() -> None:
+    result = evaluate_case(
+        _with_policy(replace(_POLICY, expected_access=ExpectedAccess.ALLOW)), _OBSERVED_AT
+    )
+    assert result.value is VerdictValue.ALLOWED
     assert result.policy_check is CheckState.NO
-    assert JudgeReason.POLICY_ALLOWS in result.reason_codes
+    # ALLOWED는 허용 사유 하나만 싣는다.
+    assert result.reason_codes == (JudgeReason.POLICY_ALLOWS,)
 
 
-def test_resolved_allow_delegation_is_not_confirmed() -> None:
-    case = replace(_CASE, policy=replace(_POLICY, delegation=ResolutionState.RESOLVED_ALLOW))
-    result = evaluate_case(case, _OBSERVED_AT)
+def test_resolved_allow_delegation_with_verified_b_is_allowed() -> None:
+    result = evaluate_case(
+        _with_policy(replace(_POLICY, delegation=ResolutionState.RESOLVED_ALLOW)), _OBSERVED_AT
+    )
+    assert result.value is VerdictValue.ALLOWED
     assert result.policy_check is CheckState.NO
-    assert JudgeReason.SHARING_OR_DELEGATION_ALLOWS in result.reason_codes
+    assert result.reason_codes == (JudgeReason.SHARING_OR_DELEGATION_ALLOWS,)
 
 
-def test_sharing_unknown_is_undecidable() -> None:
-    case = replace(_CASE, policy=replace(_POLICY, sharing=ResolutionState.UNKNOWN))
+def test_direct_allow_is_not_blocked_by_unknown_sharing() -> None:
+    # UNKNOWN 예외는 허용을 더할 수만 있어 검증된 직접 허용을 무효화하지 못한다.
+    case = _with_policy(
+        replace(_POLICY, expected_access=ExpectedAccess.ALLOW, sharing=ResolutionState.UNKNOWN)
+    )
     result = evaluate_case(case, _OBSERVED_AT)
-    assert result.value is VerdictValue.UNDECIDABLE
+    assert result.value is VerdictValue.ALLOWED
+    assert result.reason_codes == (JudgeReason.POLICY_ALLOWS,)
+
+
+def test_resolved_delegation_allow_overrides_unknown_direct_access() -> None:
+    case = _with_policy(
+        replace(
+            _POLICY,
+            expected_access=ExpectedAccess.UNKNOWN,
+            delegation=ResolutionState.RESOLVED_ALLOW,
+        )
+    )
+    result = evaluate_case(case, _OBSERVED_AT)
+    assert result.value is VerdictValue.ALLOWED
+    assert result.reason_codes == (JudgeReason.SHARING_OR_DELEGATION_ALLOWS,)
+
+
+def test_allowed_needs_no_owner_or_comparison_when_b_verified() -> None:
+    # A·비교가 없어 (b)(c)가 UNKNOWN이어도 B가 검증되면 ALLOWED다(서로 다른 축).
+    case = CaseInput(
+        policy=replace(_POLICY, expected_access=ExpectedAccess.ALLOW),
+        subjects=replace(_SUBJECTS, owner_status=SubjectStatus.UNKNOWN, owner_subject_ref=None),
+        facts=_NO_COMPARISON,
+    )
+    result = evaluate_case(case, _OBSERVED_AT)
+    assert result.value is VerdictValue.ALLOWED
+    assert result.identity_check is CheckState.UNKNOWN
+    assert result.data_check is CheckState.UNKNOWN
+    assert result.reason_codes == (JudgeReason.POLICY_ALLOWS,)
+
+
+def test_allow_with_unverified_b_is_undecidable() -> None:
+    allow = replace(_POLICY, expected_access=ExpectedAccess.ALLOW)
+    for subjects in (
+        replace(_SUBJECTS, evaluated_status=SubjectStatus.EXPIRED),
+        replace(_SUBJECTS, evaluated_status=SubjectStatus.UNKNOWN),
+        replace(_SUBJECTS, evaluated_subject_ref=""),
+    ):
+        result = evaluate_case(CaseInput(allow, subjects, _FACTS), _OBSERVED_AT)
+        assert result.value is VerdictValue.UNDECIDABLE
+        assert JudgeReason.SUBJECT_NOT_VERIFIED in result.reason_codes
+
+
+def test_deny_without_valid_exception_is_never_allowed() -> None:
+    weak_data = replace(_CASE, facts=replace(_FACTS, nontrivial_data_match=CheckState.NO))
+    for case in (_CASE, weak_data):
+        assert evaluate_case(case, _OBSERVED_AT).value is not VerdictValue.ALLOWED
+
+
+def test_sharing_unknown_with_cross_evidence_is_suspected() -> None:
+    result = evaluate_case(
+        _with_policy(replace(_POLICY, sharing=ResolutionState.UNKNOWN)), _OBSERVED_AT
+    )
+    assert result.value is VerdictValue.SUSPECTED
     assert result.policy_check is CheckState.UNKNOWN
     assert JudgeReason.SHARING_OR_DELEGATION_UNKNOWN in result.reason_codes
 
 
+def test_expected_access_unknown_with_cross_evidence_is_suspected() -> None:
+    result = evaluate_case(
+        _with_policy(replace(_POLICY, expected_access=ExpectedAccess.UNKNOWN)), _OBSERVED_AT
+    )
+    assert result.value is VerdictValue.SUSPECTED
+    assert result.policy_check is CheckState.UNKNOWN
+    assert JudgeReason.EXPECTED_ACCESS_UNKNOWN in result.reason_codes
+
+
 def test_missing_registered_source_is_undecidable() -> None:
-    case = replace(_CASE, policy=replace(_POLICY, has_registered_source=False))
-    result = evaluate_case(case, _OBSERVED_AT)
+    # (b)(c)가 모두 yes여도 정책 부재만으로는 SUSPECTED가 되지 않는다.
+    result = evaluate_case(
+        _with_policy(replace(_POLICY, has_registered_source=False)), _OBSERVED_AT
+    )
     assert result.value is VerdictValue.UNDECIDABLE
+    assert result.identity_check is CheckState.YES
+    assert result.data_check is CheckState.YES
     assert JudgeReason.EXPECTED_ACCESS_POLICY_MISSING in result.reason_codes
 
 
 def test_policy_not_valid_at_judgment_time_is_undecidable() -> None:
-    case = replace(_CASE, policy=replace(_POLICY, valid_until=_OBSERVED_AT - timedelta(seconds=1)))
-    result = evaluate_case(case, _OBSERVED_AT)
+    # (b)(c)가 모두 yes여도 기준 시각에 무효인 정책은 UNDECIDABLE이다.
+    result = evaluate_case(
+        _with_policy(replace(_POLICY, valid_until=_OBSERVED_AT - timedelta(seconds=1))),
+        _OBSERVED_AT,
+    )
+    assert result.value is VerdictValue.UNDECIDABLE
     assert result.policy_check is CheckState.UNKNOWN
     assert JudgeReason.EXPECTED_ACCESS_POLICY_INVALID in result.reason_codes
+
+
+def test_policy_unknown_with_identity_unknown_is_undecidable() -> None:
+    # 정책 내용이 불명이어도 (b)가 확인되지 않으면 SUSPECTED를 열지 않는다.
+    case = replace(
+        _with_policy(replace(_POLICY, expected_access=ExpectedAccess.UNKNOWN)),
+        subjects=replace(_SUBJECTS, owner_status=SubjectStatus.UNKNOWN),
+    )
+    result = evaluate_case(case, _OBSERVED_AT)
+    assert result.value is VerdictValue.UNDECIDABLE
+    assert result.identity_check is CheckState.UNKNOWN
+
+
+def test_policy_unknown_with_data_unknown_is_undecidable() -> None:
+    case = replace(
+        _with_policy(replace(_POLICY, sharing=ResolutionState.UNKNOWN)),
+        facts=replace(_FACTS, nontrivial_data_match=CheckState.UNKNOWN),
+    )
+    result = evaluate_case(case, _OBSERVED_AT)
+    assert result.value is VerdictValue.UNDECIDABLE
+    assert result.data_check is CheckState.UNKNOWN
 
 
 def test_same_subject_is_not_confirmed() -> None:
@@ -148,7 +262,7 @@ def test_unverifiable_data_is_undecidable() -> None:
 
 
 def test_each_check_is_required_for_confirmed() -> None:
-    weak_policy = replace(_CASE, policy=replace(_POLICY, expected_access=ExpectedAccess.UNKNOWN))
+    weak_policy = _with_policy(replace(_POLICY, expected_access=ExpectedAccess.UNKNOWN))
     weak_identity = replace(_CASE, subjects=replace(_SUBJECTS, evaluated_subject_ref="subject-a"))
     weak_data = replace(_CASE, facts=replace(_FACTS, same_resource=CheckState.NO))
     assert evaluate_case(weak_policy, _OBSERVED_AT).value is not VerdictValue.CONFIRMED
@@ -156,30 +270,10 @@ def test_each_check_is_required_for_confirmed() -> None:
     assert evaluate_case(weak_data, _OBSERVED_AT).value is not VerdictValue.CONFIRMED
 
 
-def test_concrete_anomaly_promotes_unconfirmed_to_suspected() -> None:
-    # 확인 불가가 없고(모두 결정됨) 미충족 + 명시 이상이면 SUSPECTED.
-    facts = replace(_FACTS, nontrivial_data_match=CheckState.NO)
-    case = replace(_CASE, facts=facts, has_concrete_anomaly=True)
-    result = evaluate_case(case, _OBSERVED_AT)
-    assert result.value is VerdictValue.SUSPECTED
-
-
-def test_default_unconfirmed_without_anomaly_is_undecidable() -> None:
+def test_deny_without_data_match_is_undecidable() -> None:
     case = replace(_CASE, facts=replace(_FACTS, nontrivial_data_match=CheckState.NO))
     result = evaluate_case(case, _OBSERVED_AT)
     assert result.value is VerdictValue.UNDECIDABLE
-
-
-def test_unknown_outranks_concrete_anomaly() -> None:
-    # 확인 불가(정책 부재)는 명시 이상 신호가 있어도 UNDECIDABLE이 우선한다.
-    case = replace(
-        _CASE,
-        policy=replace(_POLICY, has_registered_source=False),
-        has_concrete_anomaly=True,
-    )
-    result = evaluate_case(case, _OBSERVED_AT)
-    assert result.value is VerdictValue.UNDECIDABLE
-    assert result.policy_check is CheckState.UNKNOWN
 
 
 def test_empty_subject_ref_reserves_identity() -> None:
@@ -191,18 +285,61 @@ def test_empty_subject_ref_reserves_identity() -> None:
 
 def test_policy_starting_after_observation_is_undecidable() -> None:
     # 관찰 이후 시작한 정책은 관찰 당시 유효하지 않다.
-    policy = replace(_POLICY, valid_from=_OBSERVED_AT + timedelta(minutes=1))
-    result = evaluate_case(replace(_CASE, policy=policy), _OBSERVED_AT)
+    result = evaluate_case(
+        _with_policy(replace(_POLICY, valid_from=_OBSERVED_AT + timedelta(minutes=1))), _OBSERVED_AT
+    )
+    assert result.value is VerdictValue.UNDECIDABLE
     assert result.policy_check is CheckState.UNKNOWN
     assert JudgeReason.EXPECTED_ACCESS_POLICY_INVALID in result.reason_codes
 
 
 def test_policy_valid_at_observation_confirms_despite_later_expiry() -> None:
     # 관찰 당시 유효했으면 이후 만료되더라도 관찰 시각 기준으로 CONFIRMED가 가능하다.
-    policy = replace(
-        _POLICY,
-        valid_from=_OBSERVED_AT - timedelta(minutes=5),
-        valid_until=_OBSERVED_AT + timedelta(minutes=1),
+    case = _with_policy(
+        replace(
+            _POLICY,
+            valid_from=_OBSERVED_AT - timedelta(minutes=5),
+            valid_until=_OBSERVED_AT + timedelta(minutes=1),
+        )
     )
-    result = evaluate_case(replace(_CASE, policy=policy), _OBSERVED_AT)
-    assert result.value is VerdictValue.CONFIRMED
+    assert evaluate_case(case, _OBSERVED_AT).value is VerdictValue.CONFIRMED
+
+
+def test_value_partition_over_every_policy_combination() -> None:
+    # 강한 (b)(c)로 정책 조합을 전부 돌린다. 부재·무효는 UNDECIDABLE, SUSPECTED는 내용 불명 두
+    # 사유, ALLOWED는 정책 NO, CONFIRMED는 명시 DENY+예외 없음에서만 나온다.
+    valid = (_OBSERVED_AT - timedelta(hours=1), _OBSERVED_AT + timedelta(hours=1))
+    expired = (_OBSERVED_AT - timedelta(hours=2), _OBSERVED_AT - timedelta(hours=1))
+    suspected_reasons = {
+        JudgeReason.EXPECTED_ACCESS_UNKNOWN,
+        JudgeReason.SHARING_OR_DELEGATION_UNKNOWN,
+    }
+    for access, sharing, delegation, registered, (start, end) in product(
+        ExpectedAccess, ResolutionState, ResolutionState, (True, False), (valid, expired)
+    ):
+        case = _with_policy(
+            replace(
+                _POLICY,
+                expected_access=access,
+                sharing=sharing,
+                delegation=delegation,
+                has_registered_source=registered,
+                valid_from=start,
+                valid_until=end,
+            )
+        )
+        result = evaluate_case(case, _OBSERVED_AT)
+        policy_reason = result.reason_codes[0]
+        if not registered or (start, end) == expired:
+            assert result.value is VerdictValue.UNDECIDABLE
+            assert policy_reason in {
+                JudgeReason.EXPECTED_ACCESS_POLICY_MISSING,
+                JudgeReason.EXPECTED_ACCESS_POLICY_INVALID,
+            }
+        if result.value is VerdictValue.SUSPECTED:
+            assert policy_reason in suspected_reasons
+        if result.value is VerdictValue.ALLOWED:
+            assert result.policy_check is CheckState.NO
+        if result.value is VerdictValue.CONFIRMED:
+            assert access is ExpectedAccess.DENY
+            assert sharing is delegation is ResolutionState.RESOLVED_NONE
